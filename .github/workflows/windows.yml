@@ -1,7 +1,8 @@
 # Compila Codex para Windows y empaqueta el instalador y el ZIP portable.
 #
-# En cada push a main sirve de aviso de que algo dejó de compilar allí; al
-# publicar una etiqueta (v1.3.0), además cuelga los dos ficheros de la release.
+# En cada push a main sirve de aviso de que algo dejó de compilar allí;
+# al publicar una etiqueta (v1.3.0), además cuelga los dos ficheros de la release.
+
 name: Windows
 
 on:
@@ -16,17 +17,20 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write        # hace falta para adjuntar a la release
+  contents: write
 
 jobs:
   build:
-    runs-on: windows-latest
+    # windows-latest ha migrado a Windows Server 2025 / VS 2026.
+    # Este proyecto usa el generador "Visual Studio 17 2022", así que
+    # fijamos explícitamente la imagen que contiene VS 2022.
+    runs-on: windows-2022
 
     steps:
       - uses: actions/checkout@v4
 
-      # Inno Setup exige que la versión sea numérica (x.y.z). Fuera de una
-      # etiqueta se usa la del propio CMakeLists, que es la única que hay.
+      # Inno Setup exige que la versión sea numérica (x.y.z).
+      # Fuera de una etiqueta se usa la del propio CMakeLists.
       - name: Averiguar la versión
         id: version
         shell: bash
@@ -36,6 +40,12 @@ jobs:
           else
             version="$(sed -n 's/^project(codex VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
           fi
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Versión inválida: $version"
+            exit 1
+          fi
+
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Versión: $version"
 
@@ -49,41 +59,121 @@ jobs:
           modules: qtmultimedia
           cache: true
 
+      # Diagnóstico temporal para confirmar exactamente qué imagen y
+      # qué instalación de Visual Studio está usando el runner.
+      - name: Diagnóstico del entorno
+        shell: pwsh
+        run: |
+          Write-Host "=== Runner ==="
+          Write-Host "ImageOS: $env:ImageOS"
+          Write-Host "ImageVersion: $env:ImageVersion"
+
+          Write-Host ""
+          Write-Host "=== CMake ==="
+          cmake --version
+
+          Write-Host ""
+          Write-Host "=== Visual Studio ==="
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+          if (-not (Test-Path $vswhere)) {
+            throw "No se encontró vswhere: $vswhere"
+          }
+
+          Write-Host "vswhere: $vswhere"
+
+          & $vswhere `
+            -latest `
+            -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
+
+          & $vswhere `
+            -latest `
+            -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -format value `
+            -property installationVersion
+
+          Write-Host ""
+          Write-Host "=== Qt ==="
+          Write-Host "QT_ROOT_DIR=[$env:QT_ROOT_DIR]"
+          Write-Host "CMAKE_PREFIX_PATH=[$env:CMAKE_PREFIX_PATH]"
+
+          $windeployqt = Join-Path $env:QT_ROOT_DIR "bin\windeployqt.exe"
+
+          if (-not (Test-Path $windeployqt)) {
+            throw "No se encontró windeployqt.exe: $windeployqt"
+          }
+
+          Write-Host "windeployqt: $windeployqt"
+
+      # Visual Studio 17 2022 encuentra automáticamente la instalación
+      # de VS 2022 en windows-2022.
+      #
+      # Las comillas de CODEX_VERSION son importantes: evitan que el
+      # valor 1.3.0 sea separado por el shell.
       - name: Configurar
-        run: >
-          cmake -B build -G "Visual Studio 17 2022" -A x64
-          -DCODEX_VERSION=${{ steps.version.outputs.version }}
+        shell: pwsh
+        run: |
+          cmake `
+            -B build `
+            -G "Visual Studio 17 2022" `
+            -A x64 `
+            "-DCODEX_VERSION=${{ steps.version.outputs.version }}"
 
       - name: Compilar
-        run: cmake --build build --config Release
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel
 
-      # El .exe solo, sin nada de la jerarquía de Linux: en Windows el
-      # CMakeLists instala en un directorio plano (ver el if(WIN32)).
-      - name: Instalar en dist/
-        run: cmake --install build --config Release --prefix dist
+      - name: Instalar
+        shell: pwsh
+        run: |
+          cmake --install build --config Release --prefix dist
 
-      # windeployqt copia las DLL de Qt y las carpetas de plugins que hacen
-      # falta al lado del .exe: sin platforms\qwindows.dll no arranca, y sin
-      # multimedia\ no suenan las notas de voz.
+      # windeployqt copia las DLL de Qt y los plugins necesarios junto al
+      # ejecutable.
       - name: Recoger Qt junto al .exe
         shell: pwsh
         run: |
-          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-translations `
-              --no-system-d3d-compiler --no-opengl-sw dist\codex.exe
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" `
+            --release `
+            --no-translations `
+            --no-system-d3d-compiler `
+            --no-opengl-sw `
+            dist\codex.exe
 
       - name: ZIP portable
         shell: pwsh
         run: |
-          Compress-Archive -Path dist\* -DestinationPath "Codex-${{ steps.version.outputs.version }}-win64.zip"
+          Compress-Archive `
+            -Path dist\* `
+            -DestinationPath "Codex-${{ steps.version.outputs.version }}-win64.zip"
 
+      # Inno Setup 6 ya viene en la imagen; solo se instala si faltara.
       - name: Instalador
         shell: pwsh
         run: |
-          choco install innosetup -y --no-progress
-          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
-              /DMyAppVersion=${{ steps.version.outputs.version }} `
-              /DStagingDir="${{ github.workspace }}\dist" `
-              packaging\windows\codex.iss
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup -y --no-progress
+          }
+
+          if (-not (Test-Path $iscc)) {
+            throw "No se encontró ISCC.exe: $iscc"
+          }
+
+          & $iscc `
+            "/DMyAppVersion=${{ steps.version.outputs.version }}" `
+            "/DStagingDir=${{ github.workspace }}\dist" `
+            packaging\windows\codex.iss
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup terminó con código $LASTEXITCODE"
+          }
 
       - name: Guardar los dos paquetes
         uses: actions/upload-artifact@v4
