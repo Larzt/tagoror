@@ -30,6 +30,7 @@ add_executable(codex
     include/ui/theme.hpp
     include/ui/waveform.hpp
     include/ui/dragwidgets.hpp
+    include/ui/elidedlabel.hpp
 
     src/audio/recorder.cpp
     src/audio/alarm.cpp

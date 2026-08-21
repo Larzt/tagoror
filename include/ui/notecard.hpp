@@ -52,6 +52,12 @@ private:
 
     void openDuePopup(const QPoint &globalPos);   // chip o menú contextual
 
+    // --- enlaces adjuntos ---
+    void refreshLinks();                         // reconstruye solo las filas
+    void openLinkEditor(int index, const QPoint &globalPos);   // -1 = uno nuevo
+    void openLinkMenu(int index, const QPoint &globalPos);
+    void openLink(int index);
+
     // --- voz ---
     void ensureAudio();           // crea grabador/reproductor bajo demanda
     void toggleRecord();
@@ -66,6 +72,9 @@ private:
     QLabel *m_meta = nullptr;
     QVBoxLayout *m_itemsLayout = nullptr;
     QLineEdit *m_newItem = nullptr;
+
+    QWidget *m_linksBox = nullptr;       // contenedor de las filas de enlaces
+    QVBoxLayout *m_linksLayout = nullptr;
 
     QLabel *m_chip = nullptr;
     QLabel *m_dueIcon = nullptr;

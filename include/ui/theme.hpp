@@ -18,6 +18,13 @@ struct Theme {
     QColor cardColor() const {
         return QColor(19, 22, 27, int(255 * opacity / 100.0));
     }
+    // El acento con transparencia, para los fondos y bordes teñidos de la
+    // hoja de estilos (píldora de "Hoy", botón de página activa, chips).
+    QString accentRgba(qreal alpha) const {
+        return QString("rgba(%1,%2,%3,%4)")
+            .arg(accent.red()).arg(accent.green()).arg(accent.blue())
+            .arg(alpha, 0, 'f', 3);
+    }
     QString card() const {
         return QString("rgba(19,22,27,%1)").arg(opacity / 100.0, 0, 'f', 3);
     }
@@ -132,6 +139,25 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.setPen(Qt::NoPen);
         p.setBrush(color);
         p.drawRoundedRect(QRectF(c - 3.8, c - 3.8, 7.6, 7.6), 1.6, 1.6);
+    } else if (kind == "link") {
+        // Dos eslabones inclinados: se solapan en el centro.
+        p.save();
+        p.translate(c, c);
+        p.rotate(-45);
+        pen.setWidthF(1.4);
+        p.setPen(pen);
+        p.drawRoundedRect(QRectF(-6.0, -2.7, 6.8, 5.4), 2.7, 2.7);
+        p.drawRoundedRect(QRectF(-0.8, -2.7, 6.8, 5.4), 2.7, 2.7);
+        p.restore();
+    } else if (kind == "copy") {
+        p.drawRoundedRect(QRectF(c - 5.4, c - 5.4, 8.0, 8.0), 2.0, 2.0);
+        p.drawRoundedRect(QRectF(c - 2.6, c - 2.6, 8.0, 8.0), 2.0, 2.0);
+    } else if (kind == "pencil") {
+        p.drawLine(QPointF(c - 5.2, c + 5.2), QPointF(c - 4.4, c + 2.4));
+        p.drawLine(QPointF(c - 4.4, c + 2.4), QPointF(c + 2.6, c - 4.6));
+        p.drawLine(QPointF(c + 2.6, c - 4.6), QPointF(c + 5.2, c - 2.0));
+        p.drawLine(QPointF(c + 5.2, c - 2.0), QPointF(c - 1.8, c + 5.0));
+        p.drawLine(QPointF(c - 1.8, c + 5.0), QPointF(c - 5.2, c + 5.2));
     } else if (kind == "trash") {
         p.drawLine(QPointF(c - 5, c - 3.4), QPointF(c + 5, c - 3.4));
         p.drawRoundedRect(QRectF(c - 3.8, c - 3.4, 7.6, 9.2), 1.8, 1.8);
@@ -225,6 +251,13 @@ QToolButton {
     background: transparent;
 }
 QToolButton:hover { background: %7; }
+/* Página activa de la cabecera: el botón se queda encendido en vez de
+   cambiar de icono, así se ve de un vistazo dónde estás. */
+QToolButton[active="true"] {
+    background: %8;
+    border: 1px solid %9;
+}
+QToolButton[active="true"]:hover { background: %10; }
 
 QPushButton {
     color: #0d1014; background: %5;
@@ -294,14 +327,40 @@ QScrollBar::handle:vertical {
 QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
+/* --- enlaces adjuntos ---------------------------------------------------- */
+/* Igual que las filas del calendario, necesita WA_StyledBackground. */
+QWidget#linkRow { background: transparent; border-radius: 7px; }
+QWidget#linkRow:hover { background: %7; }
+QLabel#linkText { font-size: 11.5px; }
+
 /* --- calendario ---------------------------------------------------------- */
 QWidget#calendar { background: transparent; }
 QFrame#calSeparator { background: %2; border: none; }
-QToolButton#todayBtn {
-    color: %4; font-size: 10px; font-weight: 600;
-    padding: 4px 8px; border-radius: 8px;
+/* Cabecera del mes: flechas en cajas discretas y el mes centrado. */
+QToolButton#calNav {
+    background: %6; border: 1px solid %2;
+    border-radius: 7px; padding: 3px;
 }
-QToolButton#todayBtn:hover { color: %3; background: %7; }
+QToolButton#calNav:hover { background: %7; }
+QLabel#calMonth { color: %3; font-size: 13px; font-weight: 700; }
+QToolButton#todayBtn {
+    color: %5; font-size: 10px; font-weight: 700;
+    background: %8; border: 1px solid %9;
+    border-radius: 8px; padding: 4px 9px;
+}
+QToolButton#todayBtn:hover { background: %10; }
+
+/* Filas del día: hora en monoespaciada, barra de estado y chip a la derecha. */
+QLabel#dayTime {
+    color: %4; font-size: 10px;
+    font-family: "IBM Plex Mono", monospace;
+}
+QLabel#dayChip {
+    color: #ff7a6b; font-size: 8.5px; font-weight: 700;
+    background: rgba(255,122,107,0.14);
+    border: 1px solid rgba(255,122,107,0.40);
+    border-radius: 5px; padding: 1px 5px;
+}
 /* Las filas del día son QWidget lisos: sin WA_StyledBackground no pintarían
    este fondo (se pone en calendar.cpp). */
 QWidget#dayRow { background: transparent; border-radius: 8px; }
@@ -332,5 +391,8 @@ QLineEdit#popupEdit:focus { border: 1px solid %5; }
         .arg(muted())     // %4
         .arg(acc)         // %5
         .arg(sunk())      // %6
-        .arg(hover());    // %7
+        .arg(hover())     // %7
+        .arg(accentRgba(0.14))    // %8  relleno teñido
+        .arg(accentRgba(0.38))    // %9  borde teñido
+        .arg(accentRgba(0.24));   // %10 relleno al pasar por encima
 }

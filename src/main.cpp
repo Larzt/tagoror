@@ -2,10 +2,33 @@
 #include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QSettings>
 
 #include "ui/panel.hpp"
 
+namespace {
+
+// En Wayland una ventana no puede colocarse a sí misma ni saber dónde está:
+// Qt informa siempre de 0,0 (comprobado). El widget necesita justamente eso
+// para desplegarse desde el dock hacia el centro de la pantalla en vez de
+// hacia la derecha siempre, así que bajo una sesión Wayland se pide XWayland.
+//
+// Se puede volver a Wayland nativo desde ajustes (clave 'platform') o fijando
+// QT_QPA_PLATFORM en el entorno, que manda sobre todo lo demás.
+void choosePlatform() {
+    if (!qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) return;
+
+    const QString choice = QSettings("Stride", "Codex").value("platform").toString();
+    if (choice == "wayland") return;
+    if (qEnvironmentVariable("XDG_SESSION_TYPE") == "wayland")
+        qputenv("QT_QPA_PLATFORM", "xcb");
+}
+
+}  // namespace
+
 int main(int argc, char *argv[]) {
+    choosePlatform();       // antes de QApplication: después ya no se elige
+
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("Stride");
     QCoreApplication::setApplicationName("Codex");

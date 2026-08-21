@@ -36,6 +36,10 @@ public:
     void addSlider(int min, int max, int value, std::function<void(int)> live);
     void addEditor(const QString &placeholder, const QString &text,
                    std::function<void(const QString &)> commit);
+    // Varios campos en un mismo popup, confirmados a la vez. Con addEditor no
+    // se puede: cada campo cerraría el popup por su cuenta al pulsar Enter.
+    void addFields(const QStringList &placeholders, const QStringList &values,
+                   std::function<void(const QStringList &)> commit);
     void addSeparator();
 
     // Sitúa el popup pegado a un widget, corrigiendo si se sale de la pantalla.

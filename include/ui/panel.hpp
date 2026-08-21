@@ -55,6 +55,7 @@ private:
 
     // --- calendario ---
     void toggleCalendar();
+    void setCalendarActive(bool on);
     void showNotes();
     void askReminderTime(const QDate &day, QWidget *anchor);
     void createReminder(const QDateTime &when);
@@ -76,6 +77,10 @@ private:
 
     // --- ventana ---
     void applyWindowFlags();        // encima de todo o pegado al escritorio
+    void keepOnScreen();            // que plegar/desplegar no la saque de la pantalla
+    // Esquina por la que crece o encoge la ventana: el panel se abre hacia el
+    // centro de la pantalla, no siempre hacia abajo y a la derecha.
+    QPoint anchoredTopLeft(const QRect &before, const QSize &after) const;
 
     // --- búsqueda y plegado ---
     void toggleSearch();
@@ -114,5 +119,7 @@ private:
     QTimer *m_dueTimer = nullptr;          // vigilancia de recordatorios
     Alarm *m_alarm = nullptr;
     Theme m_theme;
-    QSize m_expandedSize;                  // se restaura al desplegar
+    QSize m_expandedSize;                  // se restaura al desplegar (y se guarda)
+    QRect m_expandedGeom;                  // sitio exacto del panel antes de plegar
+    QRect m_dockGeom;                      // dónde quedó el dock al plegar
 };

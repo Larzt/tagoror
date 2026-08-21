@@ -4,7 +4,8 @@
   A sticky-notes widget for the Linux desktop, written in C++20 with Qt 6.<br>
   Frameless, translucent, and made to sit <em>on</em> the desktop rather than get in
   the way — text notes, checklists, reminders that actually ring (with a month
-  view to go with them), and voice notes with a waveform.
+  view to go with them), voice notes with a waveform, and links you can attach
+  to any of them.
 </p>
 
 <p align="center">
@@ -59,6 +60,8 @@
 - Reminders with a free-text date have no instant to place, so they stay in the
   list and out of the grid.
 - The month moves with the arrows, the mouse wheel, or **Hoy** to come back.
+- Each entry shows its time, a bar in the colour of its state, and — once it is
+  past due — a `VENCIDO` tag, or a stop button while it is actually ringing.
 
 ### Voice notes
 
@@ -71,12 +74,29 @@
 - The input device is selectable, and falls back to the system default if the
   one you picked is gone.
 
+### Links on any note
+
+- Attach a link from the note's right-click menu: an address, and optionally a
+  name to show instead of it.
+- An address typed without a scheme gets `https://` put in front of it.
+- They appear under the body, above the type label, and open in your browser
+  with a click. Right-click one to open, copy, rename, or remove it.
+- A long address is shortened with an ellipsis rather than pushing the card
+  wider than the panel.
+- The search filter looks inside link names and addresses too.
+
 ### The window
 
 - **Lives on the desktop** by default, below other windows. "Always on top" is
   an option, not the default.
 - Drag it by its header, resize it from the bottom-right corner, or fold it into
   a dock you can also drag around.
+- The panel opens *away* from the nearest screen edge: a dock on the right side
+  opens to the left, one near the bottom opens upwards. Folding is the mirror
+  image, so the dock appears on the corner the panel will reopen from and
+  unfolding lands on exactly the same pixels.
+- That last part needs the application to be allowed to place its own window,
+  which Wayland does not permit — there it always opens down and to the right.
 - Frameless and translucent, with adjustable opacity.
 
 <p align="center">
@@ -95,7 +115,7 @@
 
 ### Other
 
-- Filter notes as you type.
+- Filter notes as you type — titles, bodies, checklist items and links.
 - An empty panel offers a button to create the first note.
 - Everything is saved automatically, a moment after you stop typing.
 

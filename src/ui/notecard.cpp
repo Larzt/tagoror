@@ -1,4 +1,5 @@
 #include "ui/notecard.hpp"
+#include "ui/elidedlabel.hpp"
 #include "ui/popup.hpp"
 #include "audio/recorder.hpp"
 #include "ui/theme.hpp"
@@ -6,6 +7,9 @@
 #include "ui/waveform.hpp"
 
 #include <QAbstractTextDocumentLayout>
+#include <QClipboard>
+#include <QDesktopServices>
+#include <QGuiApplication>
 #include <QAudioOutput>
 #include <QCheckBox>
 #include <QContextMenuEvent>
@@ -24,6 +28,7 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QUrl>
+#include <QPainter>
 #include <QVBoxLayout>
 
 namespace {
@@ -82,6 +87,56 @@ void strikeOut(QLabel *label, bool on) {
     label->setFont(f);
 }
 
+// Fila de un enlace: clic izquierdo abre, clic derecho da sus opciones. El
+// menú se atiende aquí para que no salte el de la tarjeta entera.
+class LinkRow : public QWidget {
+public:
+    explicit LinkRow(QWidget *parent = nullptr) : QWidget(parent) {
+        setObjectName("linkRow");
+        setAttribute(Qt::WA_StyledBackground, true);
+        setAttribute(Qt::WA_Hover, true);
+        setCursor(Qt::PointingHandCursor);
+    }
+
+    std::function<void()> activate;
+    std::function<void(const QPoint &)> menu;
+
+protected:
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton && rect().contains(e->position().toPoint()) && activate)
+            activate();
+    }
+
+    void contextMenuEvent(QContextMenuEvent *e) override {
+        if (!menu) return;
+        menu(e->globalPos());
+        e->accept();
+    }
+};
+
+// Una dirección sin esquema es lo que la gente teclea; se completa para que
+// QDesktopServices sepa qué hacer con ella.
+QString normalizedUrl(const QString &raw) {
+    const QString text = raw.trimmed();
+    if (text.isEmpty()) return text;
+    return QUrl(text).scheme().isEmpty() ? "https://" + text : text;
+}
+
+// Lo que se ve del enlace cuando no tiene nombre: sin esquema ni barra final,
+// que es ruido en una tarjeta estrecha.
+QString prettyUrl(const QString &url) {
+    QString text = url;
+    for (const QString &prefix : {"https://", "http://"})
+        if (text.startsWith(prefix, Qt::CaseInsensitive)) text = text.mid(prefix.size());
+    if (text.startsWith("www.", Qt::CaseInsensitive)) text = text.mid(4);
+    if (text.endsWith("/")) text.chop(1);
+    return text;
+}
+
+QString linkText(const Link &link) {
+    return link.label.isEmpty() ? prettyUrl(link.url) : link.label;
+}
+
 QString formatMs(qint64 ms) {
     const qint64 total = ms / 1000;
     return QString("%1:%2").arg(total / 60).arg(total % 60, 2, 10, QChar('0'));
@@ -137,6 +192,19 @@ void NoteCard::build() {
         case Note::Voice:    buildVoice(l);    break;
         default:             buildText(l);     break;
     }
+
+    m_linksBox = new QWidget;
+    m_linksLayout = new QVBoxLayout(m_linksBox);
+    m_linksLayout->setContentsMargins(0, 0, 0, 0);
+    m_linksLayout->setSpacing(1);
+
+    // Al final de la tarjeta, pero por encima del rótulo del tipo cuando lo
+    // hay: el pie es lo último que se lee. En recordatorio y lista el rótulo
+    // no es hijo directo de este layout, así que ahí van los últimos.
+    const int at = m_meta ? l->indexOf(m_meta) : -1;
+    if (at >= 0) l->insertWidget(at, m_linksBox);
+    else l->addWidget(m_linksBox);
+    refreshLinks();
 }
 
 void NoteCard::buildText(QVBoxLayout *l) {
@@ -296,15 +364,20 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
         refreshProgress();
         emit dirty();
     });
-    rl->addWidget(del);
+    rl->addWidget(del, 0, Qt::AlignTop);   // a la altura de la primera línea
 
     l->addWidget(row);
 }
 
 void NoteCard::rebuildItems() {
     // Las filas capturan su índice, así que al borrar una hay que rehacerlas.
+    // Se ocultan antes de borrarlas: hasta que corre deleteLater() siguen
+    // pintadas donde estaban y siguen aceptando eventos.
     while (QLayoutItem *it = m_itemsLayout->takeAt(0)) {
-        if (QWidget *w = it->widget()) w->deleteLater();
+        if (QWidget *w = it->widget()) {
+            w->hide();
+            w->deleteLater();
+        }
         delete it;
     }
     for (int i = 0; i < m_note->items.size(); ++i)
@@ -383,6 +456,97 @@ void NoteCard::focusTitle() {
     if (!m_title) return;
     m_title->setFocus();
     m_title->selectAll();
+}
+
+// --- enlaces adjuntos ------------------------------------------------------
+
+void NoteCard::refreshLinks() {
+    if (!m_linksLayout) return;
+
+    // Ocultar antes de borrar: una fila fuera del layout sigue pintada donde
+    // estaba, y viva, hasta que corre deleteLater().
+    while (QLayoutItem *it = m_linksLayout->takeAt(0)) {
+        if (QWidget *w = it->widget()) {
+            w->hide();
+            w->deleteLater();
+        }
+        delete it;
+    }
+
+    for (int i = 0; i < m_note->links.size(); ++i) {
+        const Link &link = m_note->links.at(i);
+
+        auto *row = new LinkRow;
+        row->activate = [this, i] { openLink(i); };
+        row->menu = [this, i](const QPoint &at) { openLinkMenu(i, at); };
+
+        auto *rl = new QHBoxLayout(row);
+        rl->setContentsMargins(4, 3, 4, 3);
+        rl->setSpacing(6);
+
+        auto *icon = new QLabel;
+        icon->setFixedSize(13, 13);
+        icon->setPixmap(paintIcon("link", m_theme.accent, 13).pixmap(13, 13));
+        rl->addWidget(icon, 0, Qt::AlignVCenter);
+
+        auto *text = new ElidedLabel(linkText(link), m_theme.accent);
+        text->setObjectName("linkText");
+        text->setUnderlineOnHover(true);
+        text->setContextMenuPolicy(Qt::NoContextMenu);
+        text->setToolTip(link.url);
+        rl->addWidget(text, 1);
+
+        m_linksLayout->addWidget(row);
+    }
+    m_linksBox->setVisible(!m_note->links.isEmpty());
+}
+
+void NoteCard::openLink(int index) {
+    if (index < 0 || index >= m_note->links.size()) return;
+    QDesktopServices::openUrl(QUrl(m_note->links.at(index).url));
+}
+
+void NoteCard::openLinkEditor(int index, const QPoint &globalPos) {
+    const bool isNew = index < 0 || index >= m_note->links.size();
+    const Link current = isNew ? Link{} : m_note->links.at(index);
+
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(isNew ? "Nuevo enlace" : "Editar enlace");
+    menu->addFields({"https://ejemplo.com", "Nombre (opcional)"},
+                    {current.url, current.label},
+                    [this, index, isNew](const QStringList &values) {
+                        const QString url = normalizedUrl(values.value(0));
+                        if (url.isEmpty()) return;          // sin dirección no hay enlace
+
+                        Link link{url, values.value(1)};
+                        if (isNew) m_note->links.append(link);
+                        else if (index < m_note->links.size()) m_note->links[index] = link;
+
+                        refreshLinks();
+                        emit dirty();
+                    });
+    menu->showAt(globalPos);
+}
+
+void NoteCard::openLinkMenu(int index, const QPoint &globalPos) {
+    if (index < 0 || index >= m_note->links.size()) return;
+    const Link link = m_note->links.at(index);
+
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader("Enlace");
+    menu->addItem("link", "Abrir", prettyUrl(link.url), [this, index] { openLink(index); });
+    menu->addItem("copy", "Copiar dirección", QString(),
+                  [link] { QGuiApplication::clipboard()->setText(link.url); });
+    menu->addItem("pencil", "Editar…", link.label.isEmpty() ? "Sin nombre" : link.label,
+                  [this, index, globalPos] { openLinkEditor(index, globalPos); });
+    menu->addSeparator();
+    menu->addItem("trash", "Quitar enlace", QString(), [this, index] {
+        if (index >= m_note->links.size()) return;
+        m_note->links.removeAt(index);
+        refreshLinks();
+        emit dirty();
+    });
+    menu->showAt(globalPos);
 }
 
 void NoteCard::refreshDue() {
@@ -597,7 +761,15 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
         menu->addSeparator();
     }
 
+    const QPoint at = e->globalPos();
+    menu->addItem("link", "Añadir enlace…",
+                  m_note->links.isEmpty()
+                      ? "Se abre en el navegador"
+                      : QString("%1 ya adjuntos").arg(m_note->links.size()),
+                  [this, at] { openLinkEditor(-1, at); });
+    menu->addSeparator();
+
     menu->addItem("trash", "Eliminar nota", QString(),
                   [this] { emit deleteRequested(m_note); });
-    menu->showAt(e->globalPos());
+    menu->showAt(at);
 }

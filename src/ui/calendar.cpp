@@ -1,5 +1,7 @@
 #include "ui/calendar.hpp"
 
+#include "ui/elidedlabel.hpp"
+
 #include <QDateTime>
 #include <QEnterEvent>
 #include <QFrame>
@@ -133,7 +135,7 @@ protected:
 
         QFont f = font();
         f.setPixelSize(9);
-        f.setWeight(QFont::Bold);
+        f.setWeight(QFont::DemiBold);
         p.setFont(f);
         p.setPen(QColor(Theme::muted()));
         for (int c = 0; c < kCols; ++c)
@@ -149,25 +151,27 @@ protected:
             const bool isToday = d == today;
             const bool isSel = d == m_selected;
 
+            // La celda elegida va enmarcada y con relleno; hoy, solo el marco.
+            const QRectF box = pad.adjusted(0, 1, 0, -1);
             if (isSel) {
                 QColor fill = m_theme.accent;
-                fill.setAlpha(46);
-                p.setPen(QPen(m_theme.accent, 1.2));
+                fill.setAlpha(38);
+                p.setPen(QPen(m_theme.accent, 1.3));
                 p.setBrush(fill);
-                p.drawRoundedRect(pad, 7, 7);
+                p.drawRoundedRect(box, 8, 8);
             } else if (i == m_hover) {
                 p.setPen(Qt::NoPen);
-                p.setBrush(QColor(255, 255, 255, 18));
-                p.drawRoundedRect(pad, 7, 7);
+                p.setBrush(QColor(255, 255, 255, 16));
+                p.drawRoundedRect(box, 8, 8);
             } else if (isToday) {
                 QColor ring = m_theme.accent;
-                ring.setAlpha(110);
-                p.setPen(QPen(ring, 1.1));
+                ring.setAlpha(90);
+                p.setPen(QPen(ring, 1.2));
                 p.setBrush(Qt::NoBrush);
-                p.drawRoundedRect(pad, 7, 7);
+                p.drawRoundedRect(box, 8, 8);
             }
 
-            f.setPixelSize(11);
+            f.setPixelSize(11.5);
             f.setWeight(isToday || isSel ? QFont::DemiBold : QFont::Normal);
             p.setFont(f);
             QColor ink = isToday ? m_theme.accent : QColor(inMonth ? Theme::fg() : Theme::muted());
@@ -188,7 +192,7 @@ protected:
                 QColor dot = mark.alerts.at(k) ? QColor("#ff7a6b") : m_theme.accent;
                 if (!inMonth) dot.setAlpha(120);
                 p.setBrush(dot);
-                p.drawEllipse(QPointF(x0 + k * step, y), 1.7, 1.7);
+                p.drawRoundedRect(QRectF(x0 + k * step - 1.6, y - 1.6, 3.2, 3.2), 1.0, 1.0);
             }
         }
     }
@@ -243,9 +247,16 @@ CalendarView::CalendarView(const Theme &theme, QWidget *parent)
     line->setFixedHeight(1);
     col->addWidget(line);
 
+    auto *dayHeader = new QHBoxLayout;
+    dayHeader->setContentsMargins(2, 0, 2, 0);
     m_dayLabel = new QLabel;
     m_dayLabel->setObjectName("meta");
-    col->addWidget(m_dayLabel);
+    m_dayCount = new QLabel;
+    m_dayCount->setObjectName("meta");
+    m_dayCount->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    dayHeader->addWidget(m_dayLabel, 1);
+    dayHeader->addWidget(m_dayCount);
+    col->addLayout(dayHeader);
 
     auto *host = new QWidget;
     host->setObjectName("listHost");
@@ -273,8 +284,9 @@ void CalendarView::buildHeader(QVBoxLayout *col) {
 
     auto arrow = [](const QString &kind, const QString &tip) {
         auto *b = new QToolButton;
+        b->setObjectName("calNav");
         b->setIcon(paintIcon(kind, QColor(Theme::muted())));
-        b->setIconSize(QSize(16, 16));
+        b->setIconSize(QSize(14, 14));
         b->setFixedSize(24, 24);
         b->setCursor(Qt::PointingHandCursor);
         b->setToolTip(tip);
@@ -287,7 +299,7 @@ void CalendarView::buildHeader(QVBoxLayout *col) {
     connect(next, &QToolButton::clicked, this, [this] { showMonth(m_month.addMonths(1)); });
 
     m_monthLabel = new QLabel;
-    m_monthLabel->setObjectName("title");
+    m_monthLabel->setObjectName("calMonth");
     m_monthLabel->setAlignment(Qt::AlignCenter);
 
     auto *today = new QToolButton;
@@ -300,6 +312,7 @@ void CalendarView::buildHeader(QVBoxLayout *col) {
     row->addWidget(prev);
     row->addWidget(m_monthLabel, 1);
     row->addWidget(next);
+    row->addSpacing(4);
     row->addWidget(today);
     col->addLayout(row);
 }
@@ -374,8 +387,8 @@ QList<Note *> CalendarView::notesOn(const QDate &day) const {
 
 void CalendarView::refreshDayList() {
     // Se vacía todo menos el stretch final. Se ocultan además de borrarlas:
-    // sacar una fila del layout no la quita de la pantalla, y hasta que
-    // deleteLater() corre seguiría encima, cobrando los clics de la nueva.
+    // sacarlas del layout no las quita de la pantalla, y siguen pintadas
+    // (y aceptando eventos) hasta que corre deleteLater().
     while (m_dayLayout->count() > 1) {
         QLayoutItem *item = m_dayLayout->takeAt(0);
         if (QWidget *w = item->widget()) {
@@ -386,50 +399,60 @@ void CalendarView::refreshDayList() {
     }
 
     const QList<Note *> today = notesOn(m_selected);
-    m_dayLabel->setText(today.isEmpty()
-                            ? dayTitle(m_selected)
-                            : QString("%1 · %2").arg(dayTitle(m_selected))
-                                  .arg(today.size() == 1 ? "1 AVISO"
-                                                         : QString("%1 AVISOS").arg(today.size())));
+    const bool isToday = m_selected == QDate::currentDate();
+    m_dayLabel->setText(isToday ? QString("%1 · HOY").arg(dayTitle(m_selected))
+                                : dayTitle(m_selected));
+    m_dayCount->setText(today.isEmpty()
+                            ? QString()
+                            : (today.size() == 1 ? "1 AVISO"
+                                                 : QString("%1 AVISOS").arg(today.size())));
 
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     int at = 0;
 
     for (Note *n : today) {
         const bool alert = n->ringing || n->dueAtMs <= now;
+        const QColor tint = alert ? QColor("#ff7a6b") : m_theme.accent;
 
         auto *row = new DayRow;
         row->click = [this, n] { emit noteActivated(n); };
+
         auto *l = new QHBoxLayout(row);
-        l->setContentsMargins(7, 5, 7, 5);
+        l->setContentsMargins(6, 4, 6, 4);
         l->setSpacing(8);
 
-        auto *icon = new QLabel;
-        icon->setFixedSize(14, 14);
-        icon->setPixmap(paintIcon(alert ? "bell" : "clock",
-                                 QColor(alert ? "#ff7a6b" : Theme::muted()), 14)
-                            .pixmap(14, 14));
-        l->addWidget(icon);
-
         auto *time = new QLabel(n->dueAt().toString("HH:mm"));
-        time->setObjectName("meta");
-        time->setFixedWidth(32);
-        l->addWidget(time);
+        time->setObjectName("dayTime");
+        l->addWidget(time, 0, Qt::AlignVCenter);
 
-        auto *title = new QLabel(n->title.isEmpty() ? "Sin título" : n->title);
-        title->setObjectName(alert ? "dayRowTitleAlert" : "dayRowTitle");
+        // Barra de color en vez de un icono: dice el estado sin robar ancho.
+        auto *bar = new QFrame;
+        bar->setFixedWidth(2);
+        bar->setMinimumHeight(15);
+        bar->setStyleSheet(QString("background:%1; border:none; border-radius:1px;")
+                               .arg(tint.name()));
+        l->addWidget(bar);
+
+        auto *title = new ElidedLabel(n->title.isEmpty() ? "Sin título" : n->title,
+                                      QColor(Theme::fg()));
+        title->setObjectName("dayRowTitle");
+        title->setToolTip(n->title);
         l->addWidget(title, 1);
 
-        // Solo mientras suena: callar el aviso sin salir del calendario.
+        // Sonando manda el botón de parar; vencido y callado, un chip.
         if (n->ringing) {
             auto *stop = new QToolButton;
             stop->setIcon(paintIcon("stop", QColor("#ff7a6b")));
-            stop->setIconSize(QSize(14, 14));
-            stop->setFixedSize(22, 22);
+            stop->setIconSize(QSize(13, 13));
+            stop->setFixedSize(20, 20);
             stop->setCursor(Qt::PointingHandCursor);
             stop->setToolTip("Detener aviso");
             connect(stop, &QToolButton::clicked, this, [this, n] { emit dismissRequested(n); });
             l->addWidget(stop);
+        } else if (alert) {
+            auto *chip = new QLabel("VENCIDO");
+            chip->setObjectName("dayChip");
+            l->addWidget(chip, 0, Qt::AlignVCenter);
         }
 
         m_dayLayout->insertWidget(at++, row);

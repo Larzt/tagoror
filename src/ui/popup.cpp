@@ -247,6 +247,40 @@ void Popup::addEditor(const QString &placeholder, const QString &text,
     QTimer::singleShot(0, edit, qOverload<>(&QWidget::setFocus));
 }
 
+void Popup::addFields(const QStringList &placeholders, const QStringList &values,
+                      std::function<void(const QStringList &)> commit) {
+    auto *host = new QWidget;
+    auto *l = new QVBoxLayout(host);
+    l->setContentsMargins(7, 4, 7, 5);
+    l->setSpacing(4);
+
+    QList<QLineEdit *> edits;
+    for (int i = 0; i < placeholders.size(); ++i) {
+        auto *edit = new QLineEdit(values.value(i));
+        edit->setObjectName("popupEdit");
+        edit->setPlaceholderText(placeholders.at(i));
+        edit->setFixedWidth(kRowWidth - 14);
+        edits.append(edit);
+        l->addWidget(edit);
+    }
+
+    // Se conectan cuando ya existen todos: Enter en cualquiera confirma el
+    // conjunto, así el orden en que se rellenen da igual.
+    for (QLineEdit *edit : edits) {
+        QObject::connect(edit, &QLineEdit::returnPressed, this, [this, edits, commit] {
+            QStringList out;
+            for (QLineEdit *e : edits) out << e->text().trimmed();
+            run([out, commit] { if (commit) commit(out); });
+        });
+    }
+
+    m_col->addWidget(host);
+    if (!edits.isEmpty()) {
+        edits.first()->selectAll();
+        QTimer::singleShot(0, edits.first(), qOverload<>(&QWidget::setFocus));
+    }
+}
+
 void Popup::addSeparator() {
     auto *line = new QFrame;
     line->setFixedHeight(1);

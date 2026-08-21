@@ -18,8 +18,11 @@
 #include <QLocale>
 #include <QMediaDevices>
 #include <QPushButton>
+#include <QScreen>
+#include <QSettings>
 #include <QScrollArea>
 #include <QStackedWidget>
+#include <QStyle>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -263,7 +266,6 @@ QWidget *Panel::buildBadge() {
     auto *host = new QWidget;
     auto *hl = new QHBoxLayout(host);
     hl->setContentsMargins(0, 0, 0, 0);
-    hl->addStretch();
 
     auto *btn = new DragButton;
     btn->setObjectName("badge");
@@ -287,7 +289,12 @@ QWidget *Panel::buildBadge() {
     m_badgeCount->setAlignment(Qt::AlignCenter);
     m_badgeCount->setFixedSize(20, 20);
     m_badgeCount->move(40, -2);
-    hl->addWidget(btn);
+
+    // Arriba a la izquierda, que es la esquina que el gestor deja quieta al
+    // cambiar el tamaño de la ventana. Centrado o a la derecha, el dock daba
+    // un salto al plegar y el panel no volvía a salir donde estaba.
+    hl->addWidget(btn, 0, Qt::AlignTop | Qt::AlignLeft);
+    hl->addStretch();
     return host;
 }
 
@@ -298,6 +305,8 @@ void Panel::applyTheme() {
 
     for (QToolButton *b : m_headerButtons)
         b->setIcon(paintIcon(b->property("iconKind").toString(), QColor(Theme::muted())));
+    if (m_calendarBtn && m_calendarBtn->property("active").toBool())
+        setCalendarActive(true);      // el activo va en color de acento
 
     if (m_calendar) m_calendar->setTheme(m_theme);
     applyBadgeAlert();
@@ -421,11 +430,7 @@ void Panel::toggleCalendar() {
     m_searchBar->hide();
     m_body->setCurrentWidget(m_calendar);
     m_calendar->refresh();
-
-    // El mismo botón lleva de vuelta, así que cambia de cara.
-    m_calendarBtn->setProperty("iconKind", "notes");
-    m_calendarBtn->setIcon(paintIcon("notes", QColor(Theme::muted())));
-    m_calendarBtn->setToolTip("Ver notas");
+    setCalendarActive(true);
     refreshFooter();
 }
 
@@ -433,10 +438,20 @@ void Panel::showNotes() {
     if (m_body->currentWidget() != m_calendar) return;
 
     m_body->setCurrentWidget(m_scroll);
-    m_calendarBtn->setProperty("iconKind", "calendar");
-    m_calendarBtn->setIcon(paintIcon("calendar", QColor(Theme::muted())));
-    m_calendarBtn->setToolTip("Calendario");
+    setCalendarActive(false);
     refreshFooter();
+}
+
+// El botón no cambia de icono al abrir el calendario: se queda encendido.
+// Así el icono siempre dice adónde lleva y el realce dice dónde estás.
+void Panel::setCalendarActive(bool on) {
+    m_calendarBtn->setProperty("active", on);
+    m_calendarBtn->setToolTip(on ? "Ver notas" : "Calendario");
+    m_calendarBtn->setIcon(paintIcon("calendar",
+                                     on ? m_theme.accent : QColor(Theme::muted())));
+    // Una propiedad dinámica no repinta sola.
+    m_calendarBtn->style()->unpolish(m_calendarBtn);
+    m_calendarBtn->style()->polish(m_calendarBtn);
 }
 
 void Panel::refreshCalendar() {
@@ -603,6 +618,16 @@ void Panel::openSettings(QWidget *anchor) {
                       save();
                   });
 
+    // Ver choosePlatform() en main.cpp: de esto depende que el panel pueda
+    // abrirse hacia el centro de la pantalla y que "siempre encima" se cumpla.
+    const bool nativeWayland = QSettings().value("platform").toString() == "wayland";
+    menu->addItem(nativeWayland ? "minus" : "check", "Compatibilidad X11",
+                  nativeWayland ? "Desactivada · Wayland nativo"
+                                : QString("Activada · %1").arg(qApp->platformName()),
+                  [nativeWayland] {
+                      QSettings().setValue("platform", nativeWayland ? "" : "wayland");
+                  });
+
     menu->addSeparator();
     menu->addHeader("Datos");
     menu->addItem("notes", "Carpeta de guardado…", prettyPath(appDataDir()),
@@ -680,12 +705,25 @@ void Panel::showPage(QWidget *page) {
 
 void Panel::collapse() {
     m_expandedSize = size();
+    m_expandedGeom = geometry();      // para poder volver exactamente aquí
+
     setMinimumSize(0, 0);
     showPage(m_badge);
+
+    // Sin recolocar: encoger ya deja el dock en la esquina superior izquierda
+    // del panel, justo donde estaba. Llevarlo a la esquina por la que luego se
+    // reabre lo hacía saltar hasta debajo del botón de plegar.
     resize(m_badge->sizeHint() + QSize(kShadowMargin * 2, kShadowMargin * 2));
+    keepOnScreen();
+    m_dockGeom = geometry();          // desde aquí se reabre si nadie lo mueve
 }
 
 void Panel::expand() {
+    // La geometría del dock, antes de tocar nada: setMinimumSize() más abajo
+    // ya estira la ventana por su cuenta, y entonces esta esquina deja de ser
+    // la del dock y el panel se abre desde donde no es.
+    const QRect dock = geometry();
+
     // Abrir el panel cuenta como enterarse: se calla la alarma.
     if (anyRinging()) {
         for (Note *n : m_store.notes())
@@ -698,7 +736,69 @@ void Panel::expand() {
     }
     showPage(m_shell);
     setMinimumSize(kShellMinWidth + kShadowMargin * 2, kShellMinHeight);
-    resize(m_expandedSize);
+
+    // Un tamaño guardado mayor que la pantalla actual (otro monitor, otra
+    // resolución) no cabe de ninguna manera: se recorta antes de aplicarlo.
+    QSize target = m_expandedSize;
+    if (const QScreen *sc = screen())
+        target = target.boundedTo(sc->availableGeometry().size() +
+                                  QSize(kShadowMargin * 2, kShadowMargin * 2));
+
+    resize(target);
+
+    // Plegar y desplegar sin tocar el dock devuelve el panel a su sitio exacto.
+    // Solo cuando el dock se ha arrastrado se elige esquina, y entonces sí se
+    // abre hacia el centro de la pantalla.
+    const bool moved = !m_dockGeom.isValid() || dock.topLeft() != m_dockGeom.topLeft();
+    if (!moved && m_expandedGeom.isValid()) move(m_expandedGeom.topLeft());
+    else move(anchoredTopLeft(dock, target));
+
+    keepOnScreen();
+}
+
+// Cambiar el tamaño deja quieta la esquina superior izquierda, así que el panel
+// se desplegaba siempre hacia abajo y hacia la derecha. Aquí se elige por qué
+// esquina crece: la que deja el panel mirando al centro de la pantalla. Con el
+// dock en la mitad derecha se abre hacia la izquierda, y en la mitad inferior
+// hacia arriba. Plegar usa lo mismo al revés, de modo que el dock aparece justo
+// en la esquina por la que se volverá a abrir y el panel regresa donde estaba.
+QPoint Panel::anchoredTopLeft(const QRect &before, const QSize &after) const {
+    const QScreen *sc = screen();
+    if (!sc) return before.topLeft();
+
+    const QPoint middle = sc->availableGeometry().center();
+    QPoint p = before.topLeft();
+
+    // El margen de sombra es igual en ambos lados, así que alinear los bordes
+    // de la ventana alinea también los del marco visible.
+    if (before.center().x() > middle.x()) p.setX(before.right() + 1 - after.width());
+    if (before.center().y() > middle.y()) p.setY(before.bottom() + 1 - after.height());
+    return p;
+}
+
+// El gestor de ventanas deja quieta la esquina superior izquierda al cambiar
+// el tamaño, así que el panel se despliega hacia abajo y hacia la derecha: con
+// el dock pegado al borde derecho o al inferior, media ventana se quedaba
+// fuera de la pantalla. Aquí se empuja de vuelta adentro.
+//
+// En Wayland colocar la propia ventana es cosa del compositor y move() puede
+// quedarse en nada; en X11 se aplica tal cual.
+void Panel::keepOnScreen() {
+    const QScreen *sc = screen();
+    if (!sc) return;
+
+    const QRect area = sc->availableGeometry();
+    // El margen de sombra no es parte del marco visible: se le deja salir.
+    const QSize frame = size() - QSize(kShadowMargin * 2, kShadowMargin * 2);
+    const int maxX = area.right() - frame.width() - kShadowMargin + 1;
+    const int maxY = area.bottom() - frame.height() - kShadowMargin + 1;
+
+    // qMin antes que qMax: si la ventana no cabe, se queda anclada arriba a
+    // la izquierda en vez de irse por el otro lado.
+    QPoint p = pos();
+    p.setX(qMax(area.left() - kShadowMargin, qMin(p.x(), maxX)));
+    p.setY(qMax(area.top() - kShadowMargin, qMin(p.y(), maxY)));
+    if (p != pos()) move(p);
 }
 
 // ---------------------------------------------------------------------------

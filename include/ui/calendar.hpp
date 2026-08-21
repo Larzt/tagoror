@@ -56,6 +56,7 @@ private:
     MonthGrid *m_grid = nullptr;
     QLabel *m_monthLabel = nullptr;
     QLabel *m_dayLabel = nullptr;
+    QLabel *m_dayCount = nullptr;
     QScrollArea *m_dayScroll = nullptr;
     QVBoxLayout *m_dayLayout = nullptr;
 };

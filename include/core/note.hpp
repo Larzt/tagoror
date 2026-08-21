@@ -14,6 +14,13 @@ struct CheckItem {
     bool done = false;
 };
 
+// Enlace adjunto a una nota. 'label' es opcional: sin él se muestra la propia
+// dirección recortada. Cualquier tipo de nota puede llevarlos.
+struct Link {
+    QString url;
+    QString label;
+};
+
 struct Note {
     enum Type { Text, Check, Reminder, Voice };
 
@@ -23,6 +30,7 @@ struct Note {
     QString body;
     QString due;              // solo Reminder
     QList<CheckItem> items;   // solo Check
+    QList<Link> links;        // adjuntos de cualquier tipo
     QString audio;            // solo Voice: nombre de fichero dentro de audioDir()
     qint64 durationMs = 0;    // solo Voice
     QList<int> peaks;         // solo Voice: onda ya calculada, 0..100
@@ -80,6 +88,11 @@ struct Note {
         for (const CheckItem &it : items)
             arr.append(QJsonObject{{"text", it.text}, {"done", it.done}});
         o["items"] = arr;
+
+        QJsonArray linkArr;
+        for (const Link &l : links)
+            linkArr.append(QJsonObject{{"url", l.url}, {"label", l.label}});
+        o["links"] = linkArr;
         return o;
     }
 
@@ -102,6 +115,10 @@ struct Note {
             const QJsonObject io = v.toObject();
             n->items.append(CheckItem{io["text"].toString(), io["done"].toBool()});
         }
+        for (const QJsonValue v : o["links"].toArray()) {
+            const QJsonObject lo = v.toObject();
+            n->links.append(Link{lo["url"].toString(), lo["label"].toString()});
+        }
         return n;
     }
 
@@ -120,6 +137,10 @@ struct Note {
         if (body.contains(query, Qt::CaseInsensitive)) return true;
         for (const CheckItem &it : items)
             if (it.text.contains(query, Qt::CaseInsensitive)) return true;
+        for (const Link &l : links)
+            if (l.label.contains(query, Qt::CaseInsensitive) ||
+                l.url.contains(query, Qt::CaseInsensitive))
+                return true;
         return false;
     }
 
