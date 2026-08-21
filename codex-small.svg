@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs>
+<linearGradient id="bg" x1="0.25" y1="0" x2="0.72" y2="1">
+<stop offset="0" stop-color="#26324a"/><stop offset="0.34" stop-color="#111823"/>
+<stop offset="0.72" stop-color="#070a10"/><stop offset="1" stop-color="#020306"/></linearGradient>
+<linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/><stop offset="0.45" stop-color="#ffffff" stop-opacity="0.04"/>
+<stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+<radialGradient id="core" cx="0.5" cy="0.5" r="0.5">
+<stop offset="0" stop-color="#ffffff"/><stop offset="0.32" stop-color="#cdd9ff"/><stop offset="1" stop-color="#7c9cff"/></radialGradient>
+<radialGradient id="bloom" cx="0.5" cy="0.5" r="0.5">
+<stop offset="0" stop-color="#7c9cff" stop-opacity="0.60"/><stop offset="1" stop-color="#7c9cff" stop-opacity="0"/></radialGradient>
+<radialGradient id="shade" cx="0.5" cy="0.62" r="0.55">
+<stop offset="0" stop-color="#000000" stop-opacity="0.55"/><stop offset="1" stop-color="#000000" stop-opacity="0"/></radialGradient>
+</defs>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/>
+<rect width="512" height="512" rx="112" fill="url(#shade)"/>
+<rect x="3" y="3" width="506" height="506" rx="109" fill="none" stroke="url(#rim)" stroke-width="6"/>
+<ellipse cx="256" cy="228" rx="164" ry="154" fill="none" stroke="#e4eaf7" stroke-opacity="0.28" stroke-width="34"/>
+<ellipse cx="256" cy="278" rx="102" ry="84"  fill="none" stroke="#e4eaf7" stroke-opacity="0.50" stroke-width="28"/>
+<ellipse cx="256" cy="316" rx="50"  ry="34"  fill="none" stroke="#eef2fb" stroke-opacity="0.80" stroke-width="20"/>
+<circle cx="256" cy="336" r="66" fill="url(#bloom)"/>
+<circle cx="256" cy="336" r="30" fill="url(#core)"/>
+</svg>

@@ -1,0 +1,38 @@
+# Compilación
+build/
+build-*/
+cmake-build-*/
+compile_commands.json
+.cache/
+*.o
+*.so
+*.a
+
+# Artefactos de CMake fuera de build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+install_manifest.txt
+Makefile
+!makefile
+
+# Ficheros generados por AUTOMOC
+moc_*.cpp
+*_autogen/
+qrc_*.cpp
+ui_*.h
+
+# Editores e IDEs
+.vscode/
+.idea/
+*.user
+*.kdev4/
+.qtc_clangd/
+*.swp
+*~
+.DS_Store
+
+# Datos de la app (notas, adjuntos de audio, tono de alarma)
+notes.json
+*.wav

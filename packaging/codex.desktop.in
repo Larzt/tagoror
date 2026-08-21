@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Codex
+Name[es]=Códice
+GenericName=Notas de escritorio
+Comment=Notas, listas, recordatorios con calendario y notas de voz en el escritorio
+Exec=@CMAKE_INSTALL_FULL_BINDIR@/codex
+Icon=codex
+Terminal=false
+Categories=Utility;
+Keywords=codex;codice;códice;notas;notes;lista;checklist;recordatorio;calendario;voz;
+StartupNotify=false
