@@ -183,6 +183,66 @@ Notes kept by earlier versions under `Stride/Abyss` or `Stride/NotasWidget` are
 moved across automatically the first time you run it, and so is the data folder
 you had chosen by hand — a rename must never strand anyone's notes.
 
+## Packaging it for others
+
+Three recipes live under `packaging/`, all of them building the same CMake
+project — only the wrapper differs.
+
+### Arch / CachyOS package
+
+```sh
+cd packaging/arch
+makepkg -si            # builds and installs it through pacman
+sudo pacman -R codex   # removes every file it installed; your notes stay
+```
+
+`PKGBUILD` pulls the tarball of a release tag, so tag and push first
+(`git tag -a v1.2 && git push --tags`) and then run `updpkgsums` to replace the
+`SKIP` checksum — the AUR does not accept `SKIP` for a plain tarball. `.SRCINFO`
+is regenerated with `makepkg --printsrcinfo > .SRCINFO`.
+
+### AppImage
+
+```sh
+sh packaging/appimage/build-appimage.sh          # → Codex-1.2-x86_64.AppImage
+```
+
+One file, Qt included, nothing to install on the other end (~93 MB). It bundles
+the xcb platform plugin, the FFmpeg media backend and libxcb.
+
+An AppImage does **not** carry glibc, so it only runs on systems whose glibc is
+at least as new as the one it was built against. Built on Arch it will not start
+on an Ubuntu LTS — for a release, build it inside an old base instead:
+
+```sh
+docker run --rm -v "$PWD:/src" -w /src ubuntu:22.04 \
+    sh -c 'apt update && apt install -y qt6-base-dev qt6-multimedia-dev \
+           cmake ninja-build g++ libxcb1-dev file wget && \
+           sh packaging/appimage/build-appimage.sh'
+```
+
+### Flatpak
+
+```sh
+flatpak install flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
+flatpak-builder --user --install --force-clean build-flatpak \
+    packaging/flatpak/io.github.larzt.codex.yml
+flatpak run io.github.larzt.codex
+```
+
+The manifest asks for X11 (the panel has to know where it is to fold and unfold
+towards the right side, which Wayland does not allow), PulseAudio for the
+microphone, the StatusNotifier names for the tray icon, and `--filesystem=home`
+because the storage folder can be pointed anywhere.
+
+Flatpak requires the desktop entry, the icons and the AppStream file to be named
+after the app ID, so that build passes `-DCODEX_APP_ID=io.github.larzt.codex`
+and CMake renames all of them together. Everywhere else the ID stays `codex`.
+
+> **Before publishing anywhere:** the repository has no licence file, so the
+> package metadata declares `LicenseRef-proprietary`. Flathub and the AUR both
+> expect a real one.
+
 ## Where your notes live
 
 ```

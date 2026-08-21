@@ -7,7 +7,8 @@ BIN     := $(BUILD)/codex
 PREFIX  ?= $(HOME)/.local
 AUTOSTART := $(HOME)/.config/autostart/codex.desktop
 
-.PHONY: all run clean configure install uninstall autostart autostart-off
+.PHONY: all run clean configure install uninstall autostart autostart-off \
+        appimage archpkg flatpak
 
 all: configure
 	cmake --build $(BUILD)
@@ -48,3 +49,17 @@ autostart:
 autostart-off:
 	@rm -f $(AUTOSTART)
 	@echo "Ya no se abrirá al iniciar sesión."
+
+# --- paquetes para distribuir ------------------------------------------------
+# Ver README ("Packaging it for others"): el AppImage se compila contra la glibc
+# de esta máquina, y el paquete de Arch se baja el tarball de la etiqueta, que
+# tiene que estar publicada.
+appimage:
+	sh packaging/appimage/build-appimage.sh
+
+archpkg:
+	cd packaging/arch && makepkg -f
+
+flatpak:
+	flatpak-builder --user --install --force-clean $(RELEASE)-flatpak \
+	    packaging/flatpak/io.github.larzt.codex.yml

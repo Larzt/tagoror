@@ -33,6 +33,13 @@ ui_*.h
 *~
 .DS_Store
 
+# Paquetes generados
+*.AppImage
+packaging/arch/src/
+packaging/arch/pkg/
+packaging/arch/*.pkg.tar.*
+packaging/arch/*.tar.gz
+
 # Datos de la app (notas, adjuntos de audio, tono de alarma)
 notes.json
 *.wav

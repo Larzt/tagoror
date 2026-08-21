@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- La ficha que leen las tiendas de aplicaciones. El id, el launchable y el
+     nombre del icono salen todos de CODEX_APP_ID: si dejan de coincidir, la
+     tienda muestra la aplicación sin icono o no la relaciona con su ventana. -->
+<component type="desktop-application">
+  <id>@CODEX_APP_ID@</id>
+
+  <name>Codex</name>
+  <name xml:lang="es">Códice</name>
+  <summary>Sticky notes for the desktop</summary>
+  <summary xml:lang="es">Notas pegadas al escritorio</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <!-- TODO: cambiar cuando el repositorio tenga un fichero de licencia; sin
+       uno, esto es lo único honesto que se puede declarar. -->
+  <project_license>LicenseRef-proprietary</project_license>
+
+  <developer id="io.github.larzt">
+    <name>Alejandro</name>
+  </developer>
+
+  <description>
+    <p>
+      A frameless, translucent notes panel that sits on the desktop instead of
+      getting in the way: text notes, checklists with progress, reminders that
+      actually ring, voice notes with a waveform, and links you can attach to
+      any of them.
+    </p>
+    <p xml:lang="es">
+      Un panel de notas sin marco y translúcido, pensado para vivir en el
+      escritorio en vez de estorbar: notas de texto, listas con progreso,
+      recordatorios que suenan de verdad, notas de voz con su onda y enlaces
+      en cualquiera de ellas.
+    </p>
+    <ul>
+      <li>Reminders with a month view, and an alarm that keeps ringing until you stop it</li>
+      <li>Voice notes recorded straight from the microphone, with live levels</li>
+      <li>Folds into a 56px dock, or hides in the system tray</li>
+      <li>Interface in Spanish or English</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">@CODEX_APP_ID@.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>The panel with a checklist, a reminder, a voice note and a text note</caption>
+      <image>https://raw.githubusercontent.com/Larzt/codex/main/docs/panel.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The month view</caption>
+      <image>https://raw.githubusercontent.com/Larzt/codex/main/docs/calendar.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Settings</caption>
+      <image>https://raw.githubusercontent.com/Larzt/codex/main/docs/settings.png</image>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/Larzt/codex</url>
+  <url type="bugtracker">https://github.com/Larzt/codex/issues</url>
+
+  <categories>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>notes</keyword>
+    <keyword>checklist</keyword>
+    <keyword>reminder</keyword>
+    <keyword>calendar</keyword>
+    <keyword translate="no">codex</keyword>
+    <keyword xml:lang="es">notas</keyword>
+    <keyword xml:lang="es">recordatorio</keyword>
+  </keywords>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.2" date="2026-08-21">
+      <description>
+        <p>Language selector (Spanish/English), a system tray icon, and a panel
+           that folds and unfolds without wandering off its corner.</p>
+      </description>
+    </release>
+    <release version="1.1" date="2026-08-21"/>
+    <release version="1.0" date="2026-08-21"/>
+  </releases>
+</component>

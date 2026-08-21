@@ -6,6 +6,11 @@
 
 #include "ui/panel.hpp"
 
+// Lo fija CMake (ver CODEX_APP_ID); compilando a mano vale el de siempre.
+#ifndef CODEX_APP_ID
+#define CODEX_APP_ID "codex"
+#endif
+
 namespace {
 
 // En Wayland una ventana no puede colocarse a sí misma ni saber dónde está:
@@ -35,7 +40,7 @@ int main(int argc, char *argv[]) {
 
     // Enlaza la ventana con su entrada .desktop: de ahí sacan el nombre y el
     // icono el lanzador y el conmutador de ventanas (imprescindible en Wayland).
-    QGuiApplication::setDesktopFileName("codex");
+    QGuiApplication::setDesktopFileName(CODEX_APP_ID);
     // Un PNG por tamaño: los pequeños salen del icono simplificado y los
     // grandes del detallado, que por debajo de ~32 px se emborrona.
     QIcon embedded;
@@ -44,7 +49,7 @@ int main(int argc, char *argv[]) {
 
     // El tema manda (así se puede sustituir con un icon pack); si no lo
     // resuelve, el que va dentro del binario.
-    app.setWindowIcon(QIcon::fromTheme("codex", embedded));
+    app.setWindowIcon(QIcon::fromTheme(CODEX_APP_ID, embedded));
     // El panel se esconde en la bandeja y desde ahí se recupera, así que
     // quedarse sin ventana visible no es motivo para terminar: de salir se
     // encarga "Salir", en ajustes o en el menú de la bandeja. Sin bandeja

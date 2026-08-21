@@ -1,0 +1,62 @@
+# Flatpak. Para construirlo e instalarlo en el usuario:
+#
+#   sudo pacman -S flatpak-builder          # o el equivalente de tu distro
+#   flatpak install flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
+#   flatpak-builder --user --install --force-clean build-flatpak \
+#       packaging/flatpak/io.github.larzt.codex.yml
+#   flatpak run io.github.larzt.codex
+#
+# El ID manda sobre el nombre del .desktop, el de los iconos y el del fichero
+# de AppStream: Flatpak exige que los tres se llamen igual que la aplicación,
+# y de eso se encarga -DCODEX_APP_ID de más abajo.
+app-id: io.github.larzt.codex
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: codex
+
+finish-args:
+  # X11 y no solo Wayland: el panel necesita saber dónde está para desplegarse
+  # desde el dock hacia el lado que le queda sitio, y leer _NET_WORKAREA para
+  # no pedir una posición que el gestor va a corregir. Nada de eso existe en
+  # Wayland (ver choosePlatform() en src/main.cpp), donde el widget funciona
+  # pero se abre siempre hacia abajo y a la derecha.
+  - --socket=x11
+  - --share=ipc
+  # Disponible por si se activa "Wayland nativo" en ajustes.
+  - --socket=wayland
+
+  # Grabar notas de voz.
+  - --socket=pulseaudio
+
+  # El icono de la bandeja. Hablar con el vigilante no basta: el propio icono
+  # es un nombre en el bus, org.kde.StatusNotifierItem-<pid>-<n>, y dentro del
+  # arenero los PID empiezan por abajo, así que se reservan los primeros. Sin
+  # esto la aplicación arranca pero no aparece en la bandeja.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  - --own-name=org.kde.StatusNotifierItem-3-1
+  - --own-name=org.kde.StatusNotifierItem-4-1
+  - --own-name=org.kde.StatusNotifierItem-5-1
+
+  # Las notas viven en ~/.var/app/<id>/data sin pedir permiso, pero la carpeta
+  # de guardado se puede cambiar a cualquier sitio desde ajustes y el diálogo
+  # devuelve una ruta, no un documento del portal: sin esto, elegir una carpeta
+  # de fuera del arenero deja de funcionar.
+  - --filesystem=home
+
+modules:
+  - name: codex
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCODEX_APP_ID=io.github.larzt.codex
+    sources:
+      - type: git
+        url: https://github.com/Larzt/codex.git
+        tag: v1.2
+      # Para probar cambios sin publicar una etiqueta, cambiar el bloque de
+      # arriba por el árbol local:
+      #
+      # - type: dir
+      #   path: ../..
