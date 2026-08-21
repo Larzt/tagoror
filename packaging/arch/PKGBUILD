@@ -1,0 +1,38 @@
+# Maintainer: Alejandro <alejandrorodriguezalcala1@gmail.com>
+#
+# Paquete nativo de Arch. Desde este directorio:
+#
+#   makepkg -si            # compila e instala con pacman
+#   pacman -Qo /usr/bin/codex
+#   sudo pacman -R codex   # se lleva todos los ficheros, las notas se quedan
+#
+# La fuente es el tarball de la etiqueta en GitHub, así que la etiqueta tiene
+# que existir antes de empaquetar (git tag -a v1.2 && git push --tags) y
+# después hay que fijar la suma con `updpkgsums`: SKIP vale para probar en
+# local, pero en el AUR no se admite en una fuente que no sea un repositorio.
+
+pkgname=codex
+pkgver=1.2
+pkgrel=1
+pkgdesc='Sticky-notes panel for the desktop: checklists, reminders with a calendar, and voice notes'
+arch=('x86_64')
+url='https://github.com/Larzt/codex'
+# TODO: poner la licencia real en cuanto el repositorio tenga su fichero.
+license=('LicenseRef-proprietary')
+depends=('qt6-base' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'libxcb' 'hicolor-icon-theme')
+makedepends=('cmake' 'ninja')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    # -DCMAKE_INSTALL_PREFIX=/usr y nada más: el .desktop se genera con la ruta
+    # absoluta del binario a partir de ese prefijo.
+    cmake -S "$pkgname-$pkgver" -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    cmake --build build
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+}

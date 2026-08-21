@@ -1,0 +1,18 @@
+pkgbase = codex
+	pkgdesc = Sticky-notes panel for the desktop: checklists, reminders with a calendar, and voice notes
+	pkgver = 1.2
+	pkgrel = 1
+	url = https://github.com/Larzt/codex
+	arch = x86_64
+	license = LicenseRef-proprietary
+	makedepends = cmake
+	makedepends = ninja
+	depends = qt6-base
+	depends = qt6-multimedia
+	depends = qt6-multimedia-ffmpeg
+	depends = libxcb
+	depends = hicolor-icon-theme
+	source = codex-1.2.tar.gz::https://github.com/Larzt/codex/archive/refs/tags/v1.2.tar.gz
+	sha256sums = SKIP
+
+pkgname = codex
