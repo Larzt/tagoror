@@ -709,8 +709,10 @@ void Panel::openSettings(QWidget *anchor) {
                       save();
                   });
 
+#ifdef Q_OS_LINUX
     // Ver choosePlatform() en main.cpp: de esto depende que el panel pueda
     // abrirse hacia el centro de la pantalla y que "siempre encima" se cumpla.
+    // Fuera de Linux no hay tal disyuntiva y la fila no pinta nada.
     const bool nativeWayland = QSettings().value("platform").toString() == "wayland";
     menu->addItem(nativeWayland ? "minus" : "check", L("Compatibilidad X11"),
                   nativeWayland ? L("Desactivada · Wayland nativo")
@@ -718,6 +720,7 @@ void Panel::openSettings(QWidget *anchor) {
                   [nativeWayland] {
                       QSettings().setValue("platform", nativeWayland ? "" : "wayland");
                   });
+#endif
 
     menu->addSeparator();
     menu->addHeader(L("Datos"));

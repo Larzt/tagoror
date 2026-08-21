@@ -12,7 +12,7 @@
 # local, pero en el AUR no se admite en una fuente que no sea un repositorio.
 
 pkgname=codex
-pkgver=1.2
+pkgver=1.2.0
 pkgrel=1
 pkgdesc='Sticky-notes panel for the desktop: checklists, reminders with a calendar, and voice notes'
 arch=('x86_64')
@@ -22,7 +22,7 @@ license=('LicenseRef-proprietary')
 depends=('qt6-base' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'libxcb' 'hicolor-icon-theme')
 makedepends=('cmake' 'ninja')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('539d3a19e302548b260ed05dcb2c9776dbe1abbd9db4fdf58784c784d4974d4d')
 
 build() {
     # -DCMAKE_INSTALL_PREFIX=/usr y nada más: el .desktop se genera con la ruta

@@ -35,6 +35,9 @@ ui_*.h
 
 # Paquetes generados
 *.AppImage
+*.zip
+dist/
+dist-installer/
 packaging/arch/src/
 packaging/arch/pkg/
 packaging/arch/*.pkg.tar.*

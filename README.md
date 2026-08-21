@@ -221,6 +221,48 @@ docker run --rm -v "$PWD:/src" -w /src ubuntu:22.04 \
            sh packaging/appimage/build-appimage.sh'
 ```
 
+### Windows
+
+Every tag also builds a Windows 11 package on GitHub Actions
+(`.github/workflows/windows.yml`): Qt 6.9 with MSVC, `windeployqt`, then Inno
+Setup. Two files land on the release:
+
+| | |
+|---|---|
+| `Codex-<version>-setup.exe` | Installs for the current user into `%LOCALAPPDATA%\Programs\Codex` — no UAC prompt. Start Menu entry, optional desktop shortcut and *open when I sign in*. Uninstalling leaves your notes alone. |
+| `Codex-<version>-win64.zip` | The same build, unpacked. Portable: run `codex.exe` from anywhere. |
+
+Notes live in `%APPDATA%\Stride\Codex\` there, with the same `notes.json` and
+`audio\` inside, so a folder copied from Linux works as is.
+
+What differs on Windows:
+
+- The X11 machinery compiles to nothing. `availableGeometry()` really is the
+  work area there, so `_NET_WORKAREA` is not needed, and `Qt::Tool` already
+  keeps the window out of the taskbar (`WS_EX_TOOLWINDOW`) — which is what the
+  `_NET_WM_STATE_SKIP_TASKBAR` request does on X11.
+- Settings has no *Compatibilidad X11* row: there is nothing to choose.
+- With *always on top* off, the panel sits below other windows, but Windows has
+  no "on the desktop" layer, so *Show desktop* hides it along with everything
+  else.
+
+To build it on a Windows machine instead, the same CMake project works with
+either toolchain:
+
+```powershell
+# MSVC + Qt from the official installer
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DCODEX_VERSION=1.2.0
+cmake --build build --config Release
+cmake --install build --config Release --prefix dist
+windeployqt --release dist\codex.exe
+```
+
+```sh
+# or MSYS2 (UCRT64 shell)
+pacman -S mingw-w64-ucrt-x86_64-{qt6-base,qt6-multimedia,cmake,ninja,gcc}
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+```
+
 ### Flatpak
 
 ```sh

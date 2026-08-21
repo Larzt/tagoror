@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.25)
-project(codex LANGUAGES CXX)
+project(codex VERSION 1.2.0 LANGUAGES CXX)
+
+# La versión que enseñan el .exe de Windows y su instalador. La CI la pisa
+# con la de la etiqueta que se está publicando.
+set(CODEX_VERSION "${PROJECT_VERSION}" CACHE STRING "Versión que se muestra en los paquetes")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,6 +54,37 @@ add_executable(codex
     include/audio/alarm.hpp
     include/audio/wave.hpp
 )
+
+if (MSVC)
+    # El código está en UTF-8 y va lleno de acentos: sin esto MSVC lo lee con
+    # la página de códigos del sistema y "Códice" llega roto a la pantalla.
+    target_compile_options(codex PRIVATE /utf-8)
+endif()
+
+if (WIN32)
+    # Sin esto Windows abre una consola detrás de la ventana.
+    set_target_properties(codex PROPERTIES WIN32_EXECUTABLE TRUE)
+
+    # El .rc lleva el icono y la versión; se genera para no repetir la versión
+    # en un segundo sitio. Si CODEX_VERSION no viene como x.y.z (una etiqueta
+    # rara, una compilación a mano) se usa la del proyecto, porque VERSIONINFO
+    # solo admite números.
+    if (CODEX_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+        set(CODEX_VERSION_MAJOR ${CMAKE_MATCH_1})
+        set(CODEX_VERSION_MINOR ${CMAKE_MATCH_2})
+        set(CODEX_VERSION_PATCH ${CMAKE_MATCH_3})
+    else()
+        set(CODEX_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+        set(CODEX_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+        set(CODEX_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+    endif()
+
+    # rc.exe entiende las barras normales; las de Windows habría que escaparlas.
+    set(CODEX_WIN_ICON "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/codex.ico")
+    configure_file(packaging/windows/codex.rc.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/codex.rc @ONLY)
+    target_sources(codex PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/codex.rc)
+endif()
 # Iconos empotrados: la ventana los tiene aunque se ejecute sin instalar o el
 # tema no los resuelva. Van los PNG y no los SVG porque QIcon solo elige bien
 # entre variantes distintas cuando cada tamaño es un bitmap exacto.
@@ -73,16 +108,28 @@ target_link_libraries(codex PRIVATE Qt6::Widgets Qt6::Multimedia)
 # esa área no coincide con la que informa Qt (ver src/ui/workarea.cpp). Leer la
 # propiedad pide libxcb, que ya está donde haya sesión gráfica X11; sin ella el
 # widget funciona igual, solo que se fía de QScreen::availableGeometry().
-find_library(CODEX_XCB_LIBRARY xcb)
-if (CODEX_XCB_LIBRARY)
-    target_link_libraries(codex PRIVATE ${CODEX_XCB_LIBRARY})
-    target_compile_definitions(codex PRIVATE CODEX_HAVE_XCB)
-else()
-    message(STATUS "libxcb no encontrada: el panel se colocará solo con QScreen")
+# En Windows no hay nada que buscar: allí Qt::Tool ya deja la ventana fuera de
+# la barra de tareas (WS_EX_TOOLWINDOW) y availableGeometry() sí es el área de
+# trabajo de verdad, así que workarea.cpp se compila entero como nop.
+if (UNIX AND NOT APPLE)
+    find_library(CODEX_XCB_LIBRARY xcb)
+    if (CODEX_XCB_LIBRARY)
+        target_link_libraries(codex PRIVATE ${CODEX_XCB_LIBRARY})
+        target_compile_definitions(codex PRIVATE CODEX_HAVE_XCB)
+    else()
+        message(STATUS "libxcb no encontrada: el panel se colocará solo con QScreen")
+    endif()
 endif()
 
-# --- instalación como aplicación de escritorio -------------------------------
+# --- instalación --------------------------------------------------------------
 include(GNUInstallDirs)
+
+# En Windows no hay jerarquía que respetar: se instala en un directorio plano
+# que luego rellena windeployqt y empaqueta Inno Setup (packaging/windows/).
+if (WIN32)
+    install(TARGETS codex RUNTIME DESTINATION .)
+    return()
+endif()
 
 # El .desktop lleva la ruta absoluta del binario: así funciona aunque el
 # prefijo elegido (p. ej. ~/.local) no esté en el PATH del entorno gráfico.

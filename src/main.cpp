@@ -13,6 +13,8 @@
 
 namespace {
 
+#ifdef Q_OS_LINUX
+
 // En Wayland una ventana no puede colocarse a sí misma ni saber dónde está:
 // Qt informa siempre de 0,0 (comprobado). El widget necesita justamente eso
 // para desplegarse desde el dock hacia el centro de la pantalla en vez de
@@ -29,10 +31,14 @@ void choosePlatform() {
         qputenv("QT_QPA_PLATFORM", "xcb");
 }
 
+#endif  // Q_OS_LINUX
+
 }  // namespace
 
 int main(int argc, char *argv[]) {
+#ifdef Q_OS_LINUX
     choosePlatform();       // antes de QApplication: después ya no se elige
+#endif
 
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("Stride");

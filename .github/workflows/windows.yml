@@ -1,0 +1,103 @@
+# Compila Codex para Windows y empaqueta el instalador y el ZIP portable.
+#
+# En cada push a main sirve de aviso de que algo dejó de compilar allí; al
+# publicar una etiqueta (v1.3.0), además cuelga los dos ficheros de la release.
+name: Windows
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write        # hace falta para adjuntar a la release
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Inno Setup exige que la versión sea numérica (x.y.z). Fuera de una
+      # etiqueta se usa la del propio CMakeLists, que es la única que hay.
+      - name: Averiguar la versión
+        id: version
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+          else
+            version="$(sed -n 's/^project(codex VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Versión: $version"
+
+      - name: Instalar Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.*'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+
+      - name: Configurar
+        run: >
+          cmake -B build -G "Visual Studio 17 2022" -A x64
+          -DCODEX_VERSION=${{ steps.version.outputs.version }}
+
+      - name: Compilar
+        run: cmake --build build --config Release
+
+      # El .exe solo, sin nada de la jerarquía de Linux: en Windows el
+      # CMakeLists instala en un directorio plano (ver el if(WIN32)).
+      - name: Instalar en dist/
+        run: cmake --install build --config Release --prefix dist
+
+      # windeployqt copia las DLL de Qt y las carpetas de plugins que hacen
+      # falta al lado del .exe: sin platforms\qwindows.dll no arranca, y sin
+      # multimedia\ no suenan las notas de voz.
+      - name: Recoger Qt junto al .exe
+        shell: pwsh
+        run: |
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-translations `
+              --no-system-d3d-compiler --no-opengl-sw dist\codex.exe
+
+      - name: ZIP portable
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\* -DestinationPath "Codex-${{ steps.version.outputs.version }}-win64.zip"
+
+      - name: Instalador
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+              /DMyAppVersion=${{ steps.version.outputs.version }} `
+              /DStagingDir="${{ github.workspace }}\dist" `
+              packaging\windows\codex.iss
+
+      - name: Guardar los dos paquetes
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-windows-${{ steps.version.outputs.version }}
+          path: |
+            Codex-*-win64.zip
+            dist-installer/Codex-*-setup.exe
+          if-no-files-found: error
+
+      - name: Colgarlos de la release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Codex-*-win64.zip
+            dist-installer/Codex-*-setup.exe
