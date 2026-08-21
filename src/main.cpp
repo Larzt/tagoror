@@ -45,7 +45,11 @@ int main(int argc, char *argv[]) {
     // El tema manda (así se puede sustituir con un icon pack); si no lo
     // resuelve, el que va dentro del binario.
     app.setWindowIcon(QIcon::fromTheme("codex", embedded));
-    app.setQuitOnLastWindowClosed(true);
+    // El panel se esconde en la bandeja y desde ahí se recupera, así que
+    // quedarse sin ventana visible no es motivo para terminar: de salir se
+    // encarga "Salir", en ajustes o en el menú de la bandeja. Sin bandeja
+    // disponible, Panel::closeEvent sale por su cuenta.
+    app.setQuitOnLastWindowClosed(false);
 
     // Una sola instancia por usuario. Lanzándolo desde el menú con el widget
     // ya abierto (por ejemplo por el autoarranque) saldrían dos paneles sobre

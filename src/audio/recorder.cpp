@@ -1,6 +1,8 @@
 #include "audio/recorder.hpp"
 #include "audio/wave.hpp"
 
+#include "core/lang.hpp"
+
 #include <QAudioDevice>
 #include <QAudioSource>
 #include <QMediaDevices>
@@ -38,7 +40,7 @@ bool VoiceRecorder::start(const QString &path) {
             if (d.id() == g_preferredInput) { dev = d; break; }
     }
     if (dev.isNull()) {
-        m_error = "No hay micrófono disponible";
+        m_error = L("No hay micrófono disponible");
         emit finished(false);
         return false;
     }
@@ -52,14 +54,14 @@ bool VoiceRecorder::start(const QString &path) {
         m_format.setChannelCount(1);
     }
     if (!dev.isFormatSupported(m_format)) {
-        m_error = "El micrófono no admite PCM 16 bits";
+        m_error = L("El micrófono no admite PCM 16 bits");
         emit finished(false);
         return false;
     }
 
     m_file.setFileName(path);
     if (!m_file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        m_error = "No se pudo escribir " + path;
+        m_error = L("No se pudo escribir ") + path;
         emit finished(false);
         return false;
     }
@@ -70,7 +72,7 @@ bool VoiceRecorder::start(const QString &path) {
     m_source = new QAudioSource(dev, m_format, this);
     m_input = m_source->start();
     if (!m_input) {
-        m_error = "No se pudo abrir el micrófono";
+        m_error = L("No se pudo abrir el micrófono");
         delete m_source;
         m_source = nullptr;
         m_file.close();

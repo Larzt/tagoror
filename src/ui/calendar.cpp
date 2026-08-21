@@ -1,5 +1,6 @@
 #include "ui/calendar.hpp"
 
+#include "core/lang.hpp"
 #include "ui/elidedlabel.hpp"
 
 #include <QDateTime>
@@ -20,22 +21,19 @@
 
 namespace {
 
-constexpr int kWeekHeaderH = 18;   // franja de "L M X J V S D" sobre la rejilla
+constexpr int kWeekHeaderH = 18;   // franja de iniciales de la semana, sobre la rejilla
 constexpr int kRows = 6;           // semanas visibles: 6 cubren cualquier mes
 constexpr int kCols = 7;
 constexpr int kMaxDots = 3;        // más avisos en un día no caben; se cuentan igual
 
-// Lunes primero, como en el calendario de aquí.
-const char *const kWeekdays[kCols] = {"L", "M", "X", "J", "V", "S", "D"};
-
 QString monthTitle(const QDate &month) {
-    QString s = QLocale::system().toString(month, "MMMM yyyy");
+    QString s = Lang::locale().toString(month, "MMMM yyyy");
     if (!s.isEmpty()) s[0] = s[0].toUpper();
     return s;
 }
 
 QString dayTitle(const QDate &d) {
-    return QLocale::system().toString(d, "ddd d MMM").toUpper();
+    return Lang::locale().toString(d, "ddd d MMM").toUpper();
 }
 
 // Fila de la lista del día: icono, hora y título. Se pinta con widgets (y no
@@ -140,7 +138,7 @@ protected:
         p.setPen(QColor(Theme::muted()));
         for (int c = 0; c < kCols; ++c)
             p.drawText(QRectF(c * cw, 0, cw, kWeekHeaderH), Qt::AlignCenter,
-                       QString::fromLatin1(kWeekdays[c]));
+                       Lang::weekdayInitial(c));
 
         for (int i = 0; i < kRows * kCols; ++i) {
             const QDate d = m_first.addDays(i);
@@ -293,8 +291,10 @@ void CalendarView::buildHeader(QVBoxLayout *col) {
         return b;
     };
 
-    auto *prev = arrow("chevronLeft", "Mes anterior");
-    auto *next = arrow("chevronRight", "Mes siguiente");
+    m_prevBtn = arrow("chevronLeft", L("Mes anterior"));
+    m_nextBtn = arrow("chevronRight", L("Mes siguiente"));
+    QToolButton *prev = m_prevBtn;
+    QToolButton *next = m_nextBtn;
     connect(prev, &QToolButton::clicked, this, [this] { showMonth(m_month.addMonths(-1)); });
     connect(next, &QToolButton::clicked, this, [this] { showMonth(m_month.addMonths(1)); });
 
@@ -302,11 +302,12 @@ void CalendarView::buildHeader(QVBoxLayout *col) {
     m_monthLabel->setObjectName("calMonth");
     m_monthLabel->setAlignment(Qt::AlignCenter);
 
-    auto *today = new QToolButton;
+    m_todayBtn = new QToolButton;
+    QToolButton *today = m_todayBtn;
     today->setObjectName("todayBtn");
-    today->setText("Hoy");
+    today->setText(L("Hoy"));
     today->setCursor(Qt::PointingHandCursor);
-    today->setToolTip("Volver a hoy");
+    today->setToolTip(L("Volver a hoy"));
     connect(today, &QToolButton::clicked, this, [this] { goTo(QDate::currentDate()); });
 
     row->addWidget(prev);
@@ -319,6 +320,18 @@ void CalendarView::buildHeader(QVBoxLayout *col) {
 
 void CalendarView::setSource(const QList<Note *> *notes) {
     m_notes = notes;
+    refresh();
+}
+
+// Los textos fijos de la vista; lo que depende de las notas (mes, día y sus
+// filas) lo rehace refresh(), y la rejilla se repinta con las iniciales
+// nuevas de la semana.
+void CalendarView::retranslate() {
+    m_prevBtn->setToolTip(L("Mes anterior"));
+    m_nextBtn->setToolTip(L("Mes siguiente"));
+    m_todayBtn->setText(L("Hoy"));
+    m_todayBtn->setToolTip(L("Volver a hoy"));
+    if (m_grid) m_grid->update();
     refresh();
 }
 
@@ -400,12 +413,12 @@ void CalendarView::refreshDayList() {
 
     const QList<Note *> today = notesOn(m_selected);
     const bool isToday = m_selected == QDate::currentDate();
-    m_dayLabel->setText(isToday ? QString("%1 · HOY").arg(dayTitle(m_selected))
+    m_dayLabel->setText(isToday ? L("%1 · HOY").arg(dayTitle(m_selected))
                                 : dayTitle(m_selected));
     m_dayCount->setText(today.isEmpty()
                             ? QString()
-                            : (today.size() == 1 ? "1 AVISO"
-                                                 : QString("%1 AVISOS").arg(today.size())));
+                            : (today.size() == 1 ? L("1 AVISO")
+                                                 : L("%1 AVISOS").arg(today.size())));
 
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     int at = 0;
@@ -433,7 +446,7 @@ void CalendarView::refreshDayList() {
                                .arg(tint.name()));
         l->addWidget(bar);
 
-        auto *title = new ElidedLabel(n->title.isEmpty() ? "Sin título" : n->title,
+        auto *title = new ElidedLabel(n->title.isEmpty() ? L("Sin título") : n->title,
                                       QColor(Theme::fg()));
         title->setObjectName("dayRowTitle");
         title->setToolTip(n->title);
@@ -446,11 +459,11 @@ void CalendarView::refreshDayList() {
             stop->setIconSize(QSize(13, 13));
             stop->setFixedSize(20, 20);
             stop->setCursor(Qt::PointingHandCursor);
-            stop->setToolTip("Detener aviso");
+            stop->setToolTip(L("Detener aviso"));
             connect(stop, &QToolButton::clicked, this, [this, n] { emit dismissRequested(n); });
             l->addWidget(stop);
         } else if (alert) {
-            auto *chip = new QLabel("VENCIDO");
+            auto *chip = new QLabel(L("VENCIDO"));
             chip->setObjectName("dayChip");
             l->addWidget(chip, 0, Qt::AlignVCenter);
         }
@@ -459,7 +472,7 @@ void CalendarView::refreshDayList() {
     }
 
     if (today.isEmpty()) {
-        auto *empty = new QLabel("Sin recordatorios este día");
+        auto *empty = new QLabel(L("Sin recordatorios este día"));
         empty->setObjectName("meta");
         empty->setContentsMargins(7, 4, 7, 2);
         m_dayLayout->insertWidget(at++, empty);
@@ -475,7 +488,7 @@ void CalendarView::refreshDayList() {
     plus->setPixmap(paintIcon("plus", m_theme.accent, 14).pixmap(14, 14));
     al->addWidget(plus);
 
-    auto *addText = new QLabel("Nuevo recordatorio");
+    auto *addText = new QLabel(L("Nuevo recordatorio"));
     addText->setObjectName("dayRowTitle");
     al->addWidget(addText, 1);
 

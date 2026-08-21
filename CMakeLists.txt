@@ -14,6 +14,8 @@ add_executable(codex
     src/main.cpp
 
     src/core/store.cpp
+    src/core/lang.cpp
+    include/core/lang.hpp
     include/core/note.hpp
     include/core/paths.hpp
     include/core/store.hpp
@@ -23,12 +25,14 @@ add_executable(codex
     src/ui/calendar.cpp
     src/ui/popup.cpp
     src/ui/waveform.cpp
+    src/ui/workarea.cpp
     include/ui/panel.hpp
     include/ui/notecard.hpp
     include/ui/calendar.hpp
     include/ui/popup.hpp
     include/ui/theme.hpp
     include/ui/waveform.hpp
+    include/ui/workarea.hpp
     include/ui/dragwidgets.hpp
     include/ui/elidedlabel.hpp
 
@@ -55,6 +59,18 @@ qt_add_resources(codex "appicon"
 
 target_include_directories(codex PRIVATE include)
 target_link_libraries(codex PRIVATE Qt6::Widgets Qt6::Multimedia)
+
+# El gestor de ventanas no admite colocar una ventana fuera de _NET_WORKAREA, y
+# esa área no coincide con la que informa Qt (ver src/ui/workarea.cpp). Leer la
+# propiedad pide libxcb, que ya está donde haya sesión gráfica X11; sin ella el
+# widget funciona igual, solo que se fía de QScreen::availableGeometry().
+find_library(CODEX_XCB_LIBRARY xcb)
+if (CODEX_XCB_LIBRARY)
+    target_link_libraries(codex PRIVATE ${CODEX_XCB_LIBRARY})
+    target_compile_definitions(codex PRIVATE CODEX_HAVE_XCB)
+else()
+    message(STATUS "libxcb no encontrada: el panel se colocará solo con QScreen")
+endif()
 
 # --- instalación como aplicación de escritorio -------------------------------
 include(GNUInstallDirs)

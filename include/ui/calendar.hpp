@@ -8,6 +8,7 @@
 
 class QLabel;
 class QScrollArea;
+class QToolButton;
 class QVBoxLayout;
 class MonthGrid;
 
@@ -29,6 +30,9 @@ public:
 
     // Vuelve a leer las notas: puntos del mes y lista del día seleccionado.
     void refresh();
+
+    // Reescribe los textos fijos tras un cambio de idioma.
+    void retranslate();
 
     // Lleva la vista al día indicado (lo selecciona y salta a su mes).
     void goTo(const QDate &date);
@@ -55,6 +59,9 @@ private:
 
     MonthGrid *m_grid = nullptr;
     QLabel *m_monthLabel = nullptr;
+    QToolButton *m_prevBtn = nullptr;
+    QToolButton *m_nextBtn = nullptr;
+    QToolButton *m_todayBtn = nullptr;
     QLabel *m_dayLabel = nullptr;
     QLabel *m_dayCount = nullptr;
     QScrollArea *m_dayScroll = nullptr;

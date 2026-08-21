@@ -112,6 +112,7 @@ void Store::save() {
     root["h"] = m_prefs.windowSize.height();
     root["input"] = QString::fromLatin1(m_prefs.input);
     root["onTop"] = m_prefs.onTop;
+    root["lang"] = Lang::toString(m_prefs.lang);
 
     QFile f(path());
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
@@ -121,15 +122,21 @@ void Store::save() {
 void Store::load() {
     QFile f(path());
     if (!f.open(QIODevice::ReadOnly)) {
+        // Instalación nueva: aquí sí manda el idioma del sistema, porque no
+        // hay ninguna elección anterior que respetar. Se fija antes de sembrar
+        // las notas de ejemplo, que también van traducidas.
+        m_prefs.lang = Lang::systemDefault();
+        Lang::setCurrent(m_prefs.lang);
+
         // semilla inicial
         auto *a = new Note;
         a->type = Note::Check;
         a->title = "Release 0.4.2";
-        a->items = {{"Bump flatpak manifest", true}, {"Escribir changelog", true},
-                    {"Tag + push", false}, {"Publicar en el foro", false}};
+        a->items = {{"Bump flatpak manifest", true}, {L("Escribir changelog"), true},
+                    {"Tag + push", false}, {L("Publicar en el foro"), false}};
         auto *b = new Note;
-        b->title = "Escalado en Wayland";
-        b->body = "El escalado fraccional emborrona el widget en el panel 4K.";
+        b->title = L("Escalado en Wayland");
+        b->body = L("El escalado fraccional emborrona el widget en el panel 4K.");
         m_notes = {a, b};
         return;
     }
@@ -141,6 +148,11 @@ void Store::load() {
     if (root.contains("opacity")) m_prefs.opacity = root["opacity"].toInt(96);
     if (root.contains("input")) m_prefs.input = root["input"].toString().toLatin1();
     m_prefs.onTop = root["onTop"].toBool();
+    // Un fichero de antes de que hubiera idioma se queda en español, que es
+    // como lo venía viendo su dueño; el del sistema solo decide en un
+    // arranque en blanco.
+    m_prefs.lang = Lang::fromString(root["lang"].toString(), Lang::Es);
+    Lang::setCurrent(m_prefs.lang);
     if (root.contains("w") && root.contains("h"))
         m_prefs.windowSize = QSize(root["w"].toInt(), root["h"].toInt());
 

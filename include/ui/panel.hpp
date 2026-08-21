@@ -11,8 +11,11 @@
 class QFrame;
 class QLabel;
 class QLineEdit;
+class QMenu;
+class QPushButton;
 class QScrollArea;
 class QStackedWidget;
+class QSystemTrayIcon;
 class QTimer;
 class QToolButton;
 class QVBoxLayout;
@@ -35,6 +38,16 @@ public:
     // panel, se despliega y se trae al frente el que ya estaba.
     void bringToFront();
 
+protected:
+    // Cerrar esconde en la bandeja en vez de terminar: es lo que se espera de
+    // algo que vive ahí. Sin bandeja disponible sí se sale, o no habría manera
+    // de recuperar la ventana.
+    void closeEvent(QCloseEvent *e) override;
+    // Cada vez que se mapea la ventana hay que volver a pedir que la barra de
+    // tareas la ignore: cambiar de flags destruye la ventana nativa y con ella
+    // la propiedad.
+    void showEvent(QShowEvent *e) override;
+
 private:
     // --- construcción de la interfaz ---
     void buildShell();
@@ -45,6 +58,9 @@ private:
 
     // --- estado visual ---
     void applyTheme();
+    // Cambia el idioma de la interfaz y la vuelve a escribir entera.
+    void setLanguage(Lang::Code code);
+    void retranslate();
     void rebuildList();
     void refreshFooter();
     QList<NoteCard *> cards() const;
@@ -75,9 +91,19 @@ private:
     void openAccentEditor(QWidget *anchor);
     void chooseDataFolder();
 
+    // --- bandeja del sistema ---
+    // El widget vive ahí en vez de en la barra de tareas: el icono es lo que
+    // queda cuando la ventana se esconde, igual que en Discord o Telegram.
+    void buildTray();
+    void buildTrayMenu();           // se rehace entero al cambiar de idioma
+    void toggleFromTray();
+
     // --- ventana ---
     void applyWindowFlags();        // encima de todo o pegado al escritorio
     void keepOnScreen();            // que plegar/desplegar no la saque de la pantalla
+    // Dónde deja el gestor de ventanas poner la ventana, que no es toda la
+    // pantalla: ver placementArea() en el .cpp.
+    QRect placementArea() const;
     // Esquina por la que crece o encoge la ventana: el panel se abre hacia el
     // centro de la pantalla, no siempre hacia abajo y a la derecha.
     QPoint anchoredTopLeft(const QRect &before, const QSize &after) const;
@@ -109,17 +135,23 @@ private:
     QVBoxLayout *m_listLayout = nullptr;   // tarjetas + stretch final
     CalendarView *m_calendar = nullptr;
 
+    QLabel *m_titleLabel = nullptr;
     QWidget *m_empty = nullptr;            // cartel de "no hay notas"
+    QLabel *m_emptyText = nullptr;
+    QPushButton *m_emptyBtn = nullptr;
+    QLabel *m_footerHint = nullptr;
     QWidget *m_searchBar = nullptr;
     QLineEdit *m_search = nullptr;
     QLabel *m_footerText = nullptr;
     QToolButton *m_calendarBtn = nullptr;
     QList<QToolButton *> m_headerButtons;
 
+    QSystemTrayIcon *m_tray = nullptr;
+    QMenu *m_trayMenu = nullptr;
+
     QTimer *m_dueTimer = nullptr;          // vigilancia de recordatorios
     Alarm *m_alarm = nullptr;
     Theme m_theme;
     QSize m_expandedSize;                  // se restaura al desplegar (y se guarda)
-    QRect m_expandedGeom;                  // sitio exacto del panel antes de plegar
-    QRect m_dockGeom;                      // dónde quedó el dock al plegar
+    QPoint m_dockOffset;                   // por qué punto del panel entra y sale el dock
 };

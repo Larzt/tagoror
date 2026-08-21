@@ -5,6 +5,9 @@
 #include "ui/dragwidgets.hpp"
 #include "ui/notecard.hpp"
 #include "ui/popup.hpp"
+#include "ui/workarea.hpp"
+
+#include "core/lang.hpp"
 
 #include <QApplication>
 #include <QAudioDevice>
@@ -17,12 +20,14 @@
 #include <QLineEdit>
 #include <QLocale>
 #include <QMediaDevices>
+#include <QMenu>
 #include <QPushButton>
 #include <QScreen>
 #include <QSettings>
 #include <QScrollArea>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QSystemTrayIcon>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -46,14 +51,52 @@ QToolButton *iconButton(const QString &kind, const QString &tip) {
     b->setIconSize(QSize(16, 16));
     b->setFixedSize(26, 26);
     b->setCursor(Qt::PointingHandCursor);
-    b->setToolTip(tip);
+    b->setToolTip(L(tip));
     b->setProperty("iconKind", kind);
+    // El rótulo en español se guarda tal cual: es la clave con la que
+    // retranslate() lo vuelve a traducir sin rehacer la cabecera.
+    b->setProperty("tip", tip);
     return b;
 }
 
 // Etiqueta que ve el usuario para un instante concreto.
 QString dueLabel(const QDateTime &when) {
-    return when.toString("ddd d MMM HH:mm");
+    return Lang::locale().toString(when, "ddd d MMM HH:mm");
+}
+
+// El icono de la bandeja cuando hay un aviso sonando. Se compone a varios
+// tamaños porque la bandeja elige el suyo según el panel y la escala, y un
+// solo mapa de bits se ve borroso en cuanto no coincide.
+QIcon alertIcon() {
+    QIcon icon;
+    for (int px : {16, 22, 24, 32, 48})
+        icon.addPixmap(paintIcon("bell", QColor("#ff7a6b"), px).pixmap(px, px));
+    return icon;
+}
+
+// Un eje del anclaje. La ventana crece y encoge dejando quieta su esquina
+// superior izquierda, que es lo que espera cualquiera; solo cuando por ahí no
+// cabe se ancla el extremo contrario, y entonces el panel se abre hacia atrás:
+// con el dock pegado al borde derecho, hacia la izquierda; pegado al inferior,
+// hacia arriba. Si no cabe de ninguna de las dos maneras, se recorta.
+//
+// Que la primera opción sea "no moverse" es lo que hace que plegar no mueva el
+// dock ni un píxel y que desplegar devuelva el panel justo donde estaba: si el
+// panel cabía ahí, el dock que sale de su esquina también, y al revés.
+// `end` es el primer punto que ya queda fuera.
+int anchorAxis(int pos, int len, int newLen, int lo, int end) {
+    const int keepStart = pos;
+    const int keepEnd = pos + len - newLen;
+    if (keepStart >= lo && keepStart + newLen <= end) return keepStart;
+    if (keepEnd >= lo && keepEnd + newLen <= end) return keepEnd;
+    return qBound(lo, keepStart, qMax(lo, end - newLen));
+}
+
+// Empuja un rectángulo adentro del sitio donde se admite colocarlo.
+QPoint clampInto(QPoint pos, const QSize &size, const QRect &area) {
+    if (!area.isValid()) return pos;
+    return {qBound(area.left(), pos.x(), qMax(area.left(), area.right() + 1 - size.width())),
+            qBound(area.top(), pos.y(), qMax(area.top(), area.bottom() + 1 - size.height()))};
 }
 
 }  // namespace
@@ -78,6 +121,7 @@ Panel::Panel() {
     m_dueTimer->start();
 
     buildShell();
+    buildTray();
     rebuildList();
     applyTheme();
     checkReminders();   // puede haber vencido algo con la app cerrada
@@ -128,7 +172,7 @@ void Panel::buildShell() {
     auto *sl = new QHBoxLayout(m_searchBar);
     sl->setContentsMargins(10, 8, 10, 8);
     m_search = new QLineEdit;
-    m_search->setPlaceholderText("Filtrar notas…");
+    m_search->setPlaceholderText(L("Filtrar notas…"));
     connect(m_search, &QLineEdit::textChanged, this, &Panel::applyFilter);
     sl->addWidget(m_search);
     m_searchBar->hide();
@@ -154,9 +198,9 @@ QFrame *Panel::buildHeader() {
     l->setContentsMargins(12, 8, 10, 8);
     l->setSpacing(4);
 
-    auto *title = new QLabel("Códice");
-    title->setObjectName("title");
-    l->addWidget(title);
+    m_titleLabel = new QLabel(L("Códice"));
+    m_titleLabel->setObjectName("title");
+    l->addWidget(m_titleLabel);
     l->addStretch();
 
     auto *search = iconButton("search", "Buscar");
@@ -164,7 +208,7 @@ QFrame *Panel::buildHeader() {
     m_calendarBtn = iconButton("calendar", "Calendario");
     auto *gear = iconButton("gear", "Ajustes");
     auto *min = iconButton("minus", "Plegar a icono");
-    m_headerButtons = {search, add, m_calendarBtn, gear, min};
+    m_headerButtons = {m_calendarBtn, search, add, gear, min};
 
     connect(search, &QToolButton::clicked, this, &Panel::toggleSearch);
     connect(min, &QToolButton::clicked, this, &Panel::collapse);
@@ -197,18 +241,18 @@ QWidget *Panel::buildBody() {
     emptyIcon->setPixmap(paintIcon("notes", QColor(Theme::muted()), 34).pixmap(34, 34));
     el->addWidget(emptyIcon);
 
-    auto *emptyText = new QLabel("Todavía no hay notas");
-    emptyText->setObjectName("meta");
-    emptyText->setAlignment(Qt::AlignCenter);
-    el->addWidget(emptyText);
+    m_emptyText = new QLabel(L("Todavía no hay notas"));
+    m_emptyText->setObjectName("meta");
+    m_emptyText->setAlignment(Qt::AlignCenter);
+    el->addWidget(m_emptyText);
 
-    auto *emptyBtn = new QPushButton("Crear la primera");
-    emptyBtn->setCursor(Qt::PointingHandCursor);
-    connect(emptyBtn, &QPushButton::clicked, this, [this, emptyBtn] { openNewNoteMenu(emptyBtn); });
+    m_emptyBtn = new QPushButton(L("Crear la primera"));
+    m_emptyBtn->setCursor(Qt::PointingHandCursor);
+    connect(m_emptyBtn, &QPushButton::clicked, this, [this] { openNewNoteMenu(m_emptyBtn); });
 
     auto *btnRow = new QHBoxLayout;
     btnRow->addStretch();
-    btnRow->addWidget(emptyBtn);
+    btnRow->addWidget(m_emptyBtn);
     btnRow->addStretch();
     el->addLayout(btnRow);
 
@@ -255,9 +299,9 @@ QFrame *Panel::buildFooter() {
     l->addWidget(m_footerText);
     l->addStretch();
 
-    auto *hint = new QLabel("clic dcho · opciones");
-    hint->setObjectName("meta");
-    l->addWidget(hint);
+    m_footerHint = new QLabel(L("clic dcho · opciones"));
+    m_footerHint->setObjectName("meta");
+    l->addWidget(m_footerHint);
     l->addWidget(new GripCorner, 0, Qt::AlignBottom);
     return footer;
 }
@@ -273,7 +317,7 @@ QWidget *Panel::buildBadge() {
     btn->setIcon(paintIcon("notes", QColor(Theme::fg()), 22));
     btn->setIconSize(QSize(22, 22));
     btn->setCursor(Qt::PointingHandCursor);
-    btn->setToolTip("Abrir Códice · arrastra para mover");
+    btn->setToolTip(L("Abrir Códice · arrastra para mover"));
     btn->setStyleSheet(QString("QToolButton#badge { background:%1; border:1px solid %2;"
                                "border-radius:18px; } QToolButton#badge:hover { background:%3; }")
                            .arg(m_theme.card(), Theme::line(), Theme::hover()));
@@ -290,9 +334,9 @@ QWidget *Panel::buildBadge() {
     m_badgeCount->setFixedSize(20, 20);
     m_badgeCount->move(40, -2);
 
-    // Arriba a la izquierda, que es la esquina que el gestor deja quieta al
-    // cambiar el tamaño de la ventana. Centrado o a la derecha, el dock daba
-    // un salto al plegar y el panel no volvía a salir donde estaba.
+    // Arriba a la izquierda: la ventana plegada mide exactamente lo que el
+    // dock, así que aquí no sobra sitio, y de la esquina de la pantalla por la
+    // que se pliega y se abre ya se encarga anchoredTopLeft.
     hl->addWidget(btn, 0, Qt::AlignTop | Qt::AlignLeft);
     hl->addStretch();
     return host;
@@ -317,6 +361,37 @@ void Panel::applyTheme() {
                                      "border-radius:18px; }"
                                      "QToolButton#badge:hover { background:%3; }")
                                  .arg(m_theme.card(), Theme::line(), Theme::hover()));
+}
+
+void Panel::setLanguage(Lang::Code code) {
+    if (code == m_store.prefs().lang) return;
+    m_store.prefs().lang = code;
+    Lang::setCurrent(code);
+    retranslate();
+    save();
+}
+
+// Los textos fijos de la ventana se vuelven a poner uno a uno; las tarjetas y
+// el calendario se rehacen enteros, que sale más simple que ir buscando cada
+// etiqueta dentro de ellos y aquí no hay nada que perder salvo el foco.
+void Panel::retranslate() {
+    m_titleLabel->setText(L("Códice"));
+    m_search->setPlaceholderText(L("Filtrar notas…"));
+    m_emptyText->setText(L("Todavía no hay notas"));
+    m_emptyBtn->setText(L("Crear la primera"));
+    m_footerHint->setText(L("clic dcho · opciones"));
+
+    for (QToolButton *b : m_headerButtons)
+        b->setToolTip(L(b->property("tip").toString()));
+    // El del calendario además dice en qué página estás, así que se rehace
+    // por su propio camino.
+    setCalendarActive(m_calendarBtn->property("active").toBool());
+
+    buildTrayMenu();
+    applyBadgeAlert();   // la ayuda del icono de la bandeja lleva texto
+    if (m_calendar) m_calendar->retranslate();
+    // Rehace las tarjetas y, de paso, el pie, el calendario y el dock.
+    rebuildList();
 }
 
 QList<NoteCard *> Panel::cards() const {
@@ -361,19 +436,19 @@ void Panel::refreshFooter() {
         int scheduled = 0;
         for (Note *n : m_store.notes())
             if (n->isScheduled()) ++scheduled;
-        m_footerText->setText(QString("%1 CON FECHA").arg(scheduled));
+        m_footerText->setText(L("%1 CON FECHA").arg(scheduled));
         return;
     }
-    m_footerText->setText(QString("%1 EN EL CÓDICE").arg(m_store.count()));
+    m_footerText->setText(L("%1 EN EL CÓDICE").arg(m_store.count()));
 }
 
 void Panel::addNote(Note::Type type) {
     auto *n = new Note;
     n->type = type;
-    n->title = type == Note::Check    ? "Nueva lista"
-             : type == Note::Reminder ? "Nuevo recordatorio"
-             : type == Note::Voice    ? "Nota de voz"
-                                      : "Nueva nota";
+    n->title = type == Note::Check    ? L("Nueva lista")
+             : type == Note::Reminder ? L("Nuevo recordatorio")
+             : type == Note::Voice    ? L("Nota de voz")
+                                      : L("Nueva nota");
     if (type == Note::Reminder) {
         // Con instante real desde el principio: así el recordatorio recién
         // creado suena y además aparece en el calendario.
@@ -410,7 +485,7 @@ void Panel::applyFilter(const QString &q) {
         if (ok) ++shown;
     }
     if (q.isEmpty()) refreshFooter();
-    else m_footerText->setText(QString("%1 DE %2").arg(shown).arg(m_store.count()));
+    else m_footerText->setText(L("%1 DE %2").arg(shown).arg(m_store.count()));
 }
 
 void Panel::bringToFront() {
@@ -446,7 +521,7 @@ void Panel::showNotes() {
 // Así el icono siempre dice adónde lleva y el realce dice dónde estás.
 void Panel::setCalendarActive(bool on) {
     m_calendarBtn->setProperty("active", on);
-    m_calendarBtn->setToolTip(on ? "Ver notas" : "Calendario");
+    m_calendarBtn->setToolTip(on ? L("Ver notas") : L("Calendario"));
     m_calendarBtn->setIcon(paintIcon("calendar",
                                      on ? m_theme.accent : QColor(Theme::muted())));
     // Una propiedad dinámica no repinta sola.
@@ -462,19 +537,19 @@ void Panel::refreshCalendar() {
 
 void Panel::askReminderTime(const QDate &day, QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
-    menu->addHeader(QLocale::system().toString(day, "dddd d MMMM"));
+    menu->addHeader(Lang::locale().toString(day, "dddd d MMMM"));
 
     const QDateTime now = QDateTime::currentDateTime();
     for (const QTime &t : {QTime(9, 0), QTime(12, 0), QTime(15, 0), QTime(18, 0), QTime(21, 0)}) {
         const QDateTime when(day, t);
         menu->addItem("clock", t.toString("HH:mm"),
-                      when <= now ? "Ya pasado" : QString(),
+                      when <= now ? L("Ya pasado") : QString(),
                       [this, when] { createReminder(when); });
     }
 
     menu->addSeparator();
-    menu->addHeader("A mano · HH:mm");
-    menu->addEditor("p. ej. 20:30", QString(), [this, day](const QString &value) {
+    menu->addHeader(L("A mano · HH:mm"));
+    menu->addEditor(L("p. ej. 20:30"), QString(), [this, day](const QString &value) {
         const QTime t = QTime::fromString(value.trimmed(), "HH:mm");
         if (t.isValid()) createReminder(QDateTime(day, t));
     });
@@ -484,7 +559,7 @@ void Panel::askReminderTime(const QDate &day, QWidget *anchor) {
 void Panel::createReminder(const QDateTime &when) {
     auto *n = new Note;
     n->type = Note::Reminder;
-    n->title = "Nuevo recordatorio";
+    n->title = L("Nuevo recordatorio");
     n->dueAtMs = when.toMSecsSinceEpoch();
     n->due = dueLabel(when);
 
@@ -554,8 +629,14 @@ void Panel::applyBadgeAlert() {
         // para que se note que hay un aviso esperando.
         badge->setIcon(paintIcon(alert ? "bell" : "notes",
                                  QColor(alert ? "#ff7a6b" : Theme::fg()), 22));
-        badge->setToolTip(alert ? "Recordatorio vencido · clic para parar"
-                                : "Abrir Códice · arrastra para mover");
+        badge->setToolTip(alert ? L("Recordatorio vencido · clic para parar")
+                                : L("Abrir Códice · arrastra para mover"));
+    }
+    if (m_tray) {
+        // Escondida en la bandeja, el icono es la única señal de que algo ha
+        // vencido; el mismo cambio que hace el dock en el escritorio.
+        m_tray->setIcon(alert ? alertIcon() : qApp->windowIcon());
+        m_tray->setToolTip(alert ? L("Recordatorio vencido") : L("Códice"));
     }
     if (m_badgeCount)
         m_badgeCount->setStyleSheet(
@@ -568,14 +649,14 @@ void Panel::applyBadgeAlert() {
 
 void Panel::openNewNoteMenu(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
-    menu->addHeader("Nueva nota");
-    menu->addItem("text", "Texto", "Una nota libre",
+    menu->addHeader(L("Nueva nota"));
+    menu->addItem("text", L("Texto"), L("Una nota libre"),
                   [this] { addNote(Note::Text); });
-    menu->addItem("check", "Checklist", "Tareas con progreso",
+    menu->addItem("check", L("Checklist"), L("Tareas con progreso"),
                   [this] { addNote(Note::Check); });
-    menu->addItem("reminder", "Recordatorio", "Con fecha y aviso",
+    menu->addItem("reminder", L("Recordatorio"), L("Con fecha y aviso"),
                   [this] { addNote(Note::Reminder); });
-    menu->addItem("voice", "Nota de voz", "Graba desde el micrófono",
+    menu->addItem("voice", L("Nota de voz"), L("Graba desde el micrófono"),
                   [this] { addNote(Note::Voice); });
     menu->showUnder(anchor);
 }
@@ -583,7 +664,7 @@ void Panel::openNewNoteMenu(QWidget *anchor) {
 void Panel::openSettings(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
 
-    menu->addHeader("Acento");
+    menu->addHeader(L("Acento"));
     const QList<QColor> swatches = {QColor("#7c9cff"), QColor("#6fcf97"), QColor("#f2b757"),
                                     QColor("#ff7a6b"), QColor("#b98cff"), QColor("#4ecdc4")};
     menu->addSwatches(swatches, m_theme.accent, [this](const QColor &c) {
@@ -594,11 +675,11 @@ void Panel::openSettings(QWidget *anchor) {
         save();
     });
 
-    menu->addItem("palette", "Color personalizado…",
+    menu->addItem("palette", L("Color personalizado…"),
                   m_theme.accent.name(), [this, anchor] { openAccentEditor(anchor); });
 
     menu->addSeparator();
-    menu->addHeader("Opacidad");
+    menu->addHeader(L("Opacidad"));
     menu->addSlider(40, 100, m_theme.opacity, [this](int v) {
         m_theme.opacity = v;
         m_store.prefs().opacity = v;
@@ -607,11 +688,21 @@ void Panel::openSettings(QWidget *anchor) {
     });
 
     menu->addSeparator();
-    menu->addHeader("Ventana");
+    menu->addHeader(L("Idioma"));
+    // Los nombres de los idiomas van en el suyo propio, no traducidos: quien
+    // abre el menú con la interfaz en el idioma que no entiende tiene que
+    // poder reconocer el otro.
+    const Lang::Code lang = m_store.prefs().lang;
+    for (const auto &[code, label] : {std::pair{Lang::Es, "Español"}, {Lang::En, "English"}})
+        menu->addItem(code == lang ? "check" : "minus", label, QString(),
+                      [this, code = code] { setLanguage(code); });
+
+    menu->addSeparator();
+    menu->addHeader(L("Ventana"));
     const bool onTop = m_store.prefs().onTop;
-    menu->addItem(onTop ? "check" : "minus", "Siempre encima",
-                  onTop ? "Activado · por encima de todo"
-                        : "Desactivado · pegado al escritorio",
+    menu->addItem(onTop ? "check" : "minus", L("Siempre encima"),
+                  onTop ? L("Activado · por encima de todo")
+                        : L("Desactivado · pegado al escritorio"),
                   [this] {
                       m_store.prefs().onTop = !m_store.prefs().onTop;
                       applyWindowFlags();
@@ -621,25 +712,25 @@ void Panel::openSettings(QWidget *anchor) {
     // Ver choosePlatform() en main.cpp: de esto depende que el panel pueda
     // abrirse hacia el centro de la pantalla y que "siempre encima" se cumpla.
     const bool nativeWayland = QSettings().value("platform").toString() == "wayland";
-    menu->addItem(nativeWayland ? "minus" : "check", "Compatibilidad X11",
-                  nativeWayland ? "Desactivada · Wayland nativo"
-                                : QString("Activada · %1").arg(qApp->platformName()),
+    menu->addItem(nativeWayland ? "minus" : "check", L("Compatibilidad X11"),
+                  nativeWayland ? L("Desactivada · Wayland nativo")
+                                : L("Activada · %1").arg(qApp->platformName()),
                   [nativeWayland] {
                       QSettings().setValue("platform", nativeWayland ? "" : "wayland");
                   });
 
     menu->addSeparator();
-    menu->addHeader("Datos");
-    menu->addItem("notes", "Carpeta de guardado…", prettyPath(appDataDir()),
+    menu->addHeader(L("Datos"));
+    menu->addItem("notes", L("Carpeta de guardado…"), prettyPath(appDataDir()),
                   [this] { chooseDataFolder(); });
 
     menu->addSeparator();
-    menu->addHeader("Micrófono");
+    menu->addHeader(L("Micrófono"));
     const QAudioDevice current = QMediaDevices::defaultAudioInput();
     const QByteArray chosenId = m_store.prefs().input;
     for (const QAudioDevice &dev : QMediaDevices::audioInputs()) {
         const bool chosen = chosenId.isEmpty() ? dev.id() == current.id() : dev.id() == chosenId;
-        menu->addItem("mic", dev.description(), chosen ? "En uso" : QString(),
+        menu->addItem("mic", dev.description(), chosen ? L("En uso") : QString(),
                       [this, id = dev.id()] {
                           m_store.prefs().input = id;
                           VoiceRecorder::setPreferredInput(id);
@@ -648,13 +739,13 @@ void Panel::openSettings(QWidget *anchor) {
     }
 
     menu->addSeparator();
-    menu->addItem("power", "Salir", QString(), [] { qApp->quit(); });
+    menu->addItem("power", L("Salir"), QString(), [] { qApp->quit(); });
     menu->showUnder(anchor);
 }
 
 void Panel::openAccentEditor(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
-    menu->addHeader("Color de acento");
+    menu->addHeader(L("Color de acento"));
     menu->addEditor("#7c9cff", m_theme.accent.name(), [this](const QString &text) {
         // QColor acepta también nombres ("teal"), no solo hexadecimal.
         const QColor picked(text.trimmed());
@@ -670,11 +761,96 @@ void Panel::openAccentEditor(QWidget *anchor) {
 
 void Panel::chooseDataFolder() {
     const QString to = QFileDialog::getExistingDirectory(
-        this, "Carpeta donde guardar las notas", appDataDir());
+        this, L("Carpeta donde guardar las notas"), appDataDir());
     m_store.changeDataDir(to);
 }
 
 // --- plegado ---------------------------------------------------------------
+
+// --- bandeja del sistema ----------------------------------------------------
+
+void Panel::buildTray() {
+    if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
+
+    m_tray = new QSystemTrayIcon(qApp->windowIcon(), this);
+    buildTrayMenu();
+    connect(m_tray, &QSystemTrayIcon::activated, this,
+            [this](QSystemTrayIcon::ActivationReason reason) {
+                if (reason == QSystemTrayIcon::Trigger ||
+                    reason == QSystemTrayIcon::DoubleClick)
+                    toggleFromTray();
+            });
+    m_tray->show();
+    applyBadgeAlert();   // por si ya hay algo sonando al arrancar
+}
+
+// Aquí sí un QMenu, que es la excepción a la regla del resto de la aplicación:
+// el menú de la bandeja no lo pinta este proceso sobre el marco translúcido,
+// lo dibuja el escritorio (por DBusMenu en Plasma), y QSystemTrayIcon no
+// admite otra cosa.
+void Panel::buildTrayMenu() {
+    if (!m_tray) return;
+
+    delete m_trayMenu;                 // al cambiar de idioma se rehace entero
+    m_trayMenu = new QMenu(this);      // con dueño: se va con el panel
+
+    QAction *toggle = m_trayMenu->addAction(L("Mostrar"));
+    connect(toggle, &QAction::triggered, this, &Panel::toggleFromTray);
+    // La etiqueta dice lo que va a pasar, y eso depende de cómo esté la
+    // ventana en el momento de abrir el menú.
+    connect(m_trayMenu, &QMenu::aboutToShow, this,
+            [this, toggle] { toggle->setText(isVisible() ? L("Ocultar") : L("Mostrar")); });
+
+    m_trayMenu->addSeparator();
+    QMenu *create = m_trayMenu->addMenu(L("Nueva nota"));
+    const QList<QPair<QString, Note::Type>> types = {
+        {L("Texto"), Note::Text},
+        {L("Checklist"), Note::Check},
+        {L("Recordatorio"), Note::Reminder},
+        {L("Nota de voz"), Note::Voice},
+    };
+    for (const auto &[label, type] : types)
+        connect(create->addAction(label), &QAction::triggered, this, [this, type] {
+            addNote(type);
+            show();
+            raise();
+            activateWindow();
+        });
+
+    m_trayMenu->addSeparator();
+    connect(m_trayMenu->addAction(L("Salir")), &QAction::triggered, qApp, &QApplication::quit);
+
+    m_tray->setContextMenu(m_trayMenu);
+}
+
+void Panel::toggleFromTray() {
+    if (isVisible()) {
+        hide();
+        return;
+    }
+    // Se vuelve tal como se dejó, plegada o desplegada: esconder no es lo
+    // mismo que plegar y no tiene por qué deshacerlo.
+    show();
+    raise();
+    activateWindow();
+}
+
+void Panel::closeEvent(QCloseEvent *e) {
+    if (!m_tray) {
+        // Sin icono en la bandeja no queda de dónde recuperarla, así que
+        // cerrar es salir (y el destructor guarda).
+        e->accept();
+        qApp->quit();
+        return;
+    }
+    e->ignore();
+    hide();
+}
+
+void Panel::showEvent(QShowEvent *e) {
+    QWidget::showEvent(e);
+    wmSkipTaskbar(winId());
+}
 
 void Panel::applyWindowFlags() {
     // Por defecto el widget se queda en el escritorio, por debajo del resto de
@@ -705,17 +881,20 @@ void Panel::showPage(QWidget *page) {
 
 void Panel::collapse() {
     m_expandedSize = size();
-    m_expandedGeom = geometry();      // para poder volver exactamente aquí
+    const QRect panel = geometry();
 
     setMinimumSize(0, 0);
     showPage(m_badge);
 
-    // Sin recolocar: encoger ya deja el dock en la esquina superior izquierda
-    // del panel, justo donde estaba. Llevarlo a la esquina por la que luego se
-    // reabre lo hacía saltar hasta debajo del botón de plegar.
-    resize(m_badge->sizeHint() + QSize(kShadowMargin * 2, kShadowMargin * 2));
+    // El dock vuelve al sitio del que salió el panel, no a su esquina superior
+    // izquierda: si estaba abajo y el panel se abrió hacia arriba, plegar tiene
+    // que devolverlo abajo. Con m_dockOffset a cero -- nada más arrancar, sin
+    // ningún despliegue previo -- eso es la esquina superior izquierda.
+    const QSize dock = m_badge->sizeHint() + QSize(kShadowMargin * 2, kShadowMargin * 2);
+    const QPoint inside(qBound(0, m_dockOffset.x(), qMax(0, panel.width() - dock.width())),
+                        qBound(0, m_dockOffset.y(), qMax(0, panel.height() - dock.height())));
+    setGeometry(QRect(clampInto(panel.topLeft() + inside, dock, placementArea()), dock));
     keepOnScreen();
-    m_dockGeom = geometry();          // desde aquí se reabre si nadie lo mueve
 }
 
 void Panel::expand() {
@@ -737,68 +916,78 @@ void Panel::expand() {
     showPage(m_shell);
     setMinimumSize(kShellMinWidth + kShadowMargin * 2, kShellMinHeight);
 
-    // Un tamaño guardado mayor que la pantalla actual (otro monitor, otra
-    // resolución) no cabe de ninguna manera: se recorta antes de aplicarlo.
+    // Un tamaño guardado mayor de lo que cabe (otro monitor, otra resolución,
+    // un panel del escritorio que recorta el área de trabajo) no entra de
+    // ninguna manera: se recorta antes de aplicarlo, porque si no lo recorta
+    // el gestor por su cuenta y además mueve la ventana.
     QSize target = m_expandedSize;
-    if (const QScreen *sc = screen())
-        target = target.boundedTo(sc->availableGeometry().size() +
-                                  QSize(kShadowMargin * 2, kShadowMargin * 2));
+    if (const QRect area = placementArea(); area.isValid())
+        target = target.boundedTo(area.size());
 
-    resize(target);
+    // El panel sale de la esquina superior izquierda del dock hacia abajo y a
+    // la derecha, que es donde estaba antes de plegarse; solo cuando por ahí no
+    // cabe (el dock arrastrado contra el borde derecho o el inferior) se abre
+    // hacia el otro lado.
+    const QPoint at = anchoredTopLeft(dock, target);
+    setGeometry(QRect(at, target));
 
-    // Plegar y desplegar sin tocar el dock devuelve el panel a su sitio exacto.
-    // Solo cuando el dock se ha arrastrado se elige esquina, y entonces sí se
-    // abre hacia el centro de la pantalla.
-    const bool moved = !m_dockGeom.isValid() || dock.topLeft() != m_dockGeom.topLeft();
-    if (!moved && m_expandedGeom.isValid()) move(m_expandedGeom.topLeft());
-    else move(anchoredTopLeft(dock, target));
+    // De qué punto del panel ha salido el dock, para meterlo por ahí al
+    // plegar. Es lo que hace que un dock abajo a la izquierda siga abajo a la
+    // izquierda después de abrir y cerrar el panel.
+    m_dockOffset = QPoint(qBound(0, dock.x() - at.x(), qMax(0, target.width() - dock.width())),
+                          qBound(0, dock.y() - at.y(), qMax(0, target.height() - dock.height())));
 
     keepOnScreen();
 }
 
-// Cambiar el tamaño deja quieta la esquina superior izquierda, así que el panel
-// se desplegaba siempre hacia abajo y hacia la derecha. Aquí se elige por qué
-// esquina crece: la que deja el panel mirando al centro de la pantalla. Con el
-// dock en la mitad derecha se abre hacia la izquierda, y en la mitad inferior
-// hacia arriba. Plegar usa lo mismo al revés, de modo que el dock aparece justo
-// en la esquina por la que se volverá a abrir y el panel regresa donde estaba.
-QPoint Panel::anchoredTopLeft(const QRect &before, const QSize &after) const {
+// Dónde admite el gestor de ventanas que se ponga la ventana: la pantalla
+// disponible, ensanchada con el margen de sombra (que no es marco visible y sí
+// puede salirse), y recortada al área de trabajo del gestor. Ese recorte es el
+// que manda: pedir una posición fuera de ella no falla, la corrige el gestor y
+// la ventana aparece de un salto donde no se pidió.
+QRect Panel::placementArea() const {
     const QScreen *sc = screen();
-    if (!sc) return before.topLeft();
+    if (!sc) return {};
 
-    const QPoint middle = sc->availableGeometry().center();
-    QPoint p = before.topLeft();
+    QRect area = sc->availableGeometry().adjusted(-kShadowMargin, -kShadowMargin,
+                                                  kShadowMargin, kShadowMargin);
+    if (const QRect wm = wmWorkArea(); wm.isValid()) area &= wm;
+    return area;
+}
+
+// Por dónde crece o encoge la ventana. Nada de "hacia el centro de la
+// pantalla": esa regla mandaba el dock a la otra punta del monitor en cuanto el
+// panel pasaba de la mitad, y con el área de trabajo recortada (ver
+// placementArea) esa mitad no estaba donde uno la ve. Manda si cabe o no: se
+// deja quieta la esquina superior izquierda, y solo se ancla el borde contrario
+// cuando por ahí se saldría. Un dock en el borde derecho abre el panel hacia la
+// izquierda y uno en el inferior hacia arriba, porque es la única manera de que
+// quepa; en cualquier otro sitio ni el dock ni el panel se mueven.
+QPoint Panel::anchoredTopLeft(const QRect &before, const QSize &after) const {
+    const QRect area = placementArea();
+    if (!area.isValid()) return before.topLeft();
 
     // El margen de sombra es igual en ambos lados, así que alinear los bordes
     // de la ventana alinea también los del marco visible.
-    if (before.center().x() > middle.x()) p.setX(before.right() + 1 - after.width());
-    if (before.center().y() > middle.y()) p.setY(before.bottom() + 1 - after.height());
-    return p;
+    return {anchorAxis(before.left(), before.width(), after.width(),
+                       area.left(), area.right() + 1),
+            anchorAxis(before.top(), before.height(), after.height(),
+                       area.top(), area.bottom() + 1)};
 }
 
-// El gestor de ventanas deja quieta la esquina superior izquierda al cambiar
-// el tamaño, así que el panel se despliega hacia abajo y hacia la derecha: con
-// el dock pegado al borde derecho o al inferior, media ventana se quedaba
-// fuera de la pantalla. Aquí se empuja de vuelta adentro.
+// Red de seguridad: tras plegar o desplegar, la ventana no puede quedar fuera
+// del sitio donde se la admite. anchoredTopLeft ya lo tiene en cuenta, pero el
+// tamaño restaurado o un cambio de pantalla pueden dejarla asomando.
 //
 // En Wayland colocar la propia ventana es cosa del compositor y move() puede
 // quedarse en nada; en X11 se aplica tal cual.
 void Panel::keepOnScreen() {
-    const QScreen *sc = screen();
-    if (!sc) return;
+    const QRect area = placementArea();
+    if (!area.isValid()) return;
 
-    const QRect area = sc->availableGeometry();
-    // El margen de sombra no es parte del marco visible: se le deja salir.
-    const QSize frame = size() - QSize(kShadowMargin * 2, kShadowMargin * 2);
-    const int maxX = area.right() - frame.width() - kShadowMargin + 1;
-    const int maxY = area.bottom() - frame.height() - kShadowMargin + 1;
-
-    // qMin antes que qMax: si la ventana no cabe, se queda anclada arriba a
-    // la izquierda en vez de irse por el otro lado.
-    QPoint p = pos();
-    p.setX(qMax(area.left() - kShadowMargin, qMin(p.x(), maxX)));
-    p.setY(qMax(area.top() - kShadowMargin, qMin(p.y(), maxY)));
-    if (p != pos()) move(p);
+    // qMin antes que qMax dentro de clampInto: si la ventana no cabe, se queda
+    // anclada arriba a la izquierda en vez de irse por el otro lado.
+    if (const QPoint p = clampInto(pos(), size(), area); p != pos()) move(p);
 }
 
 // ---------------------------------------------------------------------------

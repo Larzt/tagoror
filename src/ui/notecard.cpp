@@ -1,4 +1,5 @@
 #include "ui/notecard.hpp"
+#include "core/lang.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/popup.hpp"
 #include "audio/recorder.hpp"
@@ -144,10 +145,10 @@ QString formatMs(qint64 ms) {
 
 QString typeLabel(Note::Type t) {
     switch (t) {
-        case Note::Check:    return "Lista";
-        case Note::Reminder: return "Recordatorio";
-        case Note::Voice:    return "Nota de voz";
-        default:             return "Nota";
+        case Note::Check:    return L("Lista");
+        case Note::Reminder: return L("Recordatorio");
+        case Note::Voice:    return L("Nota de voz");
+        default:             return L("Nota");
     }
 }
 
@@ -179,7 +180,7 @@ void NoteCard::build() {
     m_title = new QLineEdit(m_note->title);
     m_title->setContextMenuPolicy(Qt::NoContextMenu);
     m_title->setObjectName("cardTitleEdit");
-    m_title->setPlaceholderText("Sin título");
+    m_title->setPlaceholderText(L("Sin título"));
     connect(m_title, &QLineEdit::textChanged, this, [this](const QString &t) {
         m_note->title = t;
         emit dirty();
@@ -208,14 +209,14 @@ void NoteCard::build() {
 }
 
 void NoteCard::buildText(QVBoxLayout *l) {
-    QTextEdit *body = autoGrowEditor(m_note->body, "Escribe…");
+    QTextEdit *body = autoGrowEditor(m_note->body, L("Escribe…"));
     connect(body, &QTextEdit::textChanged, this, [this, body] {
         m_note->body = body->toPlainText();
         emit dirty();
     });
     l->addWidget(body);
 
-    m_meta = new QLabel("TEXTO");
+    m_meta = new QLabel(L("TEXTO"));
     m_meta->setObjectName("meta");
     l->addWidget(m_meta);
 }
@@ -231,14 +232,14 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     m_dueIcon->setFixedSize(14, 14);
     row->addWidget(m_dueIcon, 0, Qt::AlignVCenter);
 
-    m_chip = new ClickableLabel(m_note->due.isEmpty() ? "Sin fecha" : m_note->due,
+    m_chip = new ClickableLabel(m_note->dueLabel().isEmpty() ? L("Sin fecha") : m_note->dueLabel(),
                                 [this](const QPoint &p) { openDuePopup(p); });
     m_chip->setObjectName("chip");
-    m_chip->setToolTip("Clic para cambiar la fecha");
+    m_chip->setToolTip(L("Clic para cambiar la fecha"));
     row->addWidget(m_chip);
 
     // Solo aparece mientras suena la alarma; es la forma de callarla.
-    m_dueBtn = roundButton("stop", QColor("#ff7a6b"), "Detener aviso");
+    m_dueBtn = roundButton("stop", QColor("#ff7a6b"), L("Detener aviso"));
     m_dueBtn->setObjectName("dueBtn");
     m_dueBtn->hide();
     connect(m_dueBtn, &QToolButton::clicked, this, [this] {
@@ -247,12 +248,12 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     row->addWidget(m_dueBtn);
     row->addStretch();
 
-    m_meta = new QLabel("RECORDATORIO");
+    m_meta = new QLabel(L("RECORDATORIO"));
     m_meta->setObjectName("meta");
     row->addWidget(m_meta);
     l->addLayout(row);
 
-    QTextEdit *body = autoGrowEditor(m_note->body, "Detalles…");
+    QTextEdit *body = autoGrowEditor(m_note->body, L("Detalles…"));
     connect(body, &QTextEdit::textChanged, this, [this, body] {
         m_note->body = body->toPlainText();
         emit dirty();
@@ -282,7 +283,7 @@ void NoteCard::buildCheck(QVBoxLayout *l) {
     m_newItem = new QLineEdit;
     m_newItem->setContextMenuPolicy(Qt::NoContextMenu);
     m_newItem->setObjectName("newItemEdit");
-    m_newItem->setPlaceholderText("Añadir elemento…");
+    m_newItem->setPlaceholderText(L("Añadir elemento…"));
     connect(m_newItem, &QLineEdit::returnPressed, this, [this] {
         const QString text = m_newItem->text().trimmed();
         if (text.isEmpty()) return;
@@ -356,7 +357,7 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     del->setIconSize(QSize(12, 12));
     del->setFixedSize(18, 18);
     del->setCursor(Qt::PointingHandCursor);
-    del->setToolTip("Quitar elemento");
+    del->setToolTip(L("Quitar elemento"));
     connect(del, &QToolButton::clicked, this, [this, index] {
         if (index >= m_note->items.size()) return;
         m_note->items.removeAt(index);
@@ -398,34 +399,35 @@ void NoteCard::refreshProgress() {
 
 void NoteCard::openDuePopup(const QPoint &globalPos) {
     auto *menu = new Popup(m_theme, this);
-    menu->addHeader("Recordar");
+    menu->addHeader(L("Recordar"));
 
     const QDateTime now = QDateTime::currentDateTime();
     QDateTime todaySix = QDateTime(now.date(), QTime(18, 0));
     if (todaySix <= now) todaySix = todaySix.addDays(1);
 
     const QList<QPair<QString, QDateTime>> presets = {
-        {"En 5 minutos", now.addSecs(300)},
-        {"En 1 hora", now.addSecs(3600)},
-        {"A las 18:00", todaySix},
-        {"Mañana 09:00", QDateTime(now.date().addDays(1), QTime(9, 0))},
+        {L("En 5 minutos"), now.addSecs(300)},
+        {L("En 1 hora"), now.addSecs(3600)},
+        {L("A las 18:00"), todaySix},
+        {L("Mañana 09:00"), QDateTime(now.date().addDays(1), QTime(9, 0))},
     };
 
     // Los presets guardan el instante real: es lo que dispara el aviso.
     for (const auto &[label, when] : presets) {
-        menu->addItem("clock", label, when.toString("ddd d MMM HH:mm"), [this, when] {
+        menu->addItem("clock", label, Lang::locale().toString(when, "ddd d MMM HH:mm"),
+                      [this, when] {
             m_note->dueAtMs = when.toMSecsSinceEpoch();
-            m_note->due = when.toString("ddd d MMM HH:mm");
+            m_note->due = Lang::locale().toString(when, "ddd d MMM HH:mm");
             m_note->fired = false;
-            if (m_chip) m_chip->setText(m_note->due);
+            if (m_chip) m_chip->setText(m_note->dueLabel());
             refreshDue();
             emit dirty();
         });
     }
 
     menu->addSeparator();
-    menu->addHeader("A mano · dd/MM HH:mm");
-    menu->addEditor("p. ej. 24/12 20:30", m_note->due, [this](const QString &value) {
+    menu->addHeader(L("A mano · dd/MM HH:mm"));
+    menu->addEditor(L("p. ej. 24/12 20:30"), m_note->due, [this](const QString &value) {
         // Si el texto se puede interpretar como fecha, además suena; si no,
         // se queda como etiqueta suelta (comportamiento de siempre).
         QDateTime parsed = QDateTime::fromString(value, "dd/MM HH:mm");
@@ -433,18 +435,18 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
         m_note->dueAtMs = parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0;
         m_note->due = value;
         m_note->fired = false;
-        if (m_chip) m_chip->setText(value.isEmpty() ? "Sin fecha" : value);
+        if (m_chip) m_chip->setText(value.isEmpty() ? L("Sin fecha") : value);
         refreshDue();
         emit dirty();
     });
 
     if (!m_note->due.isEmpty()) {
         menu->addSeparator();
-        menu->addItem("minus", "Quitar fecha", QString(), [this] {
+        menu->addItem("minus", L("Quitar fecha"), QString(), [this] {
             m_note->due.clear();
             m_note->dueAtMs = 0;
             m_note->fired = false;
-            if (m_chip) m_chip->setText("Sin fecha");
+            if (m_chip) m_chip->setText(L("Sin fecha"));
             refreshDue();
             emit dirty();
         });
@@ -511,8 +513,8 @@ void NoteCard::openLinkEditor(int index, const QPoint &globalPos) {
     const Link current = isNew ? Link{} : m_note->links.at(index);
 
     auto *menu = new Popup(m_theme, this);
-    menu->addHeader(isNew ? "Nuevo enlace" : "Editar enlace");
-    menu->addFields({"https://ejemplo.com", "Nombre (opcional)"},
+    menu->addHeader(isNew ? L("Nuevo enlace") : L("Editar enlace"));
+    menu->addFields({L("https://ejemplo.com"), L("Nombre (opcional)")},
                     {current.url, current.label},
                     [this, index, isNew](const QStringList &values) {
                         const QString url = normalizedUrl(values.value(0));
@@ -533,14 +535,14 @@ void NoteCard::openLinkMenu(int index, const QPoint &globalPos) {
     const Link link = m_note->links.at(index);
 
     auto *menu = new Popup(m_theme, this);
-    menu->addHeader("Enlace");
-    menu->addItem("link", "Abrir", prettyUrl(link.url), [this, index] { openLink(index); });
-    menu->addItem("copy", "Copiar dirección", QString(),
+    menu->addHeader(L("Enlace"));
+    menu->addItem("link", L("Abrir"), prettyUrl(link.url), [this, index] { openLink(index); });
+    menu->addItem("copy", L("Copiar dirección"), QString(),
                   [link] { QGuiApplication::clipboard()->setText(link.url); });
-    menu->addItem("pencil", "Editar…", link.label.isEmpty() ? "Sin nombre" : link.label,
+    menu->addItem("pencil", L("Editar…"), link.label.isEmpty() ? L("Sin nombre") : link.label,
                   [this, index, globalPos] { openLinkEditor(index, globalPos); });
     menu->addSeparator();
-    menu->addItem("trash", "Quitar enlace", QString(), [this, index] {
+    menu->addItem("trash", L("Quitar enlace"), QString(), [this, index] {
         if (index >= m_note->links.size()) return;
         m_note->links.removeAt(index);
         refreshLinks();
@@ -569,7 +571,7 @@ void NoteCard::refreshDue() {
         m_chip->style()->polish(m_chip);
     }
     if (m_meta)
-        m_meta->setText(ringing ? "¡AHORA!" : (overdue ? "VENCIDO" : "RECORDATORIO"));
+        m_meta->setText(ringing ? L("¡AHORA!") : (overdue ? L("VENCIDO") : L("RECORDATORIO")));
 }
 
 // --- nota de voz -----------------------------------------------------------
@@ -579,12 +581,12 @@ void NoteCard::buildVoice(QVBoxLayout *l) {
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(7);
 
-    m_recBtn = roundButton("record", QColor("#ff7a6b"), "Grabar");
+    m_recBtn = roundButton("record", QColor("#ff7a6b"), L("Grabar"));
     m_recBtn->setObjectName("recBtn");
     connect(m_recBtn, &QToolButton::clicked, this, &NoteCard::toggleRecord);
     row->addWidget(m_recBtn);
 
-    m_playBtn = roundButton("play", QColor(Theme::fg()), "Reproducir");
+    m_playBtn = roundButton("play", QColor(Theme::fg()), L("Reproducir"));
     m_playBtn->setObjectName("playBtn");
     connect(m_playBtn, &QToolButton::clicked, this, &NoteCard::togglePlay);
     row->addWidget(m_playBtn);
@@ -710,7 +712,7 @@ void NoteCard::refreshVoice() {
 
     if (m_recBtn) {
         m_recBtn->setIcon(paintIcon(recording ? "stop" : "record", QColor("#ff7a6b")));
-        m_recBtn->setToolTip(recording ? "Detener" : (hasAudio ? "Regrabar" : "Grabar"));
+        m_recBtn->setToolTip(recording ? L("Detener") : (hasAudio ? L("Regrabar") : L("Grabar")));
     }
     if (m_playBtn) {
         m_playBtn->setIcon(paintIcon(playing ? "pause" : "play",
@@ -721,16 +723,16 @@ void NoteCard::refreshVoice() {
 
     if (!m_meta) return;
     if (recording) {
-        m_meta->setText("GRABANDO…");
+        m_meta->setText(L("GRABANDO…"));
     } else if (!hasAudio) {
         const QString err = m_recorder ? m_recorder->errorText() : QString();
-        m_meta->setText(err.isEmpty() ? "VOZ · SIN GRABAR" : err.toUpper());
+        m_meta->setText(err.isEmpty() ? L("VOZ · SIN GRABAR") : err.toUpper());
     } else if (m_note->isSilentTake()) {
         // La toma existe pero no tiene señal audible; sin decirlo, el usuario
         // solo ve una nota que "no suena".
-        m_meta->setText("VOZ · SIN SEÑAL, REVISA EL MICRÓFONO");
+        m_meta->setText(L("VOZ · SIN SEÑAL, REVISA EL MICRÓFONO"));
     } else {
-        m_meta->setText("VOZ");
+        m_meta->setText(L("VOZ"));
     }
 }
 
@@ -741,35 +743,35 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
     menu->addHeader(typeLabel(m_note->type));
 
     if (m_note->type == Note::Check && m_newItem) {
-        menu->addItem("plus", "Añadir elemento", "Enter para confirmar",
+        menu->addItem("plus", L("Añadir elemento"), L("Enter para confirmar"),
                       [this] { m_newItem->setFocus(); });
         menu->addSeparator();
     }
     if (m_note->type == Note::Reminder) {
         const QPoint at = e->globalPos();
         if (m_note->ringing)
-            menu->addItem("stop", "Detener aviso", "Silencia la alarma",
+            menu->addItem("stop", L("Detener aviso"), L("Silencia la alarma"),
                           [this] { emit dismissRequested(m_note); });
-        menu->addItem("clock", "Cambiar fecha",
-                      m_note->due.isEmpty() ? "Sin fecha" : m_note->due,
+        menu->addItem("clock", L("Cambiar fecha"),
+                      m_note->dueLabel().isEmpty() ? L("Sin fecha") : m_note->dueLabel(),
                       [this, at] { openDuePopup(at); });
         menu->addSeparator();
     }
     if (m_note->type == Note::Voice) {
-        menu->addItem("record", m_note->audio.isEmpty() ? "Grabar" : "Regrabar",
-                      "Sustituye la toma actual", [this] { toggleRecord(); });
+        menu->addItem("record", m_note->audio.isEmpty() ? L("Grabar") : L("Regrabar"),
+                      L("Sustituye la toma actual"), [this] { toggleRecord(); });
         menu->addSeparator();
     }
 
     const QPoint at = e->globalPos();
-    menu->addItem("link", "Añadir enlace…",
+    menu->addItem("link", L("Añadir enlace…"),
                   m_note->links.isEmpty()
-                      ? "Se abre en el navegador"
-                      : QString("%1 ya adjuntos").arg(m_note->links.size()),
+                      ? L("Se abre en el navegador")
+                      : L("%1 ya adjuntos").arg(m_note->links.size()),
                   [this, at] { openLinkEditor(-1, at); });
     menu->addSeparator();
 
-    menu->addItem("trash", "Eliminar nota", QString(),
+    menu->addItem("trash", L("Eliminar nota"), QString(),
                   [this] { emit deleteRequested(m_note); });
     menu->showAt(at);
 }

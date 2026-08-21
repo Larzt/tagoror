@@ -8,6 +8,7 @@
 #include <QString>
 #include <functional>
 
+#include "core/lang.hpp"
 #include "core/note.hpp"
 
 class QTimer;
@@ -27,6 +28,7 @@ public:
         QSize windowSize;              // tamaño del panel desplegado
         QByteArray input;              // micrófono elegido en ajustes
         bool onTop = false;            // por defecto vive en el escritorio
+        Lang::Code lang = Lang::Es;    // idioma de la interfaz
     };
 
     explicit Store(QObject *parent = nullptr);

@@ -7,6 +7,7 @@
 #include <QString>
 #include <QUuid>
 
+#include "core/lang.hpp"
 #include "core/paths.hpp"
 
 struct CheckItem {
@@ -58,6 +59,14 @@ struct Note {
     bool isScheduled() const { return type == Reminder && dueAtMs > 0; }
 
     QDateTime dueAt() const { return QDateTime::fromMSecsSinceEpoch(dueAtMs); }
+
+    // Lo que se enseña como fecha. Con instante real se vuelve a escribir en
+    // el idioma de ahora, porque 'due' guarda la etiqueta tal como se generó
+    // -- cambiar de idioma dejaría "vie 21 ago 18:00" en un panel en inglés.
+    // Sin instante, 'due' es texto libre del usuario y se respeta.
+    QString dueLabel() const {
+        return isScheduled() ? Lang::locale().toString(dueAt(), "ddd d MMM HH:mm") : due;
+    }
     QDate dueDate() const { return isScheduled() ? dueAt().date() : QDate(); }
 
     // Ruta absoluta del adjunto; vacía si la nota no tiene audio grabado.
