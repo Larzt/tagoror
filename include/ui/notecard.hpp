@@ -8,6 +8,7 @@ class QLabel;
 class QProgressBar;
 class QVBoxLayout;
 class QLineEdit;
+class QTextEdit;
 class QToolButton;
 class QAudioOutput;
 class QMediaPlayer;
@@ -37,11 +38,20 @@ signals:
     void deleteRequested(Note *);
     void dismissRequested(Note *);   // parar la alarma de este recordatorio
 
+    // --- reordenar ---
+    // Un paso arriba (-1) o abajo (+1) desde el menú; el arrastre por el
+    // asidero va aparte, porque necesita seguir al ratón mientras dura.
+    void moveRequested(Note *, int steps);
+    void dragStarted();
+    void dragMoved(const QPoint &globalPos);
+    void dragFinished();
+
 protected:
     void contextMenuEvent(QContextMenuEvent *e) override;
 
 private:
     void build();
+    void buildTitleRow(QVBoxLayout *l);
     void buildCheck(QVBoxLayout *l);
     void buildReminder(QVBoxLayout *l);
     void buildText(QVBoxLayout *l);
@@ -51,6 +61,21 @@ private:
     void refreshProgress();
 
     void openDuePopup(const QPoint &globalPos);   // chip o menú contextual
+    void setRepeat(Note::Repeat repeat);
+    void refreshRepeat();
+
+    // --- detalles del recordatorio ---
+    // Un recordatorio sin cuerpo enseña solo su fecha; el editor aparece
+    // cuando se pide, no ocupando sitio por si acaso.
+    void showDetailsGhost();
+    void showDetailsEditor(bool focus);
+
+    // --- imágenes adjuntas ---
+    void buildImages(QVBoxLayout *l);
+    void refreshImages();
+    void addImages();
+    void toggleImages();
+    void openImageMenu(int index, const QPoint &globalPos);
 
     // --- enlaces adjuntos ---
     void refreshLinks();                         // reconstruye solo las filas
@@ -75,6 +100,18 @@ private:
 
     QWidget *m_linksBox = nullptr;       // contenedor de las filas de enlaces
     QVBoxLayout *m_linksLayout = nullptr;
+
+    QWidget *m_imagesBox = nullptr;      // cabecera plegable + tira de miniaturas
+    QWidget *m_imagesStrip = nullptr;
+    QVBoxLayout *m_imagesLayout = nullptr;
+    QLabel *m_imagesTitle = nullptr;
+    QToolButton *m_imagesToggle = nullptr;
+
+    // Hueco donde vive el cuerpo de un recordatorio: dentro está el editor o
+    // el "añadir detalles", y cambiar de uno a otro no toca el resto.
+    QWidget *m_detailSlot = nullptr;
+    QVBoxLayout *m_detailLayout = nullptr;
+    QLabel *m_repeatChip = nullptr;
 
     QLabel *m_chip = nullptr;
     QLabel *m_dueIcon = nullptr;

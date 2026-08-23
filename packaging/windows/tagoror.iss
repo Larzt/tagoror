@@ -76,6 +76,11 @@ Name: "startup"; Description: "{cm:StartupTask}"; Flags: unchecked
 ; arranca, así que van en bloque.
 Source: "{#StagingDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+; La licencia viaja dentro de StagingDir (CMake la instala junto al .exe), así
+; que llega al instalador y al ZIP con el resto de ficheros. A propósito no se
+; pone LicenseFile: Inno lee un .txt como ANSI salvo que empiece por BOM UTF-8,
+; y el apellido del autor saldría roto en la página de licencia.
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon

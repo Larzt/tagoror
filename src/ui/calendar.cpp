@@ -12,6 +12,7 @@
 #include <QLocale>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -25,6 +26,17 @@ constexpr int kWeekHeaderH = 18;   // franja de iniciales de la semana, sobre la
 constexpr int kRows = 6;           // semanas visibles: 6 cubren cualquier mes
 constexpr int kCols = 7;
 constexpr int kMaxDots = 3;        // más avisos en un día no caben; se cuentan igual
+constexpr qreal kNumberH = 14.0;   // alto reservado al número del día
+constexpr qreal kDotBand = 6.0;    // franja de los puntos, justo debajo
+// Por debajo de este alto la rejilla y la lista del día no caben las dos: la
+// lista se pliega sola y deja la vista del mes entera (ver resizeEvent).
+//
+// El umbral va por encima del mínimo que pide la vista entera (unos 320 px con
+// la lista dentro): si fuera igual o menor, no se alcanzaría nunca -- el layout
+// no puede encoger el widget por debajo de su propio mínimo, así que ese alto
+// no llega a darse y el plegado no saltaría jamás. Plegada, la lista deja de
+// contar para ese mínimo y la ventana puede seguir bajando.
+constexpr int kTightHeight = 360;
 
 QString monthTitle(const QDate &month) {
     QString s = Lang::locale().toString(month, "MMMM yyyy");
@@ -175,16 +187,21 @@ protected:
             QColor ink = isToday ? m_theme.accent : QColor(inMonth ? Theme::fg() : Theme::muted());
             if (!inMonth) ink.setAlpha(110);
             p.setPen(ink);
-            // El número sube un poco: los puntos de aviso van justo debajo.
-            p.drawText(cell.adjusted(0, -4, 0, -4), Qt::AlignCenter, QString::number(d.day()));
 
+            // Número y puntos se centran como un bloque, en vez de subir el
+            // número una cantidad fija: así un día sin avisos queda centrado
+            // de verdad en su celda y uno con ellos no se descuelga.
             const Mark mark = m_marks.value(d);
             const int dots = int(mark.alerts.size());
+            const qreal dotsH = dots > 0 ? kDotBand : 0.0;
+            const qreal top = box.center().y() - (kNumberH + dotsH) / 2.0;
+            p.drawText(QRectF(cell.left(), top, cw, kNumberH), Qt::AlignCenter,
+                       QString::number(d.day()));
             if (dots <= 0) continue;
 
             p.setPen(Qt::NoPen);
             const qreal step = 5.0;
-            const qreal y = cell.bottom() - 7;
+            const qreal y = top + kNumberH + kDotBand / 2.0;
             const qreal x0 = cell.center().x() - (dots - 1) * step / 2.0;
             for (int k = 0; k < dots; ++k) {
                 QColor dot = mark.alerts.at(k) ? QColor("#ff7a6b") : m_theme.accent;
@@ -245,16 +262,7 @@ CalendarView::CalendarView(const Theme &theme, QWidget *parent)
     line->setFixedHeight(1);
     col->addWidget(line);
 
-    auto *dayHeader = new QHBoxLayout;
-    dayHeader->setContentsMargins(2, 0, 2, 0);
-    m_dayLabel = new QLabel;
-    m_dayLabel->setObjectName("meta");
-    m_dayCount = new QLabel;
-    m_dayCount->setObjectName("meta");
-    m_dayCount->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    dayHeader->addWidget(m_dayLabel, 1);
-    dayHeader->addWidget(m_dayCount);
-    col->addLayout(dayHeader);
+    buildDayHeader(col);
 
     auto *host = new QWidget;
     host->setObjectName("listHost");
@@ -272,7 +280,73 @@ CalendarView::CalendarView(const Theme &theme, QWidget *parent)
     m_dayScroll->viewport()->setObjectName("scrollViewport");
     col->addWidget(m_dayScroll);
 
+    applyDayCollapsed();   // deja la flecha con su icono desde el principio
     showMonth(m_selected);
+}
+
+// Cabecera de la lista del día: es también el mando para plegarla. La fila
+// entera responde al clic, no solo la flecha, que a 18 px es un blanco pequeño.
+void CalendarView::buildDayHeader(QVBoxLayout *col) {
+    auto *row = new DayRow;
+    row->setObjectName("dayHeader");
+    row->click = [this] { toggleDayList(); };
+    m_dayHeader = row;
+
+    auto *l = new QHBoxLayout(row);
+    l->setContentsMargins(4, 1, 2, 1);
+    l->setSpacing(6);
+
+    m_dayToggle = new QToolButton;
+    m_dayToggle->setIconSize(QSize(12, 12));
+    m_dayToggle->setFixedSize(18, 18);
+    m_dayToggle->setCursor(Qt::PointingHandCursor);
+    connect(m_dayToggle, &QToolButton::clicked, this, &CalendarView::toggleDayList);
+    l->addWidget(m_dayToggle, 0, Qt::AlignVCenter);
+
+    m_dayLabel = new QLabel;
+    m_dayLabel->setObjectName("meta");
+    m_dayCount = new QLabel;
+    m_dayCount->setObjectName("meta");
+    m_dayCount->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    l->addWidget(m_dayLabel, 1);
+    l->addWidget(m_dayCount);
+    col->addWidget(row);
+}
+
+void CalendarView::toggleDayList() {
+    m_dayCollapsed = !m_dayCollapsed;
+    // A partir de aquí manda la elección del usuario: aunque el panel siga
+    // estrecho, abrirla a mano tiene que abrirla, y volver a crecer no debe
+    // deshacer un plegado pedido a propósito.
+    m_autoCollapsed = false;
+    applyDayCollapsed();
+}
+
+void CalendarView::applyDayCollapsed() {
+    if (m_dayScroll) m_dayScroll->setVisible(!m_dayCollapsed);
+    if (!m_dayToggle) return;
+    m_dayToggle->setIcon(paintIcon(m_dayCollapsed ? "chevronRight" : "chevronDown",
+                                   QColor(Theme::muted()), 12));
+    m_dayToggle->setToolTip(m_dayCollapsed ? L("Mostrar los avisos del día")
+                                           : L("Plegar los avisos del día"));
+}
+
+void CalendarView::resizeEvent(QResizeEvent *e) {
+    QWidget::resizeEvent(e);
+
+    const bool tight = height() < kTightHeight;
+    if (tight == m_tight) return;
+    m_tight = tight;
+
+    if (tight && !m_dayCollapsed) {
+        m_dayCollapsed = true;
+        m_autoCollapsed = true;      // se deshace solo al recuperar el alto
+        applyDayCollapsed();
+    } else if (!tight && m_autoCollapsed) {
+        m_dayCollapsed = false;
+        m_autoCollapsed = false;
+        applyDayCollapsed();
+    }
 }
 
 void CalendarView::buildHeader(QVBoxLayout *col) {
@@ -331,6 +405,7 @@ void CalendarView::retranslate() {
     m_nextBtn->setToolTip(L("Mes siguiente"));
     m_todayBtn->setText(L("Hoy"));
     m_todayBtn->setToolTip(L("Volver a hoy"));
+    applyDayCollapsed();     // la ayuda de la flecha lleva texto
     if (m_grid) m_grid->update();
     refresh();
 }
@@ -355,27 +430,37 @@ void CalendarView::showMonth(const QDate &anyDayOfMonth) {
 void CalendarView::refresh() {
     refreshMonthLabel();
 
+    // Se recorren los días visibles preguntando a cada nota si cae ahí, y no
+    // al revés: un recordatorio que se repite no tiene una fecha, tiene todas
+    // las que encajan con su patrón, y solo las de este mes hay que pintar.
+    //
     // Los avisos de cada día se ordenan por hora antes de convertirlos en
     // puntos: las notas llegan por antigüedad, no por cuándo suenan.
-    QHash<QDate, QList<QPair<qint64, bool>>> byDay;
+    QHash<QDate, MonthGrid::Mark> marks;
     if (m_notes) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
-        for (Note *n : *m_notes) {
-            if (!n->isScheduled()) continue;
-            byDay[n->dueDate()].append({n->dueAtMs, n->ringing || n->dueAtMs <= now});
+        const QDate first = m_month.addDays(-(m_month.dayOfWeek() - 1));
+
+        for (int i = 0; i < kRows * kCols; ++i) {
+            const QDate day = first.addDays(i);
+            QList<QPair<qint64, bool>> found;
+            for (Note *n : *m_notes) {
+                if (!n->occursOn(day)) continue;
+                const qint64 at = n->occurrenceOn(day).toMSecsSinceEpoch();
+                // Una vuelta ya pasada de algo que se repite no es un aviso
+                // vencido, es historia: solo el que suena o el que se quedó
+                // sin sonar se pinta en rojo.
+                found.append({at, n->ringing || (at <= now && !n->repeats())});
+            }
+            if (found.isEmpty()) continue;
+            std::sort(found.begin(), found.end());
+
+            MonthGrid::Mark mark;
+            mark.count = int(found.size());
+            for (int k = 0; k < qMin(int(found.size()), kMaxDots); ++k)
+                mark.alerts.append(found.at(k).second);
+            marks.insert(day, mark);
         }
-    }
-
-    QHash<QDate, MonthGrid::Mark> marks;
-    for (auto it = byDay.begin(); it != byDay.end(); ++it) {
-        QList<QPair<qint64, bool>> &day = it.value();
-        std::sort(day.begin(), day.end());
-
-        MonthGrid::Mark mark;
-        mark.count = int(day.size());
-        for (int i = 0; i < qMin(int(day.size()), kMaxDots); ++i)
-            mark.alerts.append(day.at(i).second);
-        marks.insert(it.key(), mark);
     }
     m_grid->setMarks(marks);
     m_grid->setSelected(m_selected);
@@ -391,10 +476,14 @@ QList<Note *> CalendarView::notesOn(const QDate &day) const {
     if (!m_notes) return found;
 
     for (Note *n : *m_notes)
-        if (n->isScheduled() && n->dueDate() == day) found.append(n);
+        if (n->occursOn(day)) found.append(n);
 
-    std::sort(found.begin(), found.end(),
-              [](Note *a, Note *b) { return a->dueAtMs < b->dueAtMs; });
+    // Por hora del día, no por instante: dos vueltas de recordatorios
+    // repetidos caen aquí con fechas base distintas y lo que ordena la lista
+    // es a qué hora suenan.
+    std::sort(found.begin(), found.end(), [](Note *a, Note *b) {
+        return a->dueAt().time() < b->dueAt().time();
+    });
     return found;
 }
 
@@ -424,7 +513,11 @@ void CalendarView::refreshDayList() {
     int at = 0;
 
     for (Note *n : today) {
-        const bool alert = n->ringing || n->dueAtMs <= now;
+        // La hora sale de la vuelta que toca este día, no de dueAtMs: en un
+        // recordatorio anual esa fecha es la del próximo año.
+        const QDateTime when = n->occurrenceOn(m_selected);
+        const bool alert = n->ringing ||
+                           (when.toMSecsSinceEpoch() <= now && !n->repeats());
         const QColor tint = alert ? QColor("#ff7a6b") : m_theme.accent;
 
         auto *row = new DayRow;
@@ -434,7 +527,7 @@ void CalendarView::refreshDayList() {
         l->setContentsMargins(6, 4, 6, 4);
         l->setSpacing(8);
 
-        auto *time = new QLabel(n->dueAt().toString("HH:mm"));
+        auto *time = new QLabel(when.toString("HH:mm"));
         time->setObjectName("dayTime");
         l->addWidget(time, 0, Qt::AlignVCenter);
 
@@ -451,6 +544,16 @@ void CalendarView::refreshDayList() {
         title->setObjectName("dayRowTitle");
         title->setToolTip(n->title);
         l->addWidget(title, 1);
+
+        // Marca de "esto vuelve": sin ella, un cumpleaños y una cita de un
+        // solo día se leen igual en la lista.
+        if (n->repeats()) {
+            auto *loop = new QLabel;
+            loop->setFixedSize(12, 12);
+            loop->setPixmap(paintIcon("repeat", m_theme.accent, 12).pixmap(12, 12));
+            loop->setToolTip(n->repeatLabel());
+            l->addWidget(loop, 0, Qt::AlignVCenter);
+        }
 
         // Sonando manda el botón de parar; vencido y callado, un chip.
         if (n->ringing) {

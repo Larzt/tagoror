@@ -39,6 +39,11 @@ public:
 
     QDate selectedDate() const { return m_selected; }
 
+protected:
+    // La lista del día se pliega sola cuando el panel se queda sin alto: con
+    // la rejilla y la lista peleándose por 200 px no se veía bien ninguna.
+    void resizeEvent(QResizeEvent *e) override;
+
 signals:
     void createRequested(const QDate &day, QWidget *anchor);   // "nuevo recordatorio"
     void noteActivated(Note *n);                               // abrir la nota en la lista
@@ -46,8 +51,11 @@ signals:
 
 private:
     void buildHeader(QVBoxLayout *col);
+    void buildDayHeader(QVBoxLayout *col);
     void refreshMonthLabel();
     void refreshDayList();
+    void toggleDayList();      // lo pulsa el usuario: manda sobre el plegado automático
+    void applyDayCollapsed();
     void showMonth(const QDate &anyDayOfMonth);
     QList<Note *> notesOn(const QDate &day) const;
 
@@ -62,6 +70,14 @@ private:
     QToolButton *m_prevBtn = nullptr;
     QToolButton *m_nextBtn = nullptr;
     QToolButton *m_todayBtn = nullptr;
+    QWidget *m_dayHeader = nullptr;
+    QToolButton *m_dayToggle = nullptr;
+    bool m_dayCollapsed = false;
+    // Plegada por falta de sitio, no por decisión de nadie: al recuperar alto
+    // se vuelve a abrir sola. Si el usuario toca el plegado, deja de estarlo y
+    // manda su elección.
+    bool m_autoCollapsed = false;
+    bool m_tight = false;
     QLabel *m_dayLabel = nullptr;
     QLabel *m_dayCount = nullptr;
     QScrollArea *m_dayScroll = nullptr;

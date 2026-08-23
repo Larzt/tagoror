@@ -38,7 +38,11 @@ public:
     const QList<Note *> &notes() const { return m_notes; }
     int count() const { return int(m_notes.size()); }
     void add(Note *n);                 // la más reciente, arriba
-    void remove(Note *n);              // se lleva por delante su adjunto
+    void remove(Note *n);              // se lleva por delante sus adjuntos
+    // Reordena las notas para que queden en el orden dado. Es lo que usa el
+    // panel tras arrastrar una tarjeta: pasa el orden que ya tienen en
+    // pantalla en vez de calcular índices por su cuenta.
+    void setOrder(const QList<Note *> &order);
 
     Prefs &prefs() { return m_prefs; }
     const Prefs &prefs() const { return m_prefs; }

@@ -99,6 +99,41 @@ const QHash<QString, QString> &table() {
         {"p. ej. 20:30", "e.g. 20:30"},
         {"Ya pasado", "Already past"},
 
+        // --- repetición de recordatorios --------------------------------------
+        {"Repetir", "Repeat"},
+        {"No repetir", "Do not repeat"},
+        {"Suena una vez", "Rings once"},
+        {"Cada semana", "Every week"},
+        {"Cada año", "Every year"},
+        {"CADA SEMANA", "EVERY WEEK"},
+        {"CADA AÑO", "EVERY YEAR"},
+        {"Clic para cambiar la repetición", "Click to change how often it repeats"},
+        {"%1 · clic para cambiarlo", "%1 · click to change it"},
+
+        // --- detalles de un recordatorio --------------------------------------
+        {"+ Añadir detalles", "+ Add details"},
+        {"Añadir detalles", "Add details"},
+        {"Escribir detalles del recordatorio", "Write the reminder's details"},
+        {"Escribe bajo la fecha", "Writes under the date"},
+
+        // --- imágenes adjuntas -------------------------------------------------
+        {"Imágenes", "Images"},
+        {"Añadir imagen…", "Add image…"},
+        {"Elegir imágenes", "Choose images"},
+        {"Se copia junto a la nota", "Copied next to the note"},
+        {"%1 ya adjuntas", "%1 already attached"},
+        {"1 IMAGEN", "1 IMAGE"},
+        {"%1 IMÁGENES", "%1 IMAGES"},
+        {"Mostrar imágenes", "Show images"},
+        {"Ocultar imágenes", "Hide images"},
+        {"Quitar imagen", "Remove image"},
+
+        // --- orden de las tarjetas ---------------------------------------------
+        {"Orden", "Order"},
+        {"Subir", "Move up"},
+        {"Bajar", "Move down"},
+        {"Arrastra para reordenar", "Drag to reorder"},
+
         // --- enlaces ---------------------------------------------------------
         {"Enlace", "Link"},
         {"Nuevo enlace", "New link"},
@@ -138,6 +173,8 @@ const QHash<QString, QString> &table() {
         {"1 AVISO", "1 REMINDER"},
         {"%1 AVISOS", "%1 REMINDERS"},
         {"Sin recordatorios este día", "No reminders on this day"},
+        {"Mostrar los avisos del día", "Show the day's reminders"},
+        {"Plegar los avisos del día", "Fold away the day's reminders"},
 
         // --- notas de ejemplo del primer arranque ---------------------------------
         {"Escribir changelog", "Write the changelog"},

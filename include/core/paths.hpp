@@ -29,3 +29,11 @@ inline QString audioDir() {
     QDir().mkpath(dir);
     return dir;
 }
+
+// Las imágenes adjuntas, al lado del audio: una carpeta por tipo de adjunto
+// para que mover la carpeta de datos siga siendo copiar dos directorios.
+inline QString imageDir() {
+    const QString dir = appDataDir() + "/images";
+    QDir().mkpath(dir);
+    return dir;
+}

@@ -47,6 +47,7 @@ add_executable(tagoror
     include/ui/workarea.hpp
     include/ui/dragwidgets.hpp
     include/ui/elidedlabel.hpp
+    include/ui/imagethumb.hpp
 
     src/audio/recorder.cpp
     src/audio/alarm.cpp
@@ -128,6 +129,10 @@ include(GNUInstallDirs)
 # que luego rellena windeployqt y empaqueta Inno Setup (packaging/windows/).
 if (WIN32)
     install(TARGETS tagoror RUNTIME DESTINATION .)
+    # La licencia se instala al lado del .exe: es lo que la recoge windeployqt
+    # en la carpeta que luego empaquetan el ZIP portable y Inno Setup, así que
+    # las dos formas de repartirlo llevan el texto dentro.
+    install(FILES LICENSE DESTINATION .)
     return()
 endif()
 
@@ -146,6 +151,14 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${TAGOROR_APP_ID}.desktop
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${TAGOROR_APP_ID}.metainfo.xml
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo)
+
+# El texto de la licencia. Arch lo exige para MIT: su texto lleva el nombre del
+# autor, así que no es una de las licencias 'common' que ya están en el sistema
+# y cada paquete tiene que traer la suya en /usr/share/licenses/<paquete>/.
+# La carpeta va con el nombre del paquete (tagoror), no con TAGOROR_APP_ID: el
+# ID solo manda en el .desktop, los iconos y la ficha de AppStream.
+install(FILES LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/tagoror)
 
 # El SVG detallado como icono escalable, y PNG ya rasterizados por tamaño:
 # los cargadores de iconos prefieren el bitmap exacto antes que el escalable

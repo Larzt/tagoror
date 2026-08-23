@@ -86,12 +86,28 @@ void Store::add(Note *n) {
 }
 
 void Store::remove(Note *n) {
-    // El adjunto de audio muere con la nota; si no, quedan wav huérfanos.
+    // Los adjuntos mueren con la nota; si no, quedan ficheros huérfanos en la
+    // carpeta de datos que ya nada sabe borrar.
     if (!n->audio.isEmpty()) QFile::remove(n->audioPath());
+    for (const QString &image : n->images) QFile::remove(Note::imagePath(image));
 
     m_notes.removeOne(n);
     delete n;
     save();
+}
+
+// El orden llega hecho desde la pantalla, así que solo se comprueba que sean
+// exactamente las mismas notas: cualquier discrepancia (una lista a medias,
+// una nota que ya no existe) deja el orden anterior en vez de perder ninguna.
+void Store::setOrder(const QList<Note *> &order) {
+    if (order.size() != m_notes.size()) return;
+    for (Note *n : order)
+        if (!m_notes.contains(n)) return;
+
+    m_notes = order;
+    // Diferido a propósito: arrastrando una tarjeta esto se llama una vez por
+    // cada tarjeta que cruza, y no hay que escribir el fichero en cada cruce.
+    scheduleSave();
 }
 
 // --- persistencia ----------------------------------------------------------
@@ -166,14 +182,18 @@ void Store::changeDataDir(const QString &to) {
     const QString from = appDataDir();
     if (to.isEmpty() || to == from) return;
 
-    // Las notas se llevan consigo sus adjuntos; si no, las notas de voz
-    // apuntarían a ficheros que se quedaron en la carpeta anterior.
+    // Las notas se llevan consigo sus adjuntos; si no, las notas de voz y las
+    // imágenes apuntarían a ficheros que se quedaron en la carpeta anterior.
     QDir().mkpath(to + "/audio");
-    for (Note *n : m_notes) {
-        if (n->audio.isEmpty()) continue;
-        const QString target = to + "/audio/" + n->audio;
+    QDir().mkpath(to + "/images");
+    auto copyAttachment = [&](const QString &sub, const QString &name) {
+        const QString target = to + "/" + sub + "/" + name;
         if (QFile::exists(target)) QFile::remove(target);
-        QFile::copy(from + "/audio/" + n->audio, target);
+        QFile::copy(from + "/" + sub + "/" + name, target);
+    };
+    for (Note *n : m_notes) {
+        if (!n->audio.isEmpty()) copyAttachment("audio", n->audio);
+        for (const QString &image : n->images) copyAttachment("images", image);
     }
 
     dataDirOverride() = to;

@@ -69,6 +69,16 @@ private:
     void addNote(Note::Type type);
     void removeNote(Note *n);
 
+    // --- reordenar ---
+    // El orden lo lleva la pantalla y el Store lo copia: arrastrar mueve la
+    // tarjeta dentro del layout y de ahí sale la lista que se guarda, así no
+    // hay dos ideas del orden que puedan discrepar.
+    void moveNote(Note *n, int steps);        // un paso, desde el menú
+    void beginCardDrag(NoteCard *card);
+    void dragCardTo(NoteCard *card, const QPoint &globalPos);
+    void endCardDrag(NoteCard *card);
+    void commitOrder();
+
     // --- calendario ---
     void toggleCalendar();
     void setCalendarActive(bool on);
@@ -81,6 +91,9 @@ private:
     // --- recordatorios ---
     void checkReminders();          // ¿alguno ha vencido? → suena y avisa
     void dismissNote(Note *n);      // el usuario para el aviso
+    // Calla un aviso: los que se repiten no quedan como avisados, saltan a su
+    // siguiente vuelta. Lo comparten el botón de parar y abrir el panel.
+    void silence(Note *n);
     void refreshDueCards();         // repinta el estado sin rehacer la lista
     void applyBadgeAlert();         // el dock avisa aunque esté plegado
     bool anyRinging() const;
@@ -149,6 +162,7 @@ private:
     QSystemTrayIcon *m_tray = nullptr;
     QMenu *m_trayMenu = nullptr;
 
+    NoteCard *m_dragCard = nullptr;        // tarjeta que se está arrastrando
     QTimer *m_dueTimer = nullptr;          // vigilancia de recordatorios
     Alarm *m_alarm = nullptr;
     Theme m_theme;

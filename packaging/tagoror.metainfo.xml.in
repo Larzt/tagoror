@@ -10,9 +10,9 @@
   <summary xml:lang="es">Notas pegadas al escritorio</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
-  <!-- TODO: cambiar cuando el repositorio tenga un fichero de licencia; sin
-       uno, esto es lo único honesto que se puede declarar. -->
-  <project_license>LicenseRef-proprietary</project_license>
+  <!-- metadata_license es la de esta ficha; project_license, la del programa
+       (el fichero LICENSE de la raíz). Flathub exige las dos. -->
+  <project_license>MIT</project_license>
 
   <developer id="io.github.larzt">
     <name>Alejandro</name>

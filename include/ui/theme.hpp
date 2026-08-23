@@ -100,6 +100,12 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
     } else if (kind == "chevronRight") {
         p.drawPolyline(QPolygonF({QPointF(c - 2.0, c - 4.4), QPointF(c + 2.4, c),
                                   QPointF(c - 2.0, c + 4.4)}));
+    } else if (kind == "chevronDown") {
+        p.drawPolyline(QPolygonF({QPointF(c - 4.4, c - 2.0), QPointF(c, c + 2.4),
+                                  QPointF(c + 4.4, c - 2.0)}));
+    } else if (kind == "chevronUp") {
+        p.drawPolyline(QPolygonF({QPointF(c - 4.4, c + 2.0), QPointF(c, c - 2.4),
+                                  QPointF(c + 4.4, c + 2.0)}));
     } else if (kind == "voice") {
         p.drawRoundedRect(QRectF(c - 2.1, c - 6, 4.2, 7.4), 2.1, 2.1);
         QPainterPath arc;
@@ -149,6 +155,26 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawRoundedRect(QRectF(-6.0, -2.7, 6.8, 5.4), 2.7, 2.7);
         p.drawRoundedRect(QRectF(-0.8, -2.7, 6.8, 5.4), 2.7, 2.7);
         p.restore();
+    } else if (kind == "repeat") {
+        // Ciclo abierto con una punta de flecha: dice "vuelve" sin depender
+        // de un texto que además cambia de idioma.
+        QPainterPath arc;
+        arc.arcMoveTo(QRectF(c - 4.8, c - 4.8, 9.6, 9.6), 60);
+        arc.arcTo(QRectF(c - 4.8, c - 4.8, 9.6, 9.6), 60, 280);
+        p.drawPath(arc);
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        p.drawPolygon(QPolygonF({QPointF(c + 1.2, c - 5.6), QPointF(c + 5.4, c - 4.0),
+                                 QPointF(c + 1.6, c - 1.8)}));
+    } else if (kind == "image") {
+        p.drawRoundedRect(QRectF(c - 5.8, c - 4.8, 11.6, 9.6), 2.4, 2.4);
+        // Sol y montaña: la silueta que se reconoce como "foto" a 13 px.
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        p.drawEllipse(QPointF(c - 2.4, c - 2.0), 1.2, 1.2);
+        p.drawPolygon(QPolygonF({QPointF(c - 4.6, c + 3.6), QPointF(c - 0.6, c - 0.8),
+                                 QPointF(c + 2.0, c + 1.6), QPointF(c + 3.2, c + 0.6),
+                                 QPointF(c + 4.6, c + 3.6)}));
     } else if (kind == "copy") {
         p.drawRoundedRect(QRectF(c - 5.4, c - 5.4, 8.0, 8.0), 2.0, 2.0);
         p.drawRoundedRect(QRectF(c - 2.6, c - 2.6, 8.0, 8.0), 2.0, 2.0);
@@ -367,6 +393,34 @@ QWidget#dayRow { background: transparent; border-radius: 8px; }
 QWidget#dayRow:hover { background: %7; }
 QLabel#dayRowTitle { color: %3; font-size: 11.5px; }
 QLabel#dayRowTitleAlert { color: #ff7a6b; font-size: 11.5px; font-weight: 600; }
+
+/* La tarjeta que se está arrastrando se despega del resto: mismo relleno, el
+   acento por borde, para que se vea qué se está moviendo. */
+QFrame#card[dragging="true"] {
+    border: 1px solid %5;
+    background: %7;
+}
+/* El asidero de reordenar solo se tiñe al pasar por encima: en reposo tiene
+   que desaparecer detrás del título. */
+QToolButton#dragHandle { background: transparent; border: none; padding: 0; }
+QToolButton#dragHandle:hover { background: %7; }
+
+/* "Añadir detalles": un recordatorio sin cuerpo no enseña editor ninguno, así
+   que esta es la única puerta de entrada y tiene que parecer pulsable. */
+QLabel#addDetails { color: %4; font-size: 10.5px; }
+QLabel#addDetails:hover { color: %5; }
+
+/* --- imágenes adjuntas ---------------------------------------------------- */
+QWidget#imgHeader { background: transparent; border-radius: 7px; }
+QWidget#imgHeader:hover { background: %7; }
+QLabel#imgTitle {
+    color: %4; font-size: 9.5px; font-weight: 700;
+    font-family: "IBM Plex Mono", monospace;
+}
+
+/* --- cabecera plegable de la lista del día -------------------------------- */
+QWidget#dayHeader { background: transparent; border-radius: 7px; }
+QWidget#dayHeader:hover { background: %7; }
 
 /* --- popups propios (nueva nota, ajustes, menú de tarjeta, fecha) --------- */
 QFrame#popupShell {

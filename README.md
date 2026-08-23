@@ -41,6 +41,13 @@
 - Presets (in 5 minutes, in an hour, 18:00, tomorrow at 9:00), a date typed by
   hand, or a day picked on the calendar.
 - Click the date chip **or** right-click the note to change it.
+- **They can come back every week or every year** — the bin on Thursdays, a
+  birthday — from the *Repetir* section of the same date menu. A repeating
+  reminder shows a small loop next to its date, says how often it returns where
+  the type label goes, and jumps to its next turn as soon as you silence it.
+- **A reminder with no details is only its date.** The body editor is not there
+  taking up room until you ask for it, with *+ Añadir detalles* under the date
+  or the entry in the note's menu.
 - Colour tells you the state at a glance: a muted clock while it is still ahead,
   a red bell once the time has passed — whether or not it has already rung.
 - When one fires it plays a looping tone until you stop it, from the button on
@@ -57,7 +64,9 @@
 - The calendar button in the header swaps the note list for a month grid; the
   same button swaps back.
 - Every reminder shows up as a dot on its day, coloured one by one: accent for
-  what is still ahead, red for what has passed.
+  what is still ahead, red for what has passed. A repeating one is on **all** of
+  its days, past ones included, so browsing back a year still shows the
+  birthday; a turn that is simply over is not painted as overdue.
 - Pick a day to list its reminders by time, click one to jump to its note, or
   add a new one straight from the day — a preset hour or a time you type.
 - Reminders with a free-text date have no instant to place, so they stay in the
@@ -65,6 +74,10 @@
 - The month moves with the arrows, the mouse wheel, or **Hoy** to come back.
 - Each entry shows its time, a bar in the colour of its state, and — once it is
   past due — a `VENCIDO` tag, or a stop button while it is actually ringing.
+- **The day's list folds away**, from the arrow on its header or the whole
+  header row, and folds itself when the panel gets too short for the month grid
+  and the list to share the space. Growing the window again brings back a list
+  that folded on its own, but never one you folded on purpose.
 
 ### Voice notes
 
@@ -87,6 +100,24 @@
 - A long address is shortened with an ellipsis rather than pushing the card
   wider than the panel.
 - The search filter looks inside link names and addresses too.
+
+### Images on any note
+
+- Attach images from the note's right-click menu; they are **copied** next to
+  your notes, so moving or deleting the original does not empty the note, and
+  changing the storage folder takes them along.
+- They are scaled to the width of the card — never the other way round — and
+  cropped to a sensible height rather than stretched.
+- **The whole strip folds**, per note, from the header above it (`3 IMÁGENES`)
+  or from the note's menu; a folded note does not even load them.
+- Click one to open it in your image viewer, right-click it to open or remove it.
+
+### Cards in the order you want
+
+- Every card has a grip in its top-right corner: drag it and the card moves
+  through the list, which scrolls along when you reach its edges.
+- Or move a card one step at a time with *Subir* / *Bajar* in its menu.
+- The order you see is the order that gets saved.
 
 ### The window
 
@@ -284,22 +315,25 @@ Flatpak requires the desktop entry, the icons and the AppStream file to be named
 after the app ID, so that build passes `-DTAGOROR_APP_ID=io.github.larzt.tagoror`
 and CMake renames all of them together. Everywhere else the ID stays `tagoror`.
 
-> **Before publishing anywhere:** the repository has no licence file, so the
-> package metadata declares `LicenseRef-proprietary`. Flathub and the AUR both
-> expect a real one.
-
 ## Where your notes live
 
 ```
 ~/.local/share/Stride/Tagoror/
 ├── notes.json     # notes, accent, opacity, window size, preferences
 ├── alarm.wav      # the generated alarm tone
-└── audio/         # one WAV per voice note
+├── audio/         # one WAV per voice note
+└── images/        # the images attached to notes
 ```
 
-The folder is configurable from settings. Changing it copies the voice
-attachments across and leaves the originals where they were, so nothing is lost
-if the copy fails.
+The folder is configurable from settings. Changing it copies the attachments —
+voice takes and images — across and leaves the originals where they were, so
+nothing is lost if the copy fails.
+
+> The chosen folder lives in `QSettings` (`~/.config/Stride/Tagoror.conf`) and
+> not in `notes.json`, since it is what decides where `notes.json` is. That
+> means **`XDG_DATA_HOME` on its own does not isolate a test run**: with a
+> folder configured, the app follows it and opens your real notes. Point
+> `XDG_CONFIG_HOME` somewhere scratch as well.
 
 ## Layout
 
@@ -327,6 +361,24 @@ regenerates the PNGs when either SVG changes.
 `wave.hpp` is a small header-only RIFF/WAVE reader and writer — enough for the
 16-bit PCM files the app records, and it declines anything else rather than
 guessing.
+
+## Licence
+
+Tagoror is released under the **MIT licence** — the full text is in
+[`LICENSE`](LICENSE), and every package carries it: on Linux it is installed as
+`share/licenses/tagoror/LICENSE` (which is what Arch requires, and what the
+AppImage picks up along with everything else), and on Windows it sits next to
+`tagoror.exe`, so both the installer and the portable ZIP include it. The
+AppStream file declares `MIT` as well, which is what Flathub and the software
+centres read.
+
+The interface is built with **Qt 6**, used unmodified under the **LGPL-3.0**
+and linked dynamically. The packages that bundle it — the AppImage, the Windows
+installer and the ZIP — therefore ship Qt's own libraries next to the binary,
+where they can be replaced with a compatible build; Qt's licence texts travel
+inside those Qt files. Nothing else is vendored: the icons are drawn with
+`QPainter` and the alarm tone is synthesised at runtime, so there are no
+third-party assets to attribute.
 
 ## Known limitations
 

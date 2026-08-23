@@ -1,6 +1,7 @@
 #include "ui/notecard.hpp"
 #include "core/lang.hpp"
 #include "ui/elidedlabel.hpp"
+#include "ui/imagethumb.hpp"
 #include "ui/popup.hpp"
 #include "audio/recorder.hpp"
 #include "ui/theme.hpp"
@@ -14,9 +15,12 @@
 #include <QAudioOutput>
 #include <QCheckBox>
 #include <QContextMenuEvent>
+#include <QApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QStyle>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -152,6 +156,58 @@ QString typeLabel(Note::Type t) {
     }
 }
 
+// Asidero para reordenar la tarjeta. No arrastra la ventana como DragBar ni
+// pide nada al compositor: el movimiento se queda dentro de la lista, así que
+// solo reparte las posiciones del ratón y quien manda es el panel.
+//
+// El arrastre no empieza hasta pasar startDragDistance, para que un clic torpe
+// sobre el asidero no reordene nada.
+class DragHandle : public QToolButton {
+public:
+    std::function<void()> start;
+    std::function<void(const QPoint &)> moved;
+    std::function<void()> finished;
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton) {
+            QToolButton::mousePressEvent(e);
+            return;
+        }
+        m_press = e->globalPosition().toPoint();
+        m_active = false;
+        e->accept();     // Qt agarra el ratón: los movimientos siguen llegando aquí
+    }
+
+    void mouseMoveEvent(QMouseEvent *e) override {
+        if (!(e->buttons() & Qt::LeftButton)) return;
+        const QPoint at = e->globalPosition().toPoint();
+        if (!m_active &&
+            (at - m_press).manhattanLength() < QApplication::startDragDistance())
+            return;
+        if (!m_active) {
+            m_active = true;
+            setDown(false);       // si no, se queda hundido al soltar
+            if (start) start();
+        }
+        if (moved) moved(at);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (!m_active) {
+            QToolButton::mouseReleaseEvent(e);
+            return;
+        }
+        m_active = false;
+        if (finished) finished();
+        e->accept();
+    }
+
+private:
+    QPoint m_press;
+    bool m_active = false;
+};
+
 QToolButton *roundButton(const QString &kind, const QColor &color, const QString &tip) {
     auto *b = new QToolButton;
     b->setIcon(paintIcon(kind, color));
@@ -177,15 +233,7 @@ void NoteCard::build() {
     l->setContentsMargins(11, 9, 11, 10);
     l->setSpacing(7);
 
-    m_title = new QLineEdit(m_note->title);
-    m_title->setContextMenuPolicy(Qt::NoContextMenu);
-    m_title->setObjectName("cardTitleEdit");
-    m_title->setPlaceholderText(L("Sin título"));
-    connect(m_title, &QLineEdit::textChanged, this, [this](const QString &t) {
-        m_note->title = t;
-        emit dirty();
-    });
-    l->addWidget(m_title);
+    buildTitleRow(l);
 
     switch (m_note->type) {
         case Note::Check:    buildCheck(l);    break;
@@ -193,6 +241,8 @@ void NoteCard::build() {
         case Note::Voice:    buildVoice(l);    break;
         default:             buildText(l);     break;
     }
+
+    buildImages(l);
 
     m_linksBox = new QWidget;
     m_linksLayout = new QVBoxLayout(m_linksBox);
@@ -206,6 +256,39 @@ void NoteCard::build() {
     if (at >= 0) l->insertWidget(at, m_linksBox);
     else l->addWidget(m_linksBox);
     refreshLinks();
+}
+
+// Título editable y, a su derecha, el asidero para reordenar. El asidero se
+// pinta apagado y solo se enciende al pasar por encima: está siempre, pero no
+// compite con el título.
+void NoteCard::buildTitleRow(QVBoxLayout *l) {
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(4);
+
+    m_title = new QLineEdit(m_note->title);
+    m_title->setContextMenuPolicy(Qt::NoContextMenu);
+    m_title->setObjectName("cardTitleEdit");
+    m_title->setPlaceholderText(L("Sin título"));
+    connect(m_title, &QLineEdit::textChanged, this, [this](const QString &t) {
+        m_note->title = t;
+        emit dirty();
+    });
+    row->addWidget(m_title, 1);
+
+    auto *handle = new DragHandle;
+    handle->setObjectName("dragHandle");
+    handle->setIcon(paintIcon("grip", QColor(Theme::muted()), 13));
+    handle->setIconSize(QSize(13, 13));
+    handle->setFixedSize(20, 20);
+    handle->setCursor(Qt::SizeVerCursor);
+    handle->setToolTip(L("Arrastra para reordenar"));
+    handle->start = [this] { emit dragStarted(); };
+    handle->moved = [this](const QPoint &at) { emit dragMoved(at); };
+    handle->finished = [this] { emit dragFinished(); };
+    row->addWidget(handle, 0, Qt::AlignVCenter);
+
+    l->addLayout(row);
 }
 
 void NoteCard::buildText(QVBoxLayout *l) {
@@ -238,6 +321,18 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     m_chip->setToolTip(L("Clic para cambiar la fecha"));
     row->addWidget(m_chip);
 
+    // Marca de repetición al lado de la fecha. Es un icono y no un chip con el
+    // texto ("Cada semana") porque la fila ya va justa: con el chip, un
+    // recordatorio semanal vencido pedía 296 px de ancho mínimo y la lista solo
+    // tiene 284 con el panel en su tamaño mínimo -- y una tarjeta que pide de
+    // más ensancha la lista entera y recorta a todas por la derecha (ver
+    // CLAUDE.md). El rótulo de la derecha ya dice CADA SEMANA con todas sus
+    // letras cuando no hay nada más urgente que contar.
+    m_repeatChip = new ClickableLabel(QString(), [this](const QPoint &p) { openDuePopup(p); });
+    m_repeatChip->setFixedSize(12, 12);
+    row->addWidget(m_repeatChip, 0, Qt::AlignVCenter);
+    refreshRepeat();
+
     // Solo aparece mientras suena la alarma; es la forma de callarla.
     m_dueBtn = roundButton("stop", QColor("#ff7a6b"), L("Detener aviso"));
     m_dueBtn->setObjectName("dueBtn");
@@ -253,12 +348,56 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     row->addWidget(m_meta);
     l->addLayout(row);
 
+    // Sin detalles escritos, la tarjeta es su fecha y nada más: el editor
+    // vacío ocupaba 46 px de nada en cada recordatorio de la lista.
+    m_detailSlot = new QWidget;
+    m_detailLayout = new QVBoxLayout(m_detailSlot);
+    m_detailLayout->setContentsMargins(0, 0, 0, 0);
+    m_detailLayout->setSpacing(0);
+    l->addWidget(m_detailSlot);
+
+    if (m_note->body.isEmpty()) showDetailsGhost();
+    else showDetailsEditor(false);
+}
+
+// Lo que se ve en el hueco de detalles cuando no hay ninguno: una sola línea
+// apagada que los pide. Vaciar el editor no vuelve aquí -- se quedaría sin
+// sitio donde escribir a media frase --, se vuelve al reconstruir la tarjeta.
+void NoteCard::showDetailsGhost() {
+    if (!m_detailLayout) return;
+    while (QLayoutItem *it = m_detailLayout->takeAt(0)) {
+        if (QWidget *w = it->widget()) {
+            w->hide();
+            w->deleteLater();
+        }
+        delete it;
+    }
+
+    auto *ghost = new ClickableLabel(L("+ Añadir detalles"),
+                                     [this](const QPoint &) { showDetailsEditor(true); });
+    ghost->setObjectName("addDetails");
+    ghost->setContextMenuPolicy(Qt::NoContextMenu);
+    ghost->setToolTip(L("Escribir detalles del recordatorio"));
+    m_detailLayout->addWidget(ghost);
+}
+
+void NoteCard::showDetailsEditor(bool focus) {
+    if (!m_detailLayout) return;
+    while (QLayoutItem *it = m_detailLayout->takeAt(0)) {
+        if (QWidget *w = it->widget()) {
+            w->hide();
+            w->deleteLater();
+        }
+        delete it;
+    }
+
     QTextEdit *body = autoGrowEditor(m_note->body, L("Detalles…"));
     connect(body, &QTextEdit::textChanged, this, [this, body] {
         m_note->body = body->toPlainText();
         emit dirty();
     });
-    l->addWidget(body);
+    m_detailLayout->addWidget(body);
+    if (focus) body->setFocus();
 }
 
 void NoteCard::buildCheck(QVBoxLayout *l) {
@@ -420,6 +559,7 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
             m_note->due = Lang::locale().toString(when, "ddd d MMM HH:mm");
             m_note->fired = false;
             if (m_chip) m_chip->setText(m_note->dueLabel());
+            refreshRepeat();
             refreshDue();
             emit dirty();
         });
@@ -435,10 +575,27 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
         m_note->dueAtMs = parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0;
         m_note->due = value;
         m_note->fired = false;
-        if (m_chip) m_chip->setText(value.isEmpty() ? L("Sin fecha") : value);
+        if (m_chip) m_chip->setText(m_note->dueLabel().isEmpty() ? L("Sin fecha")
+                                                                : m_note->dueLabel());
+        refreshRepeat();
         refreshDue();
         emit dirty();
     });
+
+    // La repetición vive aquí y no en un menú propio: es parte de "cuándo
+    // suena esto", igual que la fecha, y con fecha libre no significa nada.
+    if (m_note->isScheduled()) {
+        menu->addSeparator();
+        menu->addHeader(L("Repetir"));
+        const QList<QPair<Note::Repeat, QPair<QString, QString>>> modes = {
+            {Note::Once,   {L("No repetir"), L("Suena una vez")}},
+            {Note::Weekly, {L("Cada semana"), Lang::locale().toString(m_note->dueAt(), "dddd")}},
+            {Note::Yearly, {L("Cada año"), Lang::locale().toString(m_note->dueAt(), "d MMMM")}},
+        };
+        for (const auto &[mode, text] : modes)
+            menu->addItem(m_note->repeat == mode ? "check" : "repeat", text.first, text.second,
+                          [this, mode = mode] { setRepeat(mode); });
+    }
 
     if (!m_note->due.isEmpty()) {
         menu->addSeparator();
@@ -447,6 +604,7 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
             m_note->dueAtMs = 0;
             m_note->fired = false;
             if (m_chip) m_chip->setText(L("Sin fecha"));
+            refreshRepeat();
             refreshDue();
             emit dirty();
         });
@@ -454,10 +612,196 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
     menu->showAt(globalPos);
 }
 
+// El chip de repetición y el rótulo del tipo dicen lo mismo por dos caminos;
+// el rótulo lo escribe refreshDue(), que también sabe si está sonando.
+void NoteCard::refreshRepeat() {
+    if (!m_repeatChip) return;
+    m_repeatChip->setPixmap(paintIcon("repeat", m_theme.accent, 12).pixmap(12, 12));
+    m_repeatChip->setToolTip(m_note->repeats()
+                                 ? L("%1 · clic para cambiarlo").arg(m_note->repeatLabel())
+                                 : L("Clic para cambiar la repetición"));
+    m_repeatChip->setVisible(m_note->repeats());
+}
+
+void NoteCard::setRepeat(Note::Repeat repeat) {
+    m_note->repeat = repeat;
+    // Un recordatorio que vuelve no puede quedarse marcado como ya avisado: si
+    // no, la próxima vuelta no sonaría. Se recoloca en su siguiente fecha
+    // cuando la que tiene ya pasó.
+    if (m_note->repeats()) {
+        m_note->fired = false;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        if (m_note->dueAtMs <= now) m_note->dueAtMs = m_note->nextOccurrenceAfter(now);
+    }
+    if (m_chip) m_chip->setText(m_note->dueLabel().isEmpty() ? L("Sin fecha") : m_note->dueLabel());
+    refreshRepeat();
+    refreshDue();
+    emit dirty();
+}
+
 void NoteCard::focusTitle() {
     if (!m_title) return;
     m_title->setFocus();
     m_title->selectAll();
+}
+
+// --- imágenes adjuntas -----------------------------------------------------
+
+// Cabecera plegable y debajo la tira de miniaturas. Cualquier tipo de nota
+// puede llevar imágenes, igual que enlaces, así que esto se monta en build()
+// y no dentro de una de las ramas por tipo.
+void NoteCard::buildImages(QVBoxLayout *l) {
+    m_imagesBox = new QWidget;
+    auto *col = new QVBoxLayout(m_imagesBox);
+    col->setContentsMargins(0, 0, 0, 0);
+    col->setSpacing(5);
+
+    // LinkRow ya es una fila pulsable con menú propio y fondo de hoja de
+    // estilos; aquí solo cambia el nombre con el que la pinta el tema.
+    auto *header = new LinkRow;
+    header->setObjectName("imgHeader");
+    header->activate = [this] { toggleImages(); };
+    header->menu = [this](const QPoint &at) { openImageMenu(-1, at); };
+
+    auto *hl = new QHBoxLayout(header);
+    hl->setContentsMargins(4, 2, 2, 2);
+    hl->setSpacing(6);
+
+    auto *icon = new QLabel;
+    icon->setFixedSize(13, 13);
+    icon->setPixmap(paintIcon("image", QColor(Theme::muted()), 13).pixmap(13, 13));
+    hl->addWidget(icon, 0, Qt::AlignVCenter);
+
+    m_imagesTitle = new QLabel;
+    m_imagesTitle->setObjectName("imgTitle");
+    hl->addWidget(m_imagesTitle, 1);
+
+    m_imagesToggle = new QToolButton;
+    m_imagesToggle->setIconSize(QSize(12, 12));
+    m_imagesToggle->setFixedSize(18, 18);
+    m_imagesToggle->setCursor(Qt::PointingHandCursor);
+    connect(m_imagesToggle, &QToolButton::clicked, this, &NoteCard::toggleImages);
+    hl->addWidget(m_imagesToggle, 0, Qt::AlignVCenter);
+    col->addWidget(header);
+
+    m_imagesStrip = new QWidget;
+    m_imagesLayout = new QVBoxLayout(m_imagesStrip);
+    m_imagesLayout->setContentsMargins(0, 0, 0, 0);
+    m_imagesLayout->setSpacing(4);
+    col->addWidget(m_imagesStrip);
+
+    const int at = m_meta ? l->indexOf(m_meta) : -1;
+    if (at >= 0) l->insertWidget(at, m_imagesBox);
+    else l->addWidget(m_imagesBox);
+    refreshImages();
+}
+
+void NoteCard::refreshImages() {
+    if (!m_imagesLayout) return;
+
+    // Ocultar antes de borrar: fuera del layout siguen pintadas hasta que
+    // corre deleteLater(), y una miniatura es muy visible.
+    while (QLayoutItem *it = m_imagesLayout->takeAt(0)) {
+        if (QWidget *w = it->widget()) {
+            w->hide();
+            w->deleteLater();
+        }
+        delete it;
+    }
+
+    const int count = int(m_note->images.size());
+    m_imagesBox->setVisible(count > 0);
+    if (count == 0) return;
+
+    const bool hidden = m_note->imagesHidden;
+    m_imagesTitle->setText(count == 1 ? L("1 IMAGEN") : L("%1 IMÁGENES").arg(count));
+    m_imagesToggle->setIcon(paintIcon(hidden ? "chevronRight" : "chevronDown",
+                                      QColor(Theme::muted()), 12));
+    m_imagesToggle->setToolTip(hidden ? L("Mostrar imágenes") : L("Ocultar imágenes"));
+
+    // Plegadas, ni siquiera se construyen: una tarjeta cerrada no tiene por
+    // qué cargar en memoria las capturas que no se ven.
+    m_imagesStrip->setVisible(!hidden);
+    if (hidden) return;
+
+    for (int i = 0; i < count; ++i) {
+        auto *thumb = new ImageThumb(Note::imagePath(m_note->images.at(i)));
+        thumb->activate = [this, i] {
+            if (i < m_note->images.size())
+                QDesktopServices::openUrl(
+                    QUrl::fromLocalFile(Note::imagePath(m_note->images.at(i))));
+        };
+        thumb->menu = [this, i](const QPoint &at) { openImageMenu(i, at); };
+        m_imagesLayout->addWidget(thumb);
+    }
+}
+
+void NoteCard::toggleImages() {
+    if (m_note->images.isEmpty()) return;
+    m_note->imagesHidden = !m_note->imagesHidden;
+    refreshImages();
+    emit dirty();
+}
+
+// Las imágenes se copian a la carpeta de datos, no se enlazan: una nota tiene
+// que seguir enseñando su captura aunque el original se mueva o se borre, y al
+// cambiar de carpeta de guardado los adjuntos viajan con las notas.
+void NoteCard::addImages() {
+    const QStringList picked = QFileDialog::getOpenFileNames(
+        this, L("Elegir imágenes"), QDir::homePath(),
+        L("Imágenes") + " (*.png *.jpg *.jpeg *.gif *.bmp *.webp)");
+    if (picked.isEmpty()) return;
+
+    bool added = false;
+    for (const QString &source : picked) {
+        const QFileInfo info(source);
+        const QString suffix = info.suffix().isEmpty() ? "png" : info.suffix().toLower();
+        // El nombre lleva la nota y un sello de tiempo: dos ficheros con el
+        // mismo nombre de origen no pueden pisarse.
+        const QString name = QString("%1-%2.%3")
+                                 .arg(m_note->id)
+                                 .arg(QDateTime::currentMSecsSinceEpoch() +
+                                      m_note->images.size())
+                                 .arg(suffix);
+        if (!QFile::copy(source, Note::imagePath(name))) continue;
+        m_note->images.append(name);
+        added = true;
+    }
+    if (!added) return;
+
+    m_note->imagesHidden = false;   // se acaba de añadir: enseñarla
+    refreshImages();
+    emit dirty();
+}
+
+void NoteCard::openImageMenu(int index, const QPoint &globalPos) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Imágenes"));
+    menu->addItem("plus", L("Añadir imagen…"), L("Se copia junto a la nota"),
+                  [this] { addImages(); });
+
+    if (!m_note->images.isEmpty())
+        menu->addItem(m_note->imagesHidden ? "chevronDown" : "chevronRight",
+                      m_note->imagesHidden ? L("Mostrar imágenes") : L("Ocultar imágenes"),
+                      QString(), [this] { toggleImages(); });
+
+    if (index >= 0 && index < m_note->images.size()) {
+        const QString name = m_note->images.at(index);
+        menu->addSeparator();
+        menu->addItem("image", L("Abrir"), QString(), [name] {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(Note::imagePath(name)));
+        });
+        menu->addItem("trash", L("Quitar imagen"), QString(), [this, index] {
+            if (index >= m_note->images.size()) return;
+            // El fichero es una copia nuestra: al quitarlo de la nota no queda
+            // nadie que lo mire, así que se borra en vez de acumularse.
+            QFile::remove(Note::imagePath(m_note->images.at(index)));
+            m_note->images.removeAt(index);
+            refreshImages();
+            emit dirty();
+        });
+    }
+    menu->showAt(globalPos);
 }
 
 // --- enlaces adjuntos ------------------------------------------------------
@@ -565,13 +909,24 @@ void NoteCard::refreshDue() {
                                  .pixmap(14, 14));
     if (m_dueBtn) m_dueBtn->setVisible(ringing);
     if (m_chip) {
+        // El texto se vuelve a leer de la nota: callar un recordatorio que se
+        // repite lo adelanta a su siguiente vuelta, y el chip tiene que
+        // enseñar la nueva fecha sin reconstruir la tarjeta.
+        const QString label = m_note->dueLabel();
+        m_chip->setText(label.isEmpty() ? L("Sin fecha") : label);
         m_chip->setProperty("state", ringing ? "ringing" : (overdue ? "overdue" : ""));
         // Cambiar una propiedad dinámica no repinta solo: hay que repolish.
         m_chip->style()->unpolish(m_chip);
         m_chip->style()->polish(m_chip);
     }
-    if (m_meta)
-        m_meta->setText(ringing ? L("¡AHORA!") : (overdue ? L("VENCIDO") : L("RECORDATORIO")));
+    if (m_meta) {
+        // En reposo el rótulo dice cada cuánto vuelve, que es más útil que
+        // repetir "RECORDATORIO" al lado de un icono de reloj.
+        const QString idle = m_note->repeats() ? m_note->repeatLabel().toUpper()
+                                               : L("RECORDATORIO");
+        m_meta->setText(ringing ? L("¡AHORA!") : (overdue ? L("VENCIDO") : idle));
+    }
+    refreshRepeat();
 }
 
 // --- nota de voz -----------------------------------------------------------
@@ -755,6 +1110,12 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
         menu->addItem("clock", L("Cambiar fecha"),
                       m_note->dueLabel().isEmpty() ? L("Sin fecha") : m_note->dueLabel(),
                       [this, at] { openDuePopup(at); });
+        menu->addItem("repeat", L("Repetir"),
+                      m_note->repeats() ? m_note->repeatLabel() : L("Suena una vez"),
+                      [this, at] { openDuePopup(at); });
+        if (m_note->body.isEmpty())
+            menu->addItem("text", L("Añadir detalles"), L("Escribe bajo la fecha"),
+                          [this] { showDetailsEditor(true); });
         menu->addSeparator();
     }
     if (m_note->type == Note::Voice) {
@@ -769,8 +1130,27 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
                       ? L("Se abre en el navegador")
                       : L("%1 ya adjuntos").arg(m_note->links.size()),
                   [this, at] { openLinkEditor(-1, at); });
-    menu->addSeparator();
+    menu->addItem("image", L("Añadir imagen…"),
+                  m_note->images.isEmpty()
+                      ? L("Se copia junto a la nota")
+                      : L("%1 ya adjuntas").arg(m_note->images.size()),
+                  [this] { addImages(); });
+    if (!m_note->images.isEmpty())
+        menu->addItem(m_note->imagesHidden ? "chevronDown" : "chevronRight",
+                      m_note->imagesHidden ? L("Mostrar imágenes") : L("Ocultar imágenes"),
+                      QString(), [this] { toggleImages(); });
 
+    // Reordenar también desde aquí: arrastrar por el asidero es lo cómodo con
+    // el ratón, pero con la lista larga (o sin ganas de arrastrar) un paso
+    // cada vez llega más lejos sin pelearse con el scroll.
+    menu->addSeparator();
+    menu->addHeader(L("Orden"));
+    menu->addItem("chevronUp", L("Subir"), QString(),
+                  [this] { emit moveRequested(m_note, -1); });
+    menu->addItem("chevronDown", L("Bajar"), QString(),
+                  [this] { emit moveRequested(m_note, 1); });
+
+    menu->addSeparator();
     menu->addItem("trash", L("Eliminar nota"), QString(),
                   [this] { emit deleteRequested(m_note); });
     menu->showAt(at);

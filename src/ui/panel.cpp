@@ -23,6 +23,7 @@
 #include <QMenu>
 #include <QPushButton>
 #include <QScreen>
+#include <QScrollBar>
 #include <QSettings>
 #include <QScrollArea>
 #include <QStackedWidget>
@@ -417,6 +418,11 @@ void Panel::rebuildList() {
         connect(card, &NoteCard::dirty, this, &Panel::refreshCalendar);
         connect(card, &NoteCard::deleteRequested, this, &Panel::removeNote);
         connect(card, &NoteCard::dismissRequested, this, &Panel::dismissNote);
+        connect(card, &NoteCard::moveRequested, this, &Panel::moveNote);
+        connect(card, &NoteCard::dragStarted, this, [this, card] { beginCardDrag(card); });
+        connect(card, &NoteCard::dragMoved, this,
+                [this, card](const QPoint &at) { dragCardTo(card, at); });
+        connect(card, &NoteCard::dragFinished, this, [this, card] { endCardDrag(card); });
         m_listLayout->insertWidget(m_listLayout->count() - 2, card);
     }
 
@@ -464,6 +470,92 @@ void Panel::addNote(Note::Type type) {
 void Panel::removeNote(Note *n) {
     m_store.remove(n);
     rebuildList();
+}
+
+// --- reordenar --------------------------------------------------------------
+
+void Panel::moveNote(Note *n, int steps) {
+    QList<Note *> order = m_store.notes();
+    const int from = int(order.indexOf(n));
+    const int to = from + steps;
+    if (from < 0 || to < 0 || to >= order.size()) return;
+
+    order.move(from, to);
+    m_store.setOrder(order);
+    rebuildList();
+    save();
+}
+
+void Panel::beginCardDrag(NoteCard *card) {
+    m_dragCard = card;
+    card->setProperty("dragging", true);
+    // Una propiedad dinámica no repinta sola.
+    card->style()->unpolish(card);
+    card->style()->polish(card);
+    card->raise();
+}
+
+// Reordena en caliente mientras dura el arrastre: la tarjeta cambia de sitio
+// en el layout en cuanto cruza el centro de otra, y no al soltar, para que se
+// vea dónde va a caer.
+void Panel::dragCardTo(NoteCard *card, const QPoint &globalPos) {
+    if (!card || !m_listHost) return;
+
+    // Cerca de los bordes, la lista acompaña: sin esto no se puede sacar una
+    // tarjeta del trozo visible sin soltarla antes.
+    if (m_scroll) {
+        const int y = m_scroll->viewport()->mapFromGlobal(globalPos).y();
+        const int edge = 26;
+        QScrollBar *bar = m_scroll->verticalScrollBar();
+        if (y < edge) bar->setValue(bar->value() - 12);
+        else if (y > m_scroll->viewport()->height() - edge) bar->setValue(bar->value() + 12);
+    }
+
+    // Solo cuentan las visibles: con un filtro puesto, las escondidas siguen
+    // en el layout y arrastrar por encima de ellas no significa nada.
+    QList<NoteCard *> visible;
+    for (NoteCard *c : cards())
+        if (c->isVisible()) visible.append(c);
+
+    const int from = int(visible.indexOf(card));
+    if (from < 0) return;
+
+    const int y = m_listHost->mapFromGlobal(globalPos).y();
+    int to = from;
+    for (int i = 0; i < visible.size(); ++i) {
+        if (i == from) continue;
+        const int center = visible.at(i)->geometry().center().y();
+        // Hacia arriba manda la primera que quede por debajo del cursor;
+        // hacia abajo, la última que quede por encima.
+        if (i < from && y < center) { to = i; break; }
+        if (i > from && y > center) to = i;
+    }
+    if (to == from) return;
+
+    QWidget *anchor = visible.at(to);
+    m_listLayout->removeWidget(card);
+    // El índice del ancla se pregunta ya sin la tarjeta dentro; yendo hacia
+    // abajo, la tarjeta va detrás de ella.
+    int at = m_listLayout->indexOf(anchor);
+    if (to > from) ++at;
+    m_listLayout->insertWidget(at, card);
+    commitOrder();
+}
+
+void Panel::endCardDrag(NoteCard *card) {
+    m_dragCard = nullptr;
+    if (!card) return;
+    card->setProperty("dragging", false);
+    card->style()->unpolish(card);
+    card->style()->polish(card);
+    save();
+}
+
+// El orden que se ve es el que se guarda.
+void Panel::commitOrder() {
+    QList<Note *> order;
+    for (NoteCard *card : cards()) order.append(card->note());
+    m_store.setOrder(order);
 }
 
 void Panel::toggleSearch() {
@@ -606,9 +698,21 @@ void Panel::checkReminders() {
     applyBadgeAlert();
 }
 
-void Panel::dismissNote(Note *n) {
+// Callar un aviso. Uno normal queda marcado como avisado y no vuelve; uno que
+// se repite salta a su siguiente vuelta, que es justamente lo que lo hará
+// sonar otra vez la semana o el año que viene.
+void Panel::silence(Note *n) {
     n->ringing = false;
-    n->fired = true;                 // no vuelve a sonar por su cuenta
+    if (!n->repeats()) {
+        n->fired = true;
+        return;
+    }
+    n->dueAtMs = n->nextOccurrenceAfter(QDateTime::currentMSecsSinceEpoch());
+    n->fired = false;
+}
+
+void Panel::dismissNote(Note *n) {
+    silence(n);
     if (!anyRinging()) m_alarm->stop();
     refreshDueCards();
     refreshCalendar();
@@ -909,7 +1013,7 @@ void Panel::expand() {
     // Abrir el panel cuenta como enterarse: se calla la alarma.
     if (anyRinging()) {
         for (Note *n : m_store.notes())
-            if (n->ringing) { n->ringing = false; n->fired = true; }
+            if (n->ringing) silence(n);
         m_alarm->stop();
         refreshDueCards();
         refreshCalendar();

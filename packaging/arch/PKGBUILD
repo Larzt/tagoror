@@ -17,8 +17,10 @@ pkgrel=1
 pkgdesc='Sticky-notes panel for the desktop: checklists, reminders with a calendar, and voice notes'
 arch=('x86_64')
 url='https://github.com/Larzt/tagoror'
-# TODO: poner la licencia real en cuanto el repositorio tenga su fichero.
-license=('LicenseRef-proprietary')
+# MIT. CMake instala el texto en /usr/share/licenses/tagoror/LICENSE, que es
+# lo que Arch exige para las licencias que no son 'common' -- la de MIT lleva
+# dentro el nombre del autor, así que cada paquete tiene que traer la suya.
+license=('MIT')
 # Se llamaba codex hasta el renombrado: así pacman sustituye el paquete
 # viejo al actualizar en vez de dejar los dos instalados y peleándose por
 # los mismos ficheros.
