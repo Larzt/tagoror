@@ -10,26 +10,34 @@
 
 #include "ui/theme.hpp"
 
-// Miniatura de una imagen adjunta: se ajusta al ancho que le den y calcula su
-// alto a partir de la proporción de la foto.
+// Miniatura de una imagen adjunta: una vista previa pequeña, con el tamaño
+// tomado de la proporción de la foto sobre un alto fijo.
+//
+// Ocupaba todo el ancho de la tarjeta y hasta 190 px de alto, que para dos o
+// tres capturas es una tarjeta entera de imagen; ahora es una miniatura que se
+// deja mirar de un vistazo y se abre con un clic si se quiere verla de verdad.
 //
 // No es un QLabel con un pixmap por lo mismo que el texto de las listas no vive
 // dentro del QCheckBox: el sizeHint de un QLabel con imagen es el tamaño de la
 // imagen, y como la lista no tiene barra horizontal, una captura de 1920 px
 // ensancharía la tarjeta -- y con ella toda la lista -- muy por encima del
-// panel. Aquí el mínimo es pequeño y el alto se recalcula al cambiar el ancho.
+// panel. Aquí el ancho no pasa nunca de kMaxWidth.
 class ImageThumb : public QWidget {
 public:
-    ImageThumb(const QString &path, int maxHeight = 190, QWidget *parent = nullptr)
-        : QWidget(parent), m_max(maxHeight) {
+    static constexpr int kHeight = 92;      // alto de la vista previa
+    static constexpr int kMaxWidth = 156;   // tope de ancho: la tarjeta manda
+    static constexpr int kMinWidth = 56;
+
+    ImageThumb(const QString &path, int height = kHeight, QWidget *parent = nullptr)
+        : QWidget(parent), m_h(height) {
         m_pixmap.load(path);
         setCursor(Qt::PointingHandCursor);
         setToolTip(path);
-        // Fijar el alto no cambia la política, y una política Expanding se
+        // Fijar el tamaño no cambia la política, y una política Expanding se
         // propaga hacia arriba: la tarjeta pediría alto de más y lo repartiría
         // en el hijo flexible de abajo (ver autoGrowEditor en notecard.cpp).
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        updateHeight();
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        setFixedSize(previewSize());
     }
 
     bool isValid() const { return !m_pixmap.isNull(); }
@@ -37,14 +45,10 @@ public:
     std::function<void()> activate;
     std::function<void(const QPoint &)> menu;
 
-    QSize minimumSizeHint() const override { return QSize(48, m_lastHeight); }
+    QSize minimumSizeHint() const override { return previewSize(); }
+    QSize sizeHint() const override { return previewSize(); }
 
 protected:
-    void resizeEvent(QResizeEvent *e) override {
-        QWidget::resizeEvent(e);
-        updateHeight();
-    }
-
     void mouseReleaseEvent(QMouseEvent *e) override {
         if (e->button() == Qt::LeftButton && rect().contains(e->position().toPoint()) && activate)
             activate();
@@ -92,19 +96,15 @@ protected:
     }
 
 private:
-    void updateHeight() {
-        const int w = qMax(1, width());
-        int h = m_max;
-        if (!m_pixmap.isNull() && m_pixmap.width() > 0)
-            h = qBound(40, int(qreal(w) * m_pixmap.height() / m_pixmap.width()), m_max);
-        else if (m_pixmap.isNull())
-            h = 46;
-        if (h == m_lastHeight) return;
-        m_lastHeight = h;
-        setFixedHeight(h);
+    // El ancho sale de la proporción de la foto, acotado por los dos extremos:
+    // un panorama no puede ensanchar la tarjeta y un retrato no puede quedarse
+    // en una tira de dos píxeles.
+    QSize previewSize() const {
+        if (m_pixmap.isNull() || m_pixmap.height() <= 0) return QSize(120, m_h);
+        const int w = int(qreal(m_h) * m_pixmap.width() / m_pixmap.height());
+        return QSize(qBound(kMinWidth, w, kMaxWidth), m_h);
     }
 
     QPixmap m_pixmap;
-    int m_max;
-    int m_lastHeight = 0;
+    int m_h;
 };

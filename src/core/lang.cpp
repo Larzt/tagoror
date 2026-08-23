@@ -80,6 +80,8 @@ const QHash<QString, QString> &table() {
         {"Enter para confirmar", "Enter to confirm"},
         {"Quitar elemento", "Remove item"},
         {"Eliminar nota", "Delete note"},
+        {"Eliminar lista", "Delete list"},
+        {"Ya está todo hecho: quitar esta nota", "All done: remove this note"},
 
         // --- fechas y avisos -------------------------------------------------
         {"Sin fecha", "No date"},

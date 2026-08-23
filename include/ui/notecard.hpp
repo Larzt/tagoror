@@ -48,6 +48,8 @@ signals:
 
 protected:
     void contextMenuEvent(QContextMenuEvent *e) override;
+    // Vigila el editor de detalles: vacío, se cierra solo al salir de él.
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     void build();
@@ -94,6 +96,7 @@ private:
     QLineEdit *m_title = nullptr;
     QProgressBar *m_bar = nullptr;
     QLabel *m_progress = nullptr;
+    QToolButton *m_clearBtn = nullptr;
     QLabel *m_meta = nullptr;
     QVBoxLayout *m_itemsLayout = nullptr;
     QLineEdit *m_newItem = nullptr;
@@ -111,6 +114,7 @@ private:
     // el "añadir detalles", y cambiar de uno a otro no toca el resto.
     QWidget *m_detailSlot = nullptr;
     QVBoxLayout *m_detailLayout = nullptr;
+    QTextEdit *m_detailBody = nullptr;   // vivo solo mientras hay editor
     QLabel *m_repeatChip = nullptr;
 
     QLabel *m_chip = nullptr;

@@ -220,11 +220,15 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.setPen(pen);
         p.drawRoundedRect(QRectF(c - 5.2, c - 5.2, 10.4, 10.4), 3.2, 3.2);
     } else if (kind == "grip") {
+        // Rejilla de 2x3 puntos: el asidero de siempre. El triángulo de puntos
+        // que había antes es el dibujo de una esquina de redimensionar, y junto
+        // al cursor de estirar en vertical el conjunto se leía como "haz la
+        // tarjeta más alta" en lugar de "agarra la tarjeta y muévela".
         p.setPen(Qt::NoPen);
         p.setBrush(color);
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j <= i; ++j)
-                p.drawEllipse(QPointF(c + 4 - i * 3.4, c + 4 - j * 3.4), 1.05, 1.05);
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 3; ++j)
+                p.drawEllipse(QPointF(c - 2.1 + i * 4.2, c - 3.6 + j * 3.6), 1.05, 1.05);
     }
     p.end();
     return QIcon(pm);
@@ -405,6 +409,15 @@ QFrame#card[dragging="true"] {
 QToolButton#dragHandle { background: transparent; border: none; padding: 0; }
 QToolButton#dragHandle:hover { background: %7; }
 
+/* Lista terminada: el botón solo aparece cuando no queda nada por marcar, así
+   que se puede permitir el rojo sin gritarle al usuario todo el rato. */
+QToolButton#listDone {
+    color: #ff7a6b; background: transparent;
+    border: 1px solid rgba(255,122,107,0.35); border-radius: 8px;
+    padding: 3px 9px; font-size: 10.5px; font-weight: 600;
+}
+QToolButton#listDone:hover { background: rgba(255,122,107,0.14); }
+
 /* "Añadir detalles": un recordatorio sin cuerpo no enseña editor ninguno, así
    que esta es la única puerta de entrada y tiene que parecer pulsable. */
 QLabel#addDetails { color: %4; font-size: 10.5px; }
@@ -438,6 +451,17 @@ QLineEdit#popupEdit {
     padding: 6px 9px; font-size: 11.5px; color: %3;
 }
 QLineEdit#popupEdit:focus { border: 1px solid %5; }
+/* Horas sueltas del selector de recordatorio: cinco filas de menú medían más
+   que el propio calendario, y el popup acababa tapándolo. En chips caben en
+   dos líneas y el menú abre entero por debajo. */
+QToolButton#popupChip {
+    color: %3; background: %6;
+    border: 1px solid %2; border-radius: 8px;
+    padding: 4px 5px; font-size: 11px; font-weight: 600;
+    font-family: "IBM Plex Mono", monospace;
+}
+QToolButton#popupChip:hover { color: %5; border: 1px solid %5; background: %8; }
+QToolButton#popupChip[past="true"] { color: %4; }
 )")
         .arg(card())      // %1
         .arg(line())      // %2

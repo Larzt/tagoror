@@ -1,5 +1,7 @@
 #pragma once
 
+#include <climits>
+
 #include <QColor>
 #include <QList>
 #include <QStringList>
@@ -40,17 +42,27 @@ public:
     // se puede: cada campo cerraría el popup por su cuenta al pulsar Enter.
     void addFields(const QStringList &placeholders, const QStringList &values,
                    std::function<void(const QStringList &)> commit);
+    // Botones pequeños en horizontal, dos o tres por fila. Una lista de horas
+    // como filas de menú mide más que el calendario que la abre.
+    void addChips(const QStringList &labels, const QList<bool> &muted,
+                  const QString &mutedTip, std::function<void(int)> action);
     void addSeparator();
 
     // Sitúa el popup pegado a un widget, corrigiendo si se sale de la pantalla.
     void showUnder(QWidget *anchor);
+    // Igual, pero con la promesa de no subirse nunca por encima del widget:
+    // antes, un panel cerca del borde inferior hacía que la corrección contra
+    // la pantalla empujara el menú hacia arriba, sobre el calendario.
+    void showBelow(QWidget *anchor);
     void showAt(const QPoint &globalPos);
 
 private:
     // La acción se ejecuta tras cerrar: elegir "eliminar" destruye la tarjeta
     // que abrió el popup, así que no puede correr con el popup todavía vivo.
     void run(const std::function<void()> &action);
-    void place(const QPoint &globalTopLeft);
+    // minY corta la corrección hacia arriba: el popup se saldrá por abajo
+    // antes que taparse el widget que lo abrió.
+    void place(const QPoint &globalTopLeft, int minY = INT_MIN);
 
     Theme m_theme;
     QFrame *m_shell = nullptr;

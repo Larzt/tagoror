@@ -5,6 +5,7 @@
 #include <QGuiApplication>
 #include <QFrame>
 #include <QGraphicsDropShadowEffect>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -281,6 +282,39 @@ void Popup::addFields(const QStringList &placeholders, const QStringList &values
     }
 }
 
+// Los presets de hora del calendario: cinco filas de menú son 150 px, más que
+// la mitad del panel, y el popup terminaba encima del calendario. En chips
+// caben tres por línea y el menú entero mide poco más que una tarjeta.
+void Popup::addChips(const QStringList &labels, const QList<bool> &muted,
+                     const QString &mutedTip, std::function<void(int)> action) {
+    constexpr int kPerRow = 3;
+
+    auto *host = new QWidget;
+    auto *grid = new QGridLayout(host);
+    grid->setContentsMargins(7, 3, 7, 4);
+    grid->setSpacing(4);
+
+    for (int i = 0; i < labels.size(); ++i) {
+        auto *chip = new QToolButton;
+        chip->setObjectName("popupChip");
+        chip->setText(labels.at(i));
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setProperty("past", muted.value(i, false));
+        // Lo que antes era el subtítulo de la fila: en un chip no cabe, pero
+        // la razón de que se vea apagado sigue estando a mano.
+        if (muted.value(i, false)) chip->setToolTip(mutedTip);
+        chip->setFixedHeight(26);
+        QObject::connect(chip, &QToolButton::clicked, this, [this, i, action] {
+            run([i, action] { if (action) action(i); });
+        });
+        grid->addWidget(chip, i / kPerRow, i % kPerRow);
+    }
+    // La última fila suele ir a medias: la columna sobrante se queda el hueco
+    // en vez de repartirlo estirando los chips que hay.
+    grid->setColumnStretch(kPerRow, 1);
+    m_col->addWidget(host);
+}
+
 void Popup::addSeparator() {
     auto *line = new QFrame;
     line->setFixedHeight(1);
@@ -297,7 +331,7 @@ void Popup::run(const std::function<void()> &action) {
     if (action) QTimer::singleShot(0, qApp, action);
 }
 
-void Popup::place(const QPoint &globalTopLeft) {
+void Popup::place(const QPoint &globalTopLeft, int minY) {
     adjustSize();
     QPoint pos = globalTopLeft;
 
@@ -309,6 +343,15 @@ void Popup::place(const QPoint &globalTopLeft) {
                         area.right() - width() + kShadowMargin));
         pos.setY(qBound(area.top() - kShadowMargin, pos.y(),
                         area.bottom() - height() + kShadowMargin));
+
+        // Con suelo, la corrección contra la pantalla no puede subir el menú:
+        // se queda por debajo de quien lo abrió aunque asome un poco. El suelo
+        // se levanta solo si el marco visible ya no cabría entero, porque un
+        // menú cortado por el borde de abajo es peor que uno mal puesto.
+        if (minY != INT_MIN && minY + height() - kShadowMargin <= area.bottom())
+            pos.setY(qMax(pos.y(), minY));
+    } else if (minY != INT_MIN) {
+        pos.setY(qMax(pos.y(), minY));
     }
     move(pos);
     show();
@@ -319,6 +362,13 @@ void Popup::showUnder(QWidget *anchor) {
     // Se descuenta el margen de sombra para que el marco quede pegado al botón.
     const QPoint below = anchor->mapToGlobal(QPoint(0, anchor->height() + 2));
     place(below - QPoint(kShadowMargin, 0) + QPoint(0, -kShadowMargin + 6));
+}
+
+void Popup::showBelow(QWidget *anchor) {
+    adjustSize();
+    const QPoint below = anchor->mapToGlobal(QPoint(0, anchor->height() + 2));
+    const QPoint at = below - QPoint(kShadowMargin, 0) + QPoint(0, -kShadowMargin + 6);
+    place(at, at.y());
 }
 
 void Popup::showAt(const QPoint &globalPos) {

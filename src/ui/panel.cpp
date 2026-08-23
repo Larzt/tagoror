@@ -632,12 +632,21 @@ void Panel::askReminderTime(const QDate &day, QWidget *anchor) {
     menu->addHeader(Lang::locale().toString(day, "dddd d MMMM"));
 
     const QDateTime now = QDateTime::currentDateTime();
-    for (const QTime &t : {QTime(9, 0), QTime(12, 0), QTime(15, 0), QTime(18, 0), QTime(21, 0)}) {
-        const QDateTime when(day, t);
-        menu->addItem("clock", t.toString("HH:mm"),
-                      when <= now ? L("Ya pasado") : QString(),
-                      [this, when] { createReminder(when); });
+    const QList<QTime> hours = {QTime(9, 0), QTime(12, 0), QTime(15, 0),
+                                QTime(18, 0), QTime(21, 0)};
+
+    // Las horas van en chips y no en filas de menú: cinco filas medían más que
+    // el propio calendario, y con el panel bajo el menú acababa por encima de
+    // la rejilla en vez de debajo de la fila que lo abre.
+    QStringList labels;
+    QList<bool> past;
+    for (const QTime &t : hours) {
+        labels << t.toString("HH:mm");
+        past << (QDateTime(day, t) <= now);
     }
+    menu->addChips(labels, past, L("Ya pasado"), [this, day, hours](int i) {
+        createReminder(QDateTime(day, hours.at(i)));
+    });
 
     menu->addSeparator();
     menu->addHeader(L("A mano · HH:mm"));
@@ -645,7 +654,7 @@ void Panel::askReminderTime(const QDate &day, QWidget *anchor) {
         const QTime t = QTime::fromString(value.trimmed(), "HH:mm");
         if (t.isValid()) createReminder(QDateTime(day, t));
     });
-    menu->showUnder(anchor);
+    menu->showBelow(anchor);
 }
 
 void Panel::createReminder(const QDateTime &when) {

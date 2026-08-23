@@ -23,6 +23,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMediaPlayer>
@@ -188,6 +189,7 @@ protected:
         if (!m_active) {
             m_active = true;
             setDown(false);       // si no, se queda hundido al soltar
+            setCursor(Qt::ClosedHandCursor);   // la mano se cierra al agarrar
             if (start) start();
         }
         if (moved) moved(at);
@@ -199,6 +201,7 @@ protected:
             return;
         }
         m_active = false;
+        setCursor(Qt::OpenHandCursor);
         if (finished) finished();
         e->accept();
     }
@@ -281,7 +284,9 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
     handle->setIcon(paintIcon("grip", QColor(Theme::muted()), 13));
     handle->setIconSize(QSize(13, 13));
     handle->setFixedSize(20, 20);
-    handle->setCursor(Qt::SizeVerCursor);
+    // Mano abierta, no la flecha de redimensionar: SizeVerCursor es el cursor
+    // de estirar un borde y prometía cambiar el alto de la tarjeta.
+    handle->setCursor(Qt::OpenHandCursor);
     handle->setToolTip(L("Arrastra para reordenar"));
     handle->start = [this] { emit dragStarted(); };
     handle->moved = [this](const QPoint &at) { emit dragMoved(at); };
@@ -361,10 +366,12 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
 }
 
 // Lo que se ve en el hueco de detalles cuando no hay ninguno: una sola línea
-// apagada que los pide. Vaciar el editor no vuelve aquí -- se quedaría sin
-// sitio donde escribir a media frase --, se vuelve al reconstruir la tarjeta.
+// apagada que los pide. Vaciar el editor no vuelve aquí mientras se escribe
+// -- el cursor se quedaría sin sitio a media frase --; se vuelve al salir de
+// él, que es lo que da manera de cerrar un editor abierto por error.
 void NoteCard::showDetailsGhost() {
     if (!m_detailLayout) return;
+    m_detailBody = nullptr;
     while (QLayoutItem *it = m_detailLayout->takeAt(0)) {
         if (QWidget *w = it->widget()) {
             w->hide();
@@ -396,8 +403,33 @@ void NoteCard::showDetailsEditor(bool focus) {
         m_note->body = body->toPlainText();
         emit dirty();
     });
+    body->installEventFilter(this);
+    m_detailBody = body;
     m_detailLayout->addWidget(body);
     if (focus) body->setFocus();
+}
+
+// Un editor de detalles abierto y vacío no tenía puerta de salida: ocupaba su
+// hueco hasta reconstruir la tarjeta. Al perder el foco (o con Escape) se
+// recoge y vuelve la línea de "+ Añadir detalles".
+//
+// El cierre va diferido: aquí todavía se está despachando un evento del propio
+// editor, y showDetailsGhost() lo destruye.
+bool NoteCard::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == m_detailBody && m_detailBody) {
+        const bool leaving = event->type() == QEvent::FocusOut;
+        const bool escape = event->type() == QEvent::KeyPress &&
+                            static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape;
+        if ((leaving || escape) && m_detailBody->toPlainText().trimmed().isEmpty()) {
+            if (escape) m_detailBody->clearFocus();
+            QTimer::singleShot(0, this, [this] {
+                if (m_detailBody && !m_detailBody->hasFocus() &&
+                    m_detailBody->toPlainText().trimmed().isEmpty())
+                    showDetailsGhost();
+            });
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void NoteCard::buildCheck(QVBoxLayout *l) {
@@ -451,6 +483,28 @@ void NoteCard::buildCheck(QVBoxLayout *l) {
     m_progress->setObjectName("meta");
     foot->addWidget(m_progress);
     l->addLayout(foot);
+
+    // Fila propia, no al lado del contador: el botón lleva texto y una fila de
+    // anchos fijos es justo lo que estrecha la lista entera (ver el comentario
+    // de addCheckRow). Solo aparece con la lista terminada.
+    auto *doneRow = new QHBoxLayout;
+    doneRow->setContentsMargins(0, 0, 0, 0);
+    doneRow->addStretch();
+
+    m_clearBtn = new QToolButton;
+    m_clearBtn->setObjectName("listDone");
+    m_clearBtn->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_clearBtn->setIcon(paintIcon("trash", QColor("#ff7a6b"), 12));
+    m_clearBtn->setIconSize(QSize(12, 12));
+    m_clearBtn->setCursor(Qt::PointingHandCursor);
+    m_clearBtn->setText(L("Eliminar lista"));
+    m_clearBtn->setToolTip(L("Ya está todo hecho: quitar esta nota"));
+    m_clearBtn->hide();
+    connect(m_clearBtn, &QToolButton::clicked, this, [this] {
+        emit deleteRequested(m_note);
+    });
+    doneRow->addWidget(m_clearBtn);
+    l->addLayout(doneRow);
 
     refreshProgress();
 }
@@ -532,6 +586,8 @@ void NoteCard::refreshProgress() {
     m_bar->setRange(0, total > 0 ? total : 1);
     m_bar->setValue(done);
     if (m_progress) m_progress->setText(QString("%1/%2").arg(done).arg(total));
+    // Una lista vacía no está terminada, está sin empezar.
+    if (m_clearBtn) m_clearBtn->setVisible(total > 0 && done == total);
 }
 
 // --- recordatorio ----------------------------------------------------------
@@ -732,7 +788,9 @@ void NoteCard::refreshImages() {
                     QUrl::fromLocalFile(Note::imagePath(m_note->images.at(i))));
         };
         thumb->menu = [this, i](const QPoint &at) { openImageMenu(i, at); };
-        m_imagesLayout->addWidget(thumb);
+        // La miniatura tiene un tamaño propio: pegada a la izquierda, no
+        // centrada en un hueco que ya no llena.
+        m_imagesLayout->addWidget(thumb, 0, Qt::AlignLeft);
     }
 }
 
