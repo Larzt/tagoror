@@ -198,7 +198,7 @@ QFrame *Panel::buildHeader() {
     l->setContentsMargins(12, 8, 10, 8);
     l->setSpacing(4);
 
-    m_titleLabel = new QLabel(L("Códice"));
+    m_titleLabel = new QLabel(L("Tagoror"));
     m_titleLabel->setObjectName("title");
     l->addWidget(m_titleLabel);
     l->addStretch();
@@ -317,7 +317,7 @@ QWidget *Panel::buildBadge() {
     btn->setIcon(paintIcon("notes", QColor(Theme::fg()), 22));
     btn->setIconSize(QSize(22, 22));
     btn->setCursor(Qt::PointingHandCursor);
-    btn->setToolTip(L("Abrir Códice · arrastra para mover"));
+    btn->setToolTip(L("Abrir Tagoror · arrastra para mover"));
     btn->setStyleSheet(QString("QToolButton#badge { background:%1; border:1px solid %2;"
                                "border-radius:18px; } QToolButton#badge:hover { background:%3; }")
                            .arg(m_theme.card(), Theme::line(), Theme::hover()));
@@ -375,7 +375,7 @@ void Panel::setLanguage(Lang::Code code) {
 // el calendario se rehacen enteros, que sale más simple que ir buscando cada
 // etiqueta dentro de ellos y aquí no hay nada que perder salvo el foco.
 void Panel::retranslate() {
-    m_titleLabel->setText(L("Códice"));
+    m_titleLabel->setText(L("Tagoror"));
     m_search->setPlaceholderText(L("Filtrar notas…"));
     m_emptyText->setText(L("Todavía no hay notas"));
     m_emptyBtn->setText(L("Crear la primera"));
@@ -439,7 +439,7 @@ void Panel::refreshFooter() {
         m_footerText->setText(L("%1 CON FECHA").arg(scheduled));
         return;
     }
-    m_footerText->setText(L("%1 EN EL CÓDICE").arg(m_store.count()));
+    m_footerText->setText(L("%1 EN EL TAGOROR").arg(m_store.count()));
 }
 
 void Panel::addNote(Note::Type type) {
@@ -630,13 +630,13 @@ void Panel::applyBadgeAlert() {
         badge->setIcon(paintIcon(alert ? "bell" : "notes",
                                  QColor(alert ? "#ff7a6b" : Theme::fg()), 22));
         badge->setToolTip(alert ? L("Recordatorio vencido · clic para parar")
-                                : L("Abrir Códice · arrastra para mover"));
+                                : L("Abrir Tagoror · arrastra para mover"));
     }
     if (m_tray) {
         // Escondida en la bandeja, el icono es la única señal de que algo ha
         // vencido; el mismo cambio que hace el dock en el escritorio.
         m_tray->setIcon(alert ? alertIcon() : qApp->windowIcon());
-        m_tray->setToolTip(alert ? L("Recordatorio vencido") : L("Códice"));
+        m_tray->setToolTip(alert ? L("Recordatorio vencido") : L("Tagoror"));
     }
     if (m_badgeCount)
         m_badgeCount->setStyleSheet(

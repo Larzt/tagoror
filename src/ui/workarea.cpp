@@ -4,7 +4,7 @@
 #include <QList>
 #include <QScreen>
 
-#ifdef CODEX_HAVE_XCB
+#ifdef TAGOROR_HAVE_XCB
 #include <xcb/xcb.h>
 
 #include <cstdlib>
@@ -13,7 +13,7 @@
 
 namespace {
 
-#ifdef CODEX_HAVE_XCB
+#ifdef TAGOROR_HAVE_XCB
 
 // La conexión de la sesión, o nullptr si esto no es X11.
 xcb_connection_t *x11Connection() {
@@ -49,7 +49,7 @@ xcb_atom_t atomOf(xcb_connection_t *c, const char *name) {
 // grande pedía una esquina que el gestor deshacía y la ventana daba un salto
 // hacia arriba.
 QRect wmWorkArea() {
-#ifdef CODEX_HAVE_XCB
+#ifdef TAGOROR_HAVE_XCB
     xcb_connection_t *c = x11Connection();
     if (!c) return {};                         // no es X11: no hay propiedad que leer
 
@@ -105,7 +105,7 @@ QRect wmWorkArea() {
 // vale el mensaje. Y la propiedad se lee antes para añadir a lo que haya:
 // ahí es donde Qt guarda el _NET_WM_STATE_ABOVE/_BELOW de "siempre encima".
 void wmSkipTaskbar(WId window) {
-#ifdef CODEX_HAVE_XCB
+#ifdef TAGOROR_HAVE_XCB
     xcb_connection_t *c = x11Connection();
     if (!c || !window) return;
 

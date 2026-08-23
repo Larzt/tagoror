@@ -12,7 +12,6 @@ Lang::Code g_current = Lang::Es;
 const QHash<QString, QString> &table() {
     static const QHash<QString, QString> t = {
         // --- panel: cabecera, pie y estado vacío ---------------------------
-        {"Códice", "Codex"},
         {"Buscar", "Search"},
         {"Nueva nota", "New note"},
         {"Calendario", "Calendar"},
@@ -23,10 +22,10 @@ const QHash<QString, QString> &table() {
         {"Todavía no hay notas", "No notes yet"},
         {"Crear la primera", "Create the first one"},
         {"clic dcho · opciones", "right click · options"},
-        {"%1 EN EL CÓDICE", "%1 IN THE CODEX"},
+        {"%1 EN EL TAGOROR", "%1 IN THE TAGOROR"},
         {"%1 CON FECHA", "%1 SCHEDULED"},
         {"%1 DE %2", "%1 OF %2"},
-        {"Abrir Códice · arrastra para mover", "Open Codex · drag to move"},
+        {"Abrir Tagoror · arrastra para mover", "Open Tagoror · drag to move"},
         {"Recordatorio vencido · clic para parar", "Reminder overdue · click to stop"},
 
         // --- selector de nueva nota ----------------------------------------

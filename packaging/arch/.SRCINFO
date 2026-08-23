@@ -1,8 +1,8 @@
-pkgbase = codex
+pkgbase = tagoror
 	pkgdesc = Sticky-notes panel for the desktop: checklists, reminders with a calendar, and voice notes
-	pkgver = 1.2
+	pkgver = 1.2.0
 	pkgrel = 1
-	url = https://github.com/Larzt/codex
+	url = https://github.com/Larzt/tagoror
 	arch = x86_64
 	license = LicenseRef-proprietary
 	makedepends = cmake
@@ -12,7 +12,9 @@ pkgbase = codex
 	depends = qt6-multimedia-ffmpeg
 	depends = libxcb
 	depends = hicolor-icon-theme
-	source = codex-1.2.tar.gz::https://github.com/Larzt/codex/archive/refs/tags/v1.2.tar.gz
+	conflicts = codex
+	replaces = codex
+	source = tagoror-1.2.0.tar.gz::https://github.com/Larzt/tagoror/archive/refs/tags/v1.2.0.tar.gz
 	sha256sums = SKIP
 
-pkgname = codex
+pkgname = tagoror

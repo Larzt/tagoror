@@ -1,12 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- La ficha que leen las tiendas de aplicaciones. El id, el launchable y el
-     nombre del icono salen todos de CODEX_APP_ID: si dejan de coincidir, la
+     nombre del icono salen todos de TAGOROR_APP_ID: si dejan de coincidir, la
      tienda muestra la aplicación sin icono o no la relaciona con su ventana. -->
 <component type="desktop-application">
-  <id>@CODEX_APP_ID@</id>
+  <id>@TAGOROR_APP_ID@</id>
 
-  <name>Codex</name>
-  <name xml:lang="es">Códice</name>
+  <name>Tagoror</name>
   <summary>Sticky notes for the desktop</summary>
   <summary xml:lang="es">Notas pegadas al escritorio</summary>
 
@@ -40,25 +39,35 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">@CODEX_APP_ID@.desktop</launchable>
+  <launchable type="desktop-id">@TAGOROR_APP_ID@.desktop</launchable>
+
+  <!-- Hasta esta versión la aplicación se llamaba Codex (Códice en español).
+       provides deja que se la siga encontrando por el ID viejo y replaces le
+       dice a la tienda que la instalación anterior es esta misma, no otra. -->
+  <provides>
+    <id>io.github.larzt.codex</id>
+  </provides>
+  <replaces>
+    <id>io.github.larzt.codex</id>
+  </replaces>
 
   <screenshots>
     <screenshot type="default">
       <caption>The panel with a checklist, a reminder, a voice note and a text note</caption>
-      <image>https://raw.githubusercontent.com/Larzt/codex/main/docs/panel.png</image>
+      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/panel.png</image>
     </screenshot>
     <screenshot>
       <caption>The month view</caption>
-      <image>https://raw.githubusercontent.com/Larzt/codex/main/docs/calendar.png</image>
+      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/calendar.png</image>
     </screenshot>
     <screenshot>
       <caption>Settings</caption>
-      <image>https://raw.githubusercontent.com/Larzt/codex/main/docs/settings.png</image>
+      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/settings.png</image>
     </screenshot>
   </screenshots>
 
-  <url type="homepage">https://github.com/Larzt/codex</url>
-  <url type="bugtracker">https://github.com/Larzt/codex/issues</url>
+  <url type="homepage">https://github.com/Larzt/tagoror</url>
+  <url type="bugtracker">https://github.com/Larzt/tagoror/issues</url>
 
   <categories>
     <category>Utility</category>
@@ -69,6 +78,8 @@
     <keyword>checklist</keyword>
     <keyword>reminder</keyword>
     <keyword>calendar</keyword>
+    <keyword translate="no">tagoror</keyword>
+    <!-- El nombre anterior, para quien lo busque por él. -->
     <keyword translate="no">codex</keyword>
     <keyword xml:lang="es">notas</keyword>
     <keyword xml:lang="es">recordatorio</keyword>

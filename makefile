@@ -1,11 +1,11 @@
 BUILD   := build
 RELEASE := build-release
-BIN     := $(BUILD)/codex
+BIN     := $(BUILD)/tagoror
 
 # Por defecto se instala en el home: no hace falta root y el escritorio mira
 # ahí igual que en /usr. Con PREFIX=/usr/local hace falta sudo.
 PREFIX  ?= $(HOME)/.local
-AUTOSTART := $(HOME)/.config/autostart/codex.desktop
+AUTOSTART := $(HOME)/.config/autostart/tagoror.desktop
 
 .PHONY: all run clean configure install uninstall autostart autostart-off \
         appimage archpkg flatpak
@@ -30,20 +30,20 @@ install:
 	@update-desktop-database $(PREFIX)/share/applications 2>/dev/null || true
 	@gtk-update-icon-cache -f -t $(PREFIX)/share/icons/hicolor 2>/dev/null || true
 	@echo
-	@echo "Instalado en $(PREFIX). Busca 'Códice' en el menú de aplicaciones."
+	@echo "Instalado en $(PREFIX). Busca 'Tagoror' en el menú de aplicaciones."
 
 uninstall:
-	rm -f $(PREFIX)/bin/codex
-	rm -f $(PREFIX)/share/applications/codex.desktop
-	rm -f $(PREFIX)/share/icons/hicolor/scalable/apps/codex.svg
-	rm -f $(PREFIX)/share/icons/hicolor/*/apps/codex.png
+	rm -f $(PREFIX)/bin/tagoror
+	rm -f $(PREFIX)/share/applications/tagoror.desktop
+	rm -f $(PREFIX)/share/icons/hicolor/scalable/apps/tagoror.svg
+	rm -f $(PREFIX)/share/icons/hicolor/*/apps/tagoror.png
 	rm -f $(AUTOSTART)
 	@update-desktop-database $(PREFIX)/share/applications 2>/dev/null || true
-	@echo "Desinstalado de $(PREFIX). Tus notas siguen en ~/.local/share/Stride/Codex."
+	@echo "Desinstalado de $(PREFIX). Tus notas siguen en ~/.local/share/Stride/Tagoror."
 
 # Arrancar con la sesión: copia la entrada instalada a ~/.config/autostart.
 autostart:
-	@install -Dm644 $(PREFIX)/share/applications/codex.desktop $(AUTOSTART)
+	@install -Dm644 $(PREFIX)/share/applications/tagoror.desktop $(AUTOSTART)
 	@echo "Se abrirá al iniciar sesión."
 
 autostart-off:
@@ -62,4 +62,4 @@ archpkg:
 
 flatpak:
 	flatpak-builder --user --install --force-clean $(RELEASE)-flatpak \
-	    packaging/flatpak/io.github.larzt.codex.yml
+	    packaging/flatpak/io.github.larzt.tagoror.yml

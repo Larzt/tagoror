@@ -3,17 +3,17 @@
 #   sudo pacman -S flatpak-builder          # o el equivalente de tu distro
 #   flatpak install flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
 #   flatpak-builder --user --install --force-clean build-flatpak \
-#       packaging/flatpak/io.github.larzt.codex.yml
-#   flatpak run io.github.larzt.codex
+#       packaging/flatpak/io.github.larzt.tagoror.yml
+#   flatpak run io.github.larzt.tagoror
 #
 # El ID manda sobre el nombre del .desktop, el de los iconos y el del fichero
 # de AppStream: Flatpak exige que los tres se llamen igual que la aplicación,
-# y de eso se encarga -DCODEX_APP_ID de más abajo.
-app-id: io.github.larzt.codex
+# y de eso se encarga -DTAGOROR_APP_ID de más abajo.
+app-id: io.github.larzt.tagoror
 runtime: org.kde.Platform
 runtime-version: '6.9'
 sdk: org.kde.Sdk
-command: codex
+command: tagoror
 
 finish-args:
   # X11 y no solo Wayland: el panel necesita saber dónde está para desplegarse
@@ -46,14 +46,14 @@ finish-args:
   - --filesystem=home
 
 modules:
-  - name: codex
+  - name: tagoror
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
-      - -DCODEX_APP_ID=io.github.larzt.codex
+      - -DTAGOROR_APP_ID=io.github.larzt.tagoror
     sources:
       - type: git
-        url: https://github.com/Larzt/codex.git
+        url: https://github.com/Larzt/tagoror.git
         tag: v1.2
       # Para probar cambios sin publicar una etiqueta, cambiar el bloque de
       # arriba por el árbol local:

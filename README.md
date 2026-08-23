@@ -1,4 +1,4 @@
-<h1 align="center">Codex</h1>
+<h1 align="center">Tagoror</h1>
 
 <p align="center">
   A sticky-notes widget for the Linux desktop, written in C++20 with Qt 6.<br>
@@ -9,10 +9,13 @@
 </p>
 
 <p align="center">
-  <img src="docs/brand.png" alt="Codex: the app icon next to the notes panel" width="720">
+  <img src="docs/brand.png" alt="Tagoror: the app icon next to the notes panel" width="720">
 </p>
 
-> The interface is in Spanish, where the app is called **Códice**.
+> A *tagoror* is the circle of stones where the Guanche council met — which is
+> what the ring icon is. The app was called **Codex** (*Códice*) until the
+> rename; notes from that version are picked up on first run, folder and all,
+> so there is nothing to move by hand.
 
 ## Features
 
@@ -145,7 +148,7 @@ Or with CMake directly:
 ```sh
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/codex
+./build/tagoror
 ```
 
 Playback goes through Qt Multimedia's FFmpeg backend, so that plugin has to be
@@ -160,8 +163,8 @@ To get it in your application menu instead of running it from a terminal:
 make install          # into ~/.local — no root needed
 ```
 
-That builds an optimised binary and installs the executable, a `codex.desktop`
-entry, and the icon at every size. Look for **Códice** in your application menu;
+That builds an optimised binary and installs the executable, a `tagoror.desktop`
+entry, and the icon at every size. Look for **Tagoror** in your application menu;
 the launcher may take a few seconds to notice it the first time, or a logout to
 be safe.
 
@@ -193,7 +196,7 @@ project — only the wrapper differs.
 ```sh
 cd packaging/arch
 makepkg -si            # builds and installs it through pacman
-sudo pacman -R codex   # removes every file it installed; your notes stay
+sudo pacman -R tagoror   # removes every file it installed; your notes stay
 ```
 
 `PKGBUILD` pulls the tarball of a release tag, so tag and push first
@@ -204,7 +207,7 @@ is regenerated with `makepkg --printsrcinfo > .SRCINFO`.
 ### AppImage
 
 ```sh
-sh packaging/appimage/build-appimage.sh          # → Codex-1.2-x86_64.AppImage
+sh packaging/appimage/build-appimage.sh          # → Tagoror-1.2-x86_64.AppImage
 ```
 
 One file, Qt included, nothing to install on the other end (~93 MB). It bundles
@@ -229,10 +232,10 @@ Setup. Two files land on the release:
 
 | | |
 |---|---|
-| `Codex-<version>-setup.exe` | Installs for the current user into `%LOCALAPPDATA%\Programs\Codex` — no UAC prompt. Start Menu entry, optional desktop shortcut and *open when I sign in*. Uninstalling leaves your notes alone. |
-| `Codex-<version>-win64.zip` | The same build, unpacked. Portable: run `codex.exe` from anywhere. |
+| `Tagoror-<version>-setup.exe` | Installs for the current user into `%LOCALAPPDATA%\Programs\Tagoror` — no UAC prompt. Start Menu entry, optional desktop shortcut and *open when I sign in*. Uninstalling leaves your notes alone. |
+| `Tagoror-<version>-win64.zip` | The same build, unpacked. Portable: run `tagoror.exe` from anywhere. |
 
-Notes live in `%APPDATA%\Stride\Codex\` there, with the same `notes.json` and
+Notes live in `%APPDATA%\Stride\Tagoror\` there, with the same `notes.json` and
 `audio\` inside, so a folder copied from Linux works as is.
 
 What differs on Windows:
@@ -251,10 +254,10 @@ either toolchain:
 
 ```powershell
 # MSVC + Qt from the official installer
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DCODEX_VERSION=1.2.0
+cmake -B build -G "Visual Studio 17 2022" -A x64 -DTAGOROR_VERSION=1.2.0
 cmake --build build --config Release
 cmake --install build --config Release --prefix dist
-windeployqt --release dist\codex.exe
+windeployqt --release dist\tagoror.exe
 ```
 
 ```sh
@@ -268,8 +271,8 @@ cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ```sh
 flatpak install flathub org.kde.Platform//6.9 org.kde.Sdk//6.9
 flatpak-builder --user --install --force-clean build-flatpak \
-    packaging/flatpak/io.github.larzt.codex.yml
-flatpak run io.github.larzt.codex
+    packaging/flatpak/io.github.larzt.tagoror.yml
+flatpak run io.github.larzt.tagoror
 ```
 
 The manifest asks for X11 (the panel has to know where it is to fold and unfold
@@ -278,8 +281,8 @@ microphone, the StatusNotifier names for the tray icon, and `--filesystem=home`
 because the storage folder can be pointed anywhere.
 
 Flatpak requires the desktop entry, the icons and the AppStream file to be named
-after the app ID, so that build passes `-DCODEX_APP_ID=io.github.larzt.codex`
-and CMake renames all of them together. Everywhere else the ID stays `codex`.
+after the app ID, so that build passes `-DTAGOROR_APP_ID=io.github.larzt.tagoror`
+and CMake renames all of them together. Everywhere else the ID stays `tagoror`.
 
 > **Before publishing anywhere:** the repository has no licence file, so the
 > package metadata declares `LicenseRef-proprietary`. Flathub and the AUR both
@@ -288,7 +291,7 @@ and CMake renames all of them together. Everywhere else the ID stays `codex`.
 ## Where your notes live
 
 ```
-~/.local/share/Stride/Codex/
+~/.local/share/Stride/Tagoror/
 ├── notes.json     # notes, accent, opacity, window size, preferences
 ├── alarm.wav      # the generated alarm tone
 └── audio/         # one WAV per voice note
@@ -308,8 +311,8 @@ include/ui/      panel, notecard, calendar, popup, theme, waveform, dragwidgets
 include/audio/   recorder, alarm, wave     microphone, alarm tone, WAV
 src/             the matching implementations, same folders
 packaging/       .desktop template and the rasterised icons
-codex.svg        app icon
-codex-small.svg  simplified variant, used below 32px
+tagoror.svg        app icon
+tagoror-small.svg  simplified variant, used below 32px
 ```
 
 `core` knows nothing about the interface, `ui` never touches the disk — it goes

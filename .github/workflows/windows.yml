@@ -1,4 +1,4 @@
-# Compila Codex para Windows y empaqueta el instalador y el ZIP portable.
+# Compila Tagoror para Windows y empaqueta el instalador y el ZIP portable.
 #
 # En cada push a main sirve de aviso de que algo dejó de compilar allí;
 # al publicar una etiqueta (v1.3.0), además cuelga los dos ficheros de la release.
@@ -38,7 +38,7 @@ jobs:
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             version="${GITHUB_REF#refs/tags/v}"
           else
-            version="$(sed -n 's/^project(codex VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+            version="$(sed -n 's/^project(tagoror VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
           fi
 
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -112,7 +112,7 @@ jobs:
       # Visual Studio 17 2022 encuentra automáticamente la instalación
       # de VS 2022 en windows-2022.
       #
-      # Las comillas de CODEX_VERSION son importantes: evitan que el
+      # Las comillas de TAGOROR_VERSION son importantes: evitan que el
       # valor 1.3.0 sea separado por el shell.
       - name: Configurar
         shell: pwsh
@@ -121,7 +121,7 @@ jobs:
             -B build `
             -G "Visual Studio 17 2022" `
             -A x64 `
-            "-DCODEX_VERSION=${{ steps.version.outputs.version }}"
+            "-DTAGOROR_VERSION=${{ steps.version.outputs.version }}"
 
       - name: Compilar
         shell: pwsh
@@ -143,14 +143,14 @@ jobs:
             --no-translations `
             --no-system-d3d-compiler `
             --no-opengl-sw `
-            dist\codex.exe
+            dist\tagoror.exe
 
       - name: ZIP portable
         shell: pwsh
         run: |
           Compress-Archive `
             -Path dist\* `
-            -DestinationPath "Codex-${{ steps.version.outputs.version }}-win64.zip"
+            -DestinationPath "Tagoror-${{ steps.version.outputs.version }}-win64.zip"
 
       # Inno Setup 6 ya viene en la imagen; solo se instala si faltara.
       - name: Instalador
@@ -169,7 +169,7 @@ jobs:
           & $iscc `
             "/DMyAppVersion=${{ steps.version.outputs.version }}" `
             "/DStagingDir=${{ github.workspace }}\dist" `
-            packaging\windows\codex.iss
+            packaging\windows\tagoror.iss
 
           if ($LASTEXITCODE -ne 0) {
             throw "Inno Setup terminó con código $LASTEXITCODE"
@@ -178,10 +178,10 @@ jobs:
       - name: Guardar los dos paquetes
         uses: actions/upload-artifact@v4
         with:
-          name: codex-windows-${{ steps.version.outputs.version }}
+          name: tagoror-windows-${{ steps.version.outputs.version }}
           path: |
-            Codex-*-win64.zip
-            dist-installer/Codex-*-setup.exe
+            Tagoror-*-win64.zip
+            dist-installer/Tagoror-*-setup.exe
           if-no-files-found: error
 
       - name: Colgarlos de la release
@@ -189,5 +189,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            Codex-*-win64.zip
-            dist-installer/Codex-*-setup.exe
+            Tagoror-*-win64.zip
+            dist-installer/Tagoror-*-setup.exe

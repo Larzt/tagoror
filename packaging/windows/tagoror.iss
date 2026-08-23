@@ -1,14 +1,14 @@
 ; Instalador de Windows (Inno Setup 6). Lo compila la CI, pero a mano es:
 ;
-;   iscc /DMyAppVersion=1.2.0 /DStagingDir=..\..\dist packaging\windows\codex.iss
+;   iscc /DMyAppVersion=1.2.0 /DStagingDir=..\..\dist packaging\windows\tagoror.iss
 ;
 ; StagingDir es la carpeta que deja `cmake --install` y rellena windeployqt:
-; codex.exe con sus DLL de Qt y sus plugins al lado.
+; tagoror.exe con sus DLL de Qt y sus plugins al lado.
 
-#define MyAppName "Codex"
+#define MyAppName "Tagoror"
 #define MyAppPublisher "Stride"
-#define MyAppURL "https://github.com/Larzt/codex"
-#define MyAppExeName "codex.exe"
+#define MyAppURL "https://github.com/Larzt/tagoror"
+#define MyAppExeName "tagoror.exe"
 
 #ifndef MyAppVersion
   #define MyAppVersion "1.2.0"
@@ -19,7 +19,12 @@
 
 [Setup]
 ; Este GUID identifica la aplicación para actualizarla y desinstalarla: no se
-; cambia nunca, o cada versión se instalaría al lado de la anterior.
+; cambia nunca, o cada versión se instalaría al lado de la anterior. El
+; renombrado a Tagoror tampoco lo cambia, y es a propósito: así el instalador
+; nuevo sustituye la instalación de Codex en vez de dejar las dos aplicaciones
+; en el menú. A cambio, quien ya tuviera Codex se queda con la carpeta que ya
+; tenía (...\Programs\Codex): Inno reutiliza la ruta registrada y DefaultDirName
+; solo manda en una instalación nueva.
 AppId={{D2A4220F-0955-49DA-B5AA-15D422189676}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
@@ -30,7 +35,7 @@ AppSupportURL={#MyAppURL}/issues
 AppUpdatesURL={#MyAppURL}/releases
 
 ; Sin privilegios de administrador: se instala para el usuario que lo lanza
-; (%LOCALAPPDATA%\Programs\Codex) y no sale ninguna ventana de UAC. Quien
+; (%LOCALAPPDATA%\Programs\Tagoror) y no sale ninguna ventana de UAC. Quien
 ; quiera ponerlo para todo el equipo puede elegirlo en el diálogo.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -44,8 +49,8 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 
 OutputDir=..\..\dist-installer
-OutputBaseFilename=Codex-{#MyAppVersion}-setup
-SetupIconFile=codex.ico
+OutputBaseFilename=Tagoror-{#MyAppVersion}-setup
+SetupIconFile=tagoror.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/max
 SolidCompression=yes
@@ -56,9 +61,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 
 [CustomMessages]
-english.StartupTask=Open Codex when I sign in
+english.StartupTask=Open Tagoror when I sign in
 english.DesktopIconTask=Create a shortcut on the desktop
-spanish.StartupTask=Abrir Códice al iniciar sesión
+spanish.StartupTask=Abrir Tagoror al iniciar sesión
 spanish.DesktopIconTask=Crear un acceso directo en el escritorio
 
 [Tasks]
@@ -81,5 +86,5 @@ Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: st
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#MyAppName}}"; Flags: nowait postinstall skipifsilent
 
-; Las notas viven en %APPDATA%\Stride\Codex y no se tocan al desinstalar:
+; Las notas viven en %APPDATA%\Stride\Tagoror y no se tocan al desinstalar:
 ; reinstalar tiene que devolverte tus notas, no una pizarra en blanco.

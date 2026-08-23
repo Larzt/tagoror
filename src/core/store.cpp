@@ -14,11 +14,13 @@ namespace {
 
 constexpr int kSaveDelayMs = 600;
 
-// Nombres con los que se guardaron los datos antes de la marca Códice, del
-// más reciente al más antiguo. Renombrar la aplicación nunca debe dejar a
-// nadie sin sus notas, así que se hereda tanto la carpeta como los ajustes.
+// Nombres con los que se guardaron los datos en marcas anteriores, del más
+// reciente al más antiguo. Renombrar la aplicación nunca debe dejar a nadie sin
+// sus notas, así que se hereda tanto la carpeta como los ajustes. Cada cambio
+// de nombre AÑADE a esta lista por delante; no sustituye lo que ya había, o el
+// que se saltara una versión se quedaría con sus notas huérfanas.
 const QStringList &legacyAppNames() {
-    static const QStringList names{"Abyss", "NotasWidget"};
+    static const QStringList names{"Codex", "Abyss", "NotasWidget"};
     return names;
 }
 

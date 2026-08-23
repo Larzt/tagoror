@@ -4,7 +4,7 @@
 #
 #   sh packaging/appimage/build-appimage.sh [version]
 #
-# Deja Codex-<version>-x86_64.AppImage en la raíz del repositorio. Necesita red
+# Deja Tagoror-<version>-x86_64.AppImage en la raíz del repositorio. Necesita red
 # la primera vez: se baja linuxdeploy y su complemento de Qt a
 # build-appimage/tools/ y ahí se quedan.
 #
@@ -47,12 +47,12 @@ cmake --build "$WORK/build"
 rm -rf "$APPDIR"
 DESTDIR="$(pwd)/$APPDIR" cmake --install "$WORK/build" >/dev/null
 
-# El .desktop instalado apunta al binario por su ruta absoluta (/usr/bin/codex),
+# El .desktop instalado apunta al binario por su ruta absoluta (/usr/bin/tagoror),
 # que es justo lo que hace falta en una instalación normal y lo que no sirve
 # aquí: dentro del AppImage esa ruta no existe hasta que se monta. linuxdeploy
 # saca de Exec el nombre del ejecutable al que apuntará AppRun, así que en esta
 # copia -- solo en esta -- se deja el nombre pelado.
-sed -i 's|^Exec=.*|Exec=codex|' "$APPDIR/usr/share/applications/codex.desktop"
+sed -i 's|^Exec=.*|Exec=tagoror|' "$APPDIR/usr/share/applications/tagoror.desktop"
 
 # Sin FUSE (contenedores, algunas distros) las herramientas no se pueden
 # montar: que se descompriman ellas solas.
@@ -67,15 +67,15 @@ export EXTRA_QT_PLUGINS="multimedia;tls"
 # distribución al día y se atraganta con las secciones .relr.dyn ("unknown type
 # [0x13]"), lo que aborta el empaquetado entero. No merece la pena por unos MB.
 export NO_STRIP=1
-export OUTPUT="Codex-$VERSION-x86_64.AppImage"
+export OUTPUT="Tagoror-$VERSION-x86_64.AppImage"
 
 # En tres pasos y no en uno (`--plugin qt`) porque al complemento de Qt hay que
 # pasarle --exclude-library, y a través de linuxdeploy no hay manera.
 echo "· recogiendo el binario y sus bibliotecas"
 "$TOOLS/linuxdeploy-x86_64.AppImage" \
     --appdir "$APPDIR" \
-    --desktop-file "$APPDIR/usr/share/applications/codex.desktop" \
-    --icon-file "packaging/icons/256x256/codex.png"
+    --desktop-file "$APPDIR/usr/share/applications/tagoror.desktop" \
+    --icon-file "packaging/icons/256x256/tagoror.png"
 
 # kimg_*: los formatos de imagen de KDE (JPEG XL, OpenEXR, JPEG XR...). No hace
 # falta ninguno -- los iconos se dibujan en código y los del recurso son PNG,

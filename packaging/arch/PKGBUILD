@@ -3,26 +3,36 @@
 # Paquete nativo de Arch. Desde este directorio:
 #
 #   makepkg -si            # compila e instala con pacman
-#   pacman -Qo /usr/bin/codex
-#   sudo pacman -R codex   # se lleva todos los ficheros, las notas se quedan
+#   pacman -Qo /usr/bin/tagoror
+#   sudo pacman -R tagoror   # se lleva todos los ficheros, las notas se quedan
 #
 # La fuente es el tarball de la etiqueta en GitHub, así que la etiqueta tiene
 # que existir antes de empaquetar (git tag -a v1.2 && git push --tags) y
 # después hay que fijar la suma con `updpkgsums`: SKIP vale para probar en
 # local, pero en el AUR no se admite en una fuente que no sea un repositorio.
 
-pkgname=codex
+pkgname=tagoror
 pkgver=1.2.0
 pkgrel=1
 pkgdesc='Sticky-notes panel for the desktop: checklists, reminders with a calendar, and voice notes'
 arch=('x86_64')
-url='https://github.com/Larzt/codex'
+url='https://github.com/Larzt/tagoror'
 # TODO: poner la licencia real en cuanto el repositorio tenga su fichero.
 license=('LicenseRef-proprietary')
+# Se llamaba codex hasta el renombrado: así pacman sustituye el paquete
+# viejo al actualizar en vez de dejar los dos instalados y peleándose por
+# los mismos ficheros.
+replaces=('codex')
+conflicts=('codex')
 depends=('qt6-base' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'libxcb' 'hicolor-icon-theme')
 makedepends=('cmake' 'ninja')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('539d3a19e302548b260ed05dcb2c9776dbe1abbd9db4fdf58784c784d4974d4d')
+# OJO: v1.2.0 es anterior al renombrado, así que ese tarball todavía trae
+# la aplicación llamada codex. Antes de empaquetar hay que etiquetar una
+# versión que ya sea Tagoror, subir pkgver y correr updpkgsums: la suma
+# cambia también porque la carpeta de dentro del tarball pasa a llamarse
+# tagoror-<versión> al renombrarse el repositorio.
+sha256sums=('SKIP')
 
 build() {
     # -DCMAKE_INSTALL_PREFIX=/usr y nada más: el .desktop se genera con la ruta
