@@ -2,6 +2,7 @@
 
 #include <QDate>
 #include <QList>
+#include <QRect>
 #include <QSize>
 #include <QWidget>
 
@@ -127,6 +128,14 @@ private:
     void collapse();
     void expand();
     void showPage(QWidget *page);   // ajusta el tamaño a la página visible
+    // Lo mismo para las dos páginas de dentro (lista y calendario): la que no
+    // se ve no puede imponer su mínimo a la que sí.
+    void showBodyPage(QWidget *page);
+    // El alto mínimo que pide el layout de la página visible, y aplicarlo.
+    // No es una constante: el calendario necesita más que la lista, y con la
+    // lista del día abierta necesita más todavía.
+    int shellMinimumHeight() const;
+    void syncShellMinimum();
 
     // --- persistencia ---
     // El tamaño de la ventana solo lo sabe el panel, así que se vuelca en las
@@ -168,4 +177,10 @@ private:
     Theme m_theme;
     QSize m_expandedSize;                  // se restaura al desplegar (y se guarda)
     QPoint m_dockOffset;                   // por qué punto del panel entra y sale el dock
+    // Lo que la ventana medía antes de estirarse para que cupiera la lista del
+    // día, y cómo se quedó al estirarla. Plegar la lista devuelve la primera,
+    // pero solo si la segunda sigue siendo la geometría actual: si el usuario
+    // ha tocado la ventana desde entonces, el tamaño es suyo y no se toca.
+    QRect m_grownFrom;
+    QRect m_grownTo;
 };

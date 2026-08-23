@@ -329,6 +329,7 @@ void CalendarView::applyDayCollapsed() {
                                    QColor(Theme::muted()), 12));
     m_dayToggle->setToolTip(m_dayCollapsed ? L("Mostrar los avisos del día")
                                            : L("Plegar los avisos del día"));
+    emit roomChanged();
 }
 
 void CalendarView::resizeEvent(QResizeEvent *e) {

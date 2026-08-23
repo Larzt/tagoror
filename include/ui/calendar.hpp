@@ -48,6 +48,10 @@ signals:
     void createRequested(const QDate &day, QWidget *anchor);   // "nuevo recordatorio"
     void noteActivated(Note *n);                               // abrir la nota en la lista
     void dismissRequested(Note *n);                            // callar un aviso que suena
+    // La lista del día se ha plegado o desplegado, y con ella ha cambiado el
+    // alto mínimo de la vista: el panel tiene que rehacer el suyo y, si hace
+    // falta, crecer hacia abajo para que quepa.
+    void roomChanged();
 
 private:
     void buildHeader(QVBoxLayout *col);

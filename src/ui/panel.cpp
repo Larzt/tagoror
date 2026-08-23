@@ -17,6 +17,8 @@
 #include <QGraphicsDropShadowEffect>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QCoreApplication>
+#include <QLayout>
 #include <QLineEdit>
 #include <QLocale>
 #include <QMediaDevices>
@@ -276,10 +278,16 @@ QWidget *Panel::buildBody() {
     connect(m_calendar, &CalendarView::createRequested, this, &Panel::askReminderTime);
     connect(m_calendar, &CalendarView::noteActivated, this, &Panel::revealNote);
     connect(m_calendar, &CalendarView::dismissRequested, this, &Panel::dismissNote);
+    // Plegar o abrir la lista del día cambia lo que necesita la vista: la
+    // ventana rehace su mínimo y crece si hace falta.
+    connect(m_calendar, &CalendarView::roomChanged, this, &Panel::syncShellMinimum);
 
     m_body = new QStackedWidget;
     m_body->addWidget(m_scroll);
     m_body->addWidget(m_calendar);
+    // Desde el principio, no solo al cambiar de página: el calendario pide más
+    // alto que la lista y, sin esto, se lo impondría a la ventana ya al nacer.
+    showBodyPage(m_scroll);
     return m_body;
 }
 
@@ -595,7 +603,7 @@ void Panel::toggleCalendar() {
         return;
     }
     m_searchBar->hide();
-    m_body->setCurrentWidget(m_calendar);
+    showBodyPage(m_calendar);
     m_calendar->refresh();
     setCalendarActive(true);
     refreshFooter();
@@ -604,7 +612,7 @@ void Panel::toggleCalendar() {
 void Panel::showNotes() {
     if (m_body->currentWidget() != m_calendar) return;
 
-    m_body->setCurrentWidget(m_scroll);
+    showBodyPage(m_scroll);
     setCalendarActive(false);
     refreshFooter();
 }
@@ -995,9 +1003,98 @@ void Panel::showPage(QWidget *page) {
     m_stack->setCurrentWidget(page);
 }
 
+// Misma idea, un nivel más adentro. Un QStackedWidget pide el mínimo de la
+// mayor de sus páginas, así que sin esto el calendario -- que necesita bastante
+// más alto -- le impondría su mínimo a la lista de notas, que no lo necesita.
+void Panel::showBodyPage(QWidget *page) {
+    for (int i = 0; i < m_body->count(); ++i) {
+        QWidget *w = m_body->widget(i);
+        const auto policy = (w == page) ? QSizePolicy::Preferred : QSizePolicy::Ignored;
+        w->setSizePolicy(policy, policy);
+    }
+    m_body->setCurrentWidget(page);
+    syncShellMinimum();
+}
+
+int Panel::shellMinimumHeight() const {
+    QLayout *l = m_shell ? m_shell->layout() : nullptr;
+    if (!l) return kShellMinHeight;
+
+    // Hay que recalcular de dentro afuera, y a mano.
+    //
+    // Quien llama acaba de esconder o enseñar la lista del día, y lo que
+    // invalida el layout del calendario es un LayoutRequest *encolado*: sin
+    // esperarlo, minimumSize() contesta con el mínimo de antes. Plegar dejaba
+    // así el alto mínimo de cuando estaba abierta y la ventana no encogía.
+    // Invalidar solo el de fuera no basta: el de fuera pregunta al de dentro,
+    // que sigue con su valor cacheado hasta que le llega ese evento.
+    if (QWidget *page = m_body ? m_body->currentWidget() : nullptr) page->updateGeometry();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
+    l->invalidate();
+    l->activate();
+    return qMax(kShellMinHeight, l->minimumSize().height() + kShadowMargin * 2);
+}
+
+// El mínimo de la ventana lo pide el layout, no una constante.
+//
+// Un setMinimumSize por debajo de lo que el layout necesita no encoge nada:
+// Qt reparte el alto que hay y las geometrías acaban solapándose. Así es como
+// la lista del día se dibujaba encima de la rejilla del mes -- el mínimo eran
+// 340 px fijos y el calendario, ya plegado, pedía más.
+//
+// Y al revés: abrir la lista del día en un panel pequeño ya no la mete a la
+// fuerza donde no cabe, sino que hace crecer la ventana hacia abajo, que es de
+// donde sale el sitio. Solo si por abajo se acaba el área de trabajo sube lo
+// justo, la misma regla que anchoredTopLeft.
+void Panel::syncShellMinimum() {
+    if (!m_shell || !m_stack || m_stack->currentWidget() != m_shell) return;
+
+    // setMinimumSize ya estira la ventana por su cuenta si se queda corta, y lo
+    // hace dejando quieta la esquina superior izquierda: crece hacia abajo, que
+    // es justo lo que se quiere. Aquí solo queda apuntar que el estirón es
+    // nuestro y devolverla al área de trabajo si se ha salido por abajo.
+    const QRect before = geometry();
+    const int minH = shellMinimumHeight();
+    setMinimumSize(kShellMinWidth + kShadowMargin * 2, minH);
+
+    if (height() > before.height()) {
+        // Solo se apunta el primer estirón: abrir la lista y cambiar de página
+        // son dos crecidas seguidas, y lo que hay que devolver es el tamaño de
+        // antes de la primera, no el de en medio.
+        if (!m_grownFrom.isValid()) m_grownFrom = before;
+        if (const QRect area = placementArea(); area.isValid())
+            if (const QPoint p = clampInto(pos(), size(), area); p != pos()) move(p);
+        m_grownTo = geometry();
+        return;
+    }
+
+    // Cabe de sobra. Si la ventana está así de grande porque la estiramos
+    // nosotros, plegar la lista la devuelve a lo que medía: crecer para hacer
+    // sitio y no volver deja la ventana un poco más grande cada vez.
+    //
+    // El apunte solo vale mientras la ventana siga siendo la que dejamos: en
+    // cuanto el usuario la toca, el tamaño es suyo y aquí ya no se decide.
+    if (m_grownFrom.isValid() && geometry() == m_grownTo) {
+        // Todavía no se puede devolver todo -- el plegado de la lista bajó el
+        // mínimo, pero el calendario sigue pidiendo más que el tamaño de
+        // partida --: se deja como está y el apunte sigue en pie, porque no ha
+        // dejado de ser verdad. Borrarlo aquí era lo que hacía que un refresco
+        // cualquiera por el medio se comiera la vuelta.
+        if (m_grownFrom.height() < minH) return;
+        setGeometry(m_grownFrom);
+        keepOnScreen();
+    }
+    m_grownFrom = QRect();
+    m_grownTo = QRect();
+}
+
 void Panel::collapse() {
     m_expandedSize = size();
     const QRect panel = geometry();
+    // El apunte de la crecida no sobrevive al dock: la geometría con la que se
+    // comparaba es la del panel abierto, que a partir de aquí ya no existe.
+    m_grownFrom = QRect();
+    m_grownTo = QRect();
 
     setMinimumSize(0, 0);
     showPage(m_badge);
@@ -1030,7 +1127,7 @@ void Panel::expand() {
         scheduleSave();
     }
     showPage(m_shell);
-    setMinimumSize(kShellMinWidth + kShadowMargin * 2, kShellMinHeight);
+    setMinimumSize(kShellMinWidth + kShadowMargin * 2, shellMinimumHeight());
 
     // Un tamaño guardado mayor de lo que cabe (otro monitor, otra resolución,
     // un panel del escritorio que recorta el área de trabajo) no entra de
