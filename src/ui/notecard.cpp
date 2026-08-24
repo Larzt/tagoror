@@ -29,6 +29,7 @@
 #include <QMediaPlayer>
 #include <QMouseEvent>
 #include <QProgressBar>
+#include <QRegularExpression>
 #include <QTextDocument>
 #include <QTextEdit>
 #include <QTimer>
@@ -38,6 +39,38 @@
 #include <QVBoxLayout>
 
 namespace {
+
+// --- la fecha escrita a mano -----------------------------------------------
+//
+// El campo se precarga con lo que ya tiene el recordatorio, y tiene que
+// hacerlo en el mismo formato que sabe leer. Cargarlo con 'due' -- la etiqueta
+// que enseña el chip, "mar 25 ago 09:00" -- convertía el gesto natural
+// (abrirlo, retocar la hora, aceptar) en texto que el lector no entiende: el
+// aviso se quedaba sin instante, y como el calendario solo coloca los que lo
+// tienen (Note::isScheduled), desaparecía de la rejilla y de la cuenta del pie
+// aunque el chip siguiera enseñando una fecha. De ahí sale el formato, no de
+// la etiqueta.
+QString dueFieldText(const Note *n) {
+    return n->dueAtMs > 0 ? n->dueAt().toString("dd/MM HH:mm") : n->due;
+}
+
+// dd/MM HH:mm, con el año opcional detrás del mes. La fecha se arma por piezas
+// en vez de dejársela a QDateTime::fromString(): sin año esa función ancla en
+// 1900, que no es bisiesto, así que un 29 de febrero no se podía escribir de
+// ninguna manera. El año que falta es el actual, y así el 29 solo vale en los
+// años que de verdad lo tienen -- para los demás está 29/02/2028.
+QDateTime parseDue(const QString &text) {
+    static const QRegularExpression re(
+        R"(^\s*(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(\d{4}))?[\s,]+(\d{1,2})\s*:\s*(\d{2})\s*$)");
+    const QRegularExpressionMatch m = re.match(text);
+    if (!m.hasMatch()) return QDateTime();
+
+    const int year = m.captured(3).isEmpty() ? QDate::currentDate().year()
+                                             : m.captured(3).toInt();
+    const QDate date(year, m.captured(2).toInt(), m.captured(1).toInt());
+    const QTime time(m.captured(4).toInt(), m.captured(5).toInt());
+    return date.isValid() && time.isValid() ? QDateTime(date, time) : QDateTime();
+}
 
 // Editor de cuerpo que crece con su contenido: sin barras de scroll propias,
 // la altura sigue al documento entre un mínimo y un máximo.
@@ -618,12 +651,15 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
 
     menu->addSeparator();
     menu->addHeader(L("A mano · dd/MM HH:mm"));
-    menu->addEditor(L("p. ej. 24/12 20:30"), m_note->due, [this](const QString &value) {
+    menu->addEditor(L("p. ej. 24/12 20:30"), dueFieldText(m_note), [this](const QString &value) {
         // Si el texto se puede interpretar como fecha, además suena; si no,
-        // se queda como etiqueta suelta (comportamiento de siempre).
-        QDateTime parsed = QDateTime::fromString(value, "dd/MM HH:mm");
-        if (parsed.isValid()) parsed = parsed.addYears(QDate::currentDate().year() - 1900);
-        applyDue(parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0, value);
+        // se queda como etiqueta suelta (comportamiento de siempre). Cuando sí
+        // se entiende se guarda la etiqueta normal, la misma que ponen los
+        // presets, y no lo tecleado: así el chip dice lo de siempre y el campo
+        // vuelve a abrirse en su formato.
+        const QDateTime parsed = parseDue(value);
+        applyDue(parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0,
+                 parsed.isValid() ? Lang::locale().toString(parsed, "ddd d MMM HH:mm") : value);
     });
 
     // La repetición vive aquí y no en un menú propio: es parte de "cuándo
