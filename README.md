@@ -235,6 +235,34 @@ sudo pacman -R tagoror   # removes every file it installed; your notes stay
 `SKIP` checksum — the AUR does not accept `SKIP` for a plain tarball. `.SRCINFO`
 is regenerated with `makepkg --printsrcinfo > .SRCINFO`.
 
+### Graphical installer (double-click)
+
+```sh
+sh packaging/installer/make-installer.sh         # → Tagoror-<version>-x86_64-installer.run
+```
+
+One file to hand to someone who just wants to double-click it, the way the
+Windows setup works. It asks whether to add the menu entry and whether to open
+at login, then installs **into your home folder** — no root, no password
+prompt:
+
+```
+~/.local/opt/Tagoror/tagoror.AppImage    the app, with Qt inside
+~/.local/opt/Tagoror/uninstall.sh        removes it again
+~/.local/bin/tagoror                     so `tagoror` works in a terminal
+~/.local/share/applications/…            the menu entry
+~/.local/share/icons/hicolor/…           icons, every size
+```
+
+The wizard uses `kdialog`, or `zenity`, or plain terminal prompts — whichever it
+finds — and speaks Spanish or English following `LANG`. Your notes are never
+touched: not on install, not on update, not on uninstall.
+
+It carries the whole AppImage, so it is about 95 MB and needs nothing installed
+on the other end — and it inherits the AppImage's glibc caveat below. If the
+file arrives without its executable bit (GitHub downloads drop it), it needs a
+`chmod +x` before the double-click works.
+
 ### AppImage
 
 ```sh

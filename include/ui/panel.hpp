@@ -92,6 +92,7 @@ private:
     // --- recordatorios ---
     void checkReminders();          // ¿alguno ha vencido? → suena y avisa
     void dismissNote(Note *n);      // el usuario para el aviso
+    void rescheduleNote(Note *n);   // le cambió la fecha mientras sonaba
     // Calla un aviso: los que se repiten no quedan como avisados, saltan a su
     // siguiente vuelta. Lo comparten el botón de parar y abrir el panel.
     void silence(Note *n);

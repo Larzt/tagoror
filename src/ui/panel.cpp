@@ -426,6 +426,7 @@ void Panel::rebuildList() {
         connect(card, &NoteCard::dirty, this, &Panel::refreshCalendar);
         connect(card, &NoteCard::deleteRequested, this, &Panel::removeNote);
         connect(card, &NoteCard::dismissRequested, this, &Panel::dismissNote);
+        connect(card, &NoteCard::rescheduled, this, &Panel::rescheduleNote);
         connect(card, &NoteCard::moveRequested, this, &Panel::moveNote);
         connect(card, &NoteCard::dragStarted, this, [this, card] { beginCardDrag(card); });
         connect(card, &NoteCard::dragMoved, this,
@@ -735,6 +736,16 @@ void Panel::dismissNote(Note *n) {
     refreshCalendar();
     applyBadgeAlert();
     save();
+}
+
+// Aplazar un aviso que estaba sonando. La tarjeta ya se ha quitado el
+// 'ringing' y se ha repintado sola; aquí se apaga lo que vive fuera de ella,
+// que es el tono y el rojo del dock, y se rehace el calendario -- que seguía
+// enseñando el aviso como si sonara, ahora sobre su día nuevo.
+void Panel::rescheduleNote(Note *) {
+    if (!anyRinging()) m_alarm->stop();
+    refreshCalendar();
+    applyBadgeAlert();
 }
 
 void Panel::refreshDueCards() {

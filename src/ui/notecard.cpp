@@ -611,13 +611,8 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
     for (const auto &[label, when] : presets) {
         menu->addItem("clock", label, Lang::locale().toString(when, "ddd d MMM HH:mm"),
                       [this, when] {
-            m_note->dueAtMs = when.toMSecsSinceEpoch();
-            m_note->due = Lang::locale().toString(when, "ddd d MMM HH:mm");
-            m_note->fired = false;
-            if (m_chip) m_chip->setText(m_note->dueLabel());
-            refreshRepeat();
-            refreshDue();
-            emit dirty();
+            applyDue(when.toMSecsSinceEpoch(),
+                     Lang::locale().toString(when, "ddd d MMM HH:mm"));
         });
     }
 
@@ -628,14 +623,7 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
         // se queda como etiqueta suelta (comportamiento de siempre).
         QDateTime parsed = QDateTime::fromString(value, "dd/MM HH:mm");
         if (parsed.isValid()) parsed = parsed.addYears(QDate::currentDate().year() - 1900);
-        m_note->dueAtMs = parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0;
-        m_note->due = value;
-        m_note->fired = false;
-        if (m_chip) m_chip->setText(m_note->dueLabel().isEmpty() ? L("Sin fecha")
-                                                                : m_note->dueLabel());
-        refreshRepeat();
-        refreshDue();
-        emit dirty();
+        applyDue(parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0, value);
     });
 
     // La repetición vive aquí y no en un menú propio: es parte de "cuándo
@@ -656,13 +644,7 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
     if (!m_note->due.isEmpty()) {
         menu->addSeparator();
         menu->addItem("minus", L("Quitar fecha"), QString(), [this] {
-            m_note->due.clear();
-            m_note->dueAtMs = 0;
-            m_note->fired = false;
-            if (m_chip) m_chip->setText(L("Sin fecha"));
-            refreshRepeat();
-            refreshDue();
-            emit dirty();
+            applyDue(0, QString());
         });
     }
     menu->showAt(globalPos);
@@ -679,15 +661,42 @@ void NoteCard::refreshRepeat() {
     m_repeatChip->setVisible(m_note->repeats());
 }
 
+// Mover la fecha de un aviso es también enterarse de él: aplazar no es
+// ignorar, así que deja de sonar. Sin esto la nota se llevaba el 'ringing' a
+// su fecha nueva -- el tono seguía sonando, el dock seguía rojo y el
+// calendario pintaba de rojo, con su botón de parar, un día que aún no ha
+// llegado. 'fired' se limpia porque el instante es otro y todavía no ha
+// avisado de este.
+void NoteCard::applyDue(qint64 whenMs, const QString &label) {
+    const bool wasRinging = m_note->ringing;
+
+    m_note->dueAtMs = whenMs;
+    m_note->due = label;
+    m_note->fired = false;
+    m_note->ringing = false;
+
+    if (m_chip) m_chip->setText(m_note->dueLabel().isEmpty() ? L("Sin fecha") : m_note->dueLabel());
+    refreshRepeat();
+    refreshDue();
+
+    // Primero el aviso de que ya no suena: el panel mira el estado de todas
+    // las notas y esta ya está puesta al día.
+    if (wasRinging) emit rescheduled(m_note);
+    emit dirty();
+}
+
 void NoteCard::setRepeat(Note::Repeat repeat) {
     m_note->repeat = repeat;
     // Un recordatorio que vuelve no puede quedarse marcado como ya avisado: si
     // no, la próxima vuelta no sonaría. Se recoloca en su siguiente fecha
-    // cuando la que tiene ya pasó.
+    // cuando la que tiene ya pasó, y eso es un cambio de fecha como cualquier
+    // otro. Dejar de repetirse no lo es: ahí 'fired' se respeta, o un aviso ya
+    // dado volvería a sonar por haber tocado el menú.
     if (m_note->repeats()) {
-        m_note->fired = false;
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
-        if (m_note->dueAtMs <= now) m_note->dueAtMs = m_note->nextOccurrenceAfter(now);
+        applyDue(m_note->dueAtMs <= now ? m_note->nextOccurrenceAfter(now) : m_note->dueAtMs,
+                 m_note->due);
+        return;
     }
     if (m_chip) m_chip->setText(m_note->dueLabel().isEmpty() ? L("Sin fecha") : m_note->dueLabel());
     refreshRepeat();

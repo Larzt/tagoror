@@ -37,6 +37,9 @@ signals:
     void dirty();                 // el contenido cambió → guardar
     void deleteRequested(Note *);
     void dismissRequested(Note *);   // parar la alarma de este recordatorio
+    // Le cambiaron la fecha a un aviso que estaba sonando: la tarjeta ya se
+    // ha quitado el 'ringing', pero el tono y el rojo del dock son del panel.
+    void rescheduled(Note *);
 
     // --- reordenar ---
     // Un paso arriba (-1) o abajo (+1) desde el menú; el arrastre por el
@@ -63,6 +66,9 @@ private:
     void refreshProgress();
 
     void openDuePopup(const QPoint &globalPos);   // chip o menú contextual
+    // El único sitio que mueve la fecha de un aviso: instante, etiqueta y
+    // estado se cambian juntos para que no puedan quedar en desacuerdo.
+    void applyDue(qint64 whenMs, const QString &label);
     void setRepeat(Note::Repeat repeat);
     void refreshRepeat();
 

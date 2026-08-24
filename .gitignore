@@ -35,6 +35,7 @@ ui_*.h
 
 # Paquetes generados
 *.AppImage
+*-installer.run
 *.zip
 dist/
 dist-installer/
