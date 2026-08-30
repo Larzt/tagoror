@@ -14,6 +14,7 @@ class QLabel;
 class QLineEdit;
 class QMenu;
 class QPushButton;
+class QScreen;
 class QScrollArea;
 class QStackedWidget;
 class QSystemTrayIcon;
@@ -48,6 +49,10 @@ protected:
     // tareas la ignore: cambiar de flags destruye la ventana nativa y con ella
     // la propiedad.
     void showEvent(QShowEvent *e) override;
+    // El sitio de la ventana es del usuario: se apunta en cuanto cambia, sin
+    // esperar al destructor. Al apagar el equipo la sesión mata el proceso y
+    // ese último guardado no llega nunca.
+    void moveEvent(QMoveEvent *e) override;
 
 private:
     // --- construcción de la interfaz ---
@@ -116,9 +121,14 @@ private:
     // --- ventana ---
     void applyWindowFlags();        // encima de todo o pegado al escritorio
     void keepOnScreen();            // que plegar/desplegar no la saque de la pantalla
+    // Devuelve la ventana al sitio guardado en el arranque. Sin esto reaparece
+    // donde la ponga el gestor, que no es donde la dejó su dueño.
+    void restoreWindowPos();
     // Dónde deja el gestor de ventanas poner la ventana, que no es toda la
-    // pantalla: ver placementArea() en el .cpp.
-    QRect placementArea() const;
+    // pantalla: ver placementArea() en el .cpp. Sin pantalla se toma la de la
+    // propia ventana; se pasa una cuando se coloca en un monitor que todavía
+    // no es el suyo.
+    QRect placementArea(const QScreen *sc = nullptr) const;
     // Esquina por la que crece o encoge la ventana: el panel se abre hacia el
     // centro de la pantalla, no siempre hacia abajo y a la derecha.
     QPoint anchoredTopLeft(const QRect &before, const QSize &after) const;
@@ -178,6 +188,7 @@ private:
     Theme m_theme;
     QSize m_expandedSize;                  // se restaura al desplegar (y se guarda)
     QPoint m_dockOffset;                   // por qué punto del panel entra y sale el dock
+    bool m_posRestored = false;            // la posición guardada solo se repone al mapear
     // Lo que la ventana medía antes de estirarse para que cupiera la lista del
     // día, y cómo se quedó al estirarla. Plegar la lista devuelve la primera,
     // pero solo si la segunda sigue siendo la geometría actual: si el usuario

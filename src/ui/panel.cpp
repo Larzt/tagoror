@@ -15,6 +15,7 @@
 #include <QDir>
 #include <QFileDialog>
 #include <QGraphicsDropShadowEffect>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QCoreApplication>
@@ -23,6 +24,7 @@
 #include <QLocale>
 #include <QMediaDevices>
 #include <QMenu>
+#include <QMoveEvent>
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollBar>
@@ -134,6 +136,9 @@ Panel::Panel() {
     resize(m_expandedSize);
     showPage(m_shell);
     applyWindowFlags();
+    // Después de applyWindowFlags: cambiar de flags destruye la ventana nativa,
+    // y colocarla antes de eso es colocar una ventana que se va a rehacer.
+    restoreWindowPos();
 }
 
 Panel::~Panel() {
@@ -985,6 +990,16 @@ void Panel::closeEvent(QCloseEvent *e) {
 void Panel::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
     wmSkipTaskbar(winId());
+
+    // Al mapear la ventana por primera vez el gestor la coloca donde le parece
+    // y pisa la posición pedida antes de mostrarla -- la restauración de sesión
+    // de KDE, que es la que corre al reiniciar el equipo, hace justo eso. Se
+    // vuelve a pedir una sola vez, ya con ventana nativa; de ahí en adelante la
+    // ventana es del usuario y aquí no se toca más.
+    if (!m_posRestored) {
+        m_posRestored = true;
+        restoreWindowPos();
+    }
 }
 
 void Panel::applyWindowFlags() {
@@ -1169,8 +1184,8 @@ void Panel::expand() {
 // puede salirse), y recortada al área de trabajo del gestor. Ese recorte es el
 // que manda: pedir una posición fuera de ella no falla, la corrige el gestor y
 // la ventana aparece de un salto donde no se pidió.
-QRect Panel::placementArea() const {
-    const QScreen *sc = screen();
+QRect Panel::placementArea(const QScreen *sc) const {
+    if (!sc) sc = screen();
     if (!sc) return {};
 
     QRect area = sc->availableGeometry().adjusted(-kShadowMargin, -kShadowMargin,
@@ -1214,12 +1229,46 @@ void Panel::keepOnScreen() {
     if (const QPoint p = clampInto(pos(), size(), area); p != pos()) move(p);
 }
 
+// Vuelve al sitio donde quedó la ventana la última vez. Sin esto cada arranque
+// -- y reiniciar el equipo es un arranque -- la deja donde le parece al gestor
+// de ventanas, normalmente en una esquina que no es la que eligió el usuario.
+//
+// Vale lo mismo que para plegar y desplegar: en Wayland colocar la propia
+// ventana es cosa del compositor y esto se queda en nada; en X11 se aplica.
+void Panel::restoreWindowPos() {
+    if (!m_store.prefs().hasWindowPos) return;
+    const QPoint saved = m_store.prefs().windowPos;
+
+    // La pantalla es la que hay bajo la ventana guardada, no la primaria: con
+    // dos monitores, corregir contra la primaria se traería a ella una ventana
+    // que vivía en el otro. Se busca por el centro, porque el margen de sombra
+    // de la esquina bien puede asomar fuera de la pantalla. Si esa pantalla ya
+    // no está (un portátil desenchufado del monitor), placementArea() usa la
+    // actual y el recorte trae la ventana de vuelta a lo que hay.
+    const QScreen *sc = QGuiApplication::screenAt(QRect(saved, size()).center());
+    const QRect area = placementArea(sc);
+    move(area.isValid() ? clampInto(saved, size(), area) : saved);
+}
+
+void Panel::moveEvent(QMoveEvent *e) {
+    QWidget::moveEvent(e);
+    // Apuntar el sitio en cuanto cambia. El destructor guarda, pero al apagar
+    // el equipo la sesión mata el proceso y ese guardado no llega; el temporizador
+    // del Store agrupa además el chorro de eventos de un arrastre.
+    if (isVisible()) scheduleSave();
+}
+
 // ---------------------------------------------------------------------------
 
 void Panel::syncPrefs() {
     // Plegado, el tamaño que vale es el que tenía desplegado.
     const bool folded = m_stack && m_stack->currentWidget() == m_badge;
     m_store.prefs().windowSize = folded ? m_expandedSize : size();
+
+    // La posición se guarda tal cual esté, plegada o no: al arrancar el panel
+    // se abre por esa esquina, que es exactamente lo que hace desplegar el dock.
+    m_store.prefs().windowPos = pos();
+    m_store.prefs().hasWindowPos = true;
 }
 
 void Panel::scheduleSave() { m_store.scheduleSave(); }

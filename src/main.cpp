@@ -1,7 +1,9 @@
 #include <QApplication>
+#include <QDir>
 #include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
+#include <QLockFile>
 #include <QSettings>
 
 #include "ui/panel.hpp"
@@ -66,20 +68,41 @@ int main(int argc, char *argv[]) {
     // ya abierto (por ejemplo por el autoarranque) saldrían dos paneles sobre
     // el mismo notes.json y el último en guardar se comería las notas del otro.
     const QString key = QString("tagoror-%1").arg(qEnvironmentVariable("USER", "user"));
+    // Quién es la primera lo decide el `listen`, no el sondeo: enlazar el
+    // socket es atómico y preguntar por él no. Al iniciar sesión el
+    // autoarranque y la restauración de sesión de KDE lanzan las dos copias a
+    // la vez (comprobado: dos procesos escuchando sobre el mismo nombre), y
+    // entre sondear y escuchar se construía el Panel entero, así que ninguna
+    // de las dos escuchaba todavía cuando la otra preguntaba. Peor: el
+    // `removeServer` incondicional hacía que la perdedora borrase el socket de
+    // la ganadora y se quedase con el nombre, con lo que ambas se creían la
+    // única y las dos guardaban sobre el mismo notes.json.
+    QLocalServer server;
 
-    QLocalSocket probe;
-    probe.connectToServer(key);
-    if (probe.waitForConnected(200)) {
-        probe.write("show");
-        probe.waitForBytesWritten(200);
-        return 0;                      // ya hay una abierta: que dé la cara ella
+    if (!server.listen(key)) {
+        // O hay una viva, o quedó el socket de un cierre brusco. El cerrojo
+        // serializa esa comprobación: si arrancan dos a la vez sobre un socket
+        // huérfano, la segunda espera y encuentra a la primera ya escuchando.
+        QLockFile lock(QDir::tempPath() + "/" + key + ".lock");
+        lock.setStaleLockTime(10000);
+        lock.tryLock(3000);
+
+        QLocalSocket probe;
+        probe.connectToServer(key);
+        if (probe.waitForConnected(200)) {
+            probe.write("show");
+            probe.waitForBytesWritten(200);
+            return 0;                  // ya hay una abierta: que dé la cara ella
+        }
+
+        QLocalServer::removeServer(key);   // socket huérfano, ahora sí
+        server.listen(key);
     }
 
     Panel panel;
 
-    QLocalServer server;
-    QLocalServer::removeServer(key);   // socket huérfano de un cierre brusco
-    server.listen(key);
+    // Las conexiones que lleguen mientras se construye el panel esperan en la
+    // cola del socket; newConnection las entrega al entrar en el bucle.
     QObject::connect(&server, &QLocalServer::newConnection, &panel, [&server, &panel] {
         if (QLocalSocket *client = server.nextPendingConnection()) {
             client->deleteLater();

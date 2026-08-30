@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QList>
 #include <QObject>
+#include <QPoint>
 #include <QSize>
 #include <QString>
 #include <functional>
@@ -26,6 +27,11 @@ public:
         QColor accent{"#7c9cff"};
         int opacity = 96;              // 40..100
         QSize windowSize;              // tamaño del panel desplegado
+        // Dónde dejó el usuario la ventana. Hace falta la bandera porque
+        // (0,0) es una esquina perfectamente válida: un QPoint nulo no puede
+        // significar "no hay nada guardado".
+        QPoint windowPos;
+        bool hasWindowPos = false;
         QByteArray input;              // micrófono elegido en ajustes
         bool onTop = false;            // por defecto vive en el escritorio
         Lang::Code lang = Lang::Es;    // idioma de la interfaz

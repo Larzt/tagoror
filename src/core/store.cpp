@@ -128,6 +128,10 @@ void Store::save() {
     root["opacity"] = m_prefs.opacity;
     root["w"] = m_prefs.windowSize.width();
     root["h"] = m_prefs.windowSize.height();
+    if (m_prefs.hasWindowPos) {
+        root["x"] = m_prefs.windowPos.x();
+        root["y"] = m_prefs.windowPos.y();
+    }
     root["input"] = QString::fromLatin1(m_prefs.input);
     root["onTop"] = m_prefs.onTop;
     root["lang"] = Lang::toString(m_prefs.lang);
@@ -173,6 +177,10 @@ void Store::load() {
     Lang::setCurrent(m_prefs.lang);
     if (root.contains("w") && root.contains("h"))
         m_prefs.windowSize = QSize(root["w"].toInt(), root["h"].toInt());
+    if (root.contains("x") && root.contains("y")) {
+        m_prefs.windowPos = QPoint(root["x"].toInt(), root["y"].toInt());
+        m_prefs.hasWindowPos = true;
+    }
 
     for (const QJsonValue v : root["notes"].toArray())
         m_notes.append(Note::fromJson(v.toObject()));
