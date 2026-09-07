@@ -54,7 +54,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/Larzt/tagoror.git
-        tag: v1.2
+        tag: v1.5.0
       # Para probar cambios sin publicar una etiqueta, cambiar el bloque de
       # arriba por el árbol local:
       #

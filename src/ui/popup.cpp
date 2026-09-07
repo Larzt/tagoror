@@ -285,6 +285,18 @@ void Popup::addFields(const QStringList &placeholders, const QStringList &values
 // Los presets de hora del calendario: cinco filas de menú son 150 px, más que
 // la mitad del panel, y el popup terminaba encima del calendario. En chips
 // caben tres por línea y el menú entero mide poco más que una tarjeta.
+void Popup::addChoice(const QStringList &labels, int chosen,
+                      std::function<void(int)> action) {
+    addChips(labels, {}, QString(), std::move(action));
+
+    // El último widget añadido es la rejilla de chips que acaba de montar
+    // addChips: se marca el elegido sobre ella en vez de duplicar el montaje.
+    QWidget *host = m_col->itemAt(m_col->count() - 1)->widget();
+    if (!host) return;
+    const QList<QToolButton *> chips = host->findChildren<QToolButton *>();
+    for (int i = 0; i < chips.size(); ++i) chips.at(i)->setProperty("chosen", i == chosen);
+}
+
 void Popup::addChips(const QStringList &labels, const QList<bool> &muted,
                      const QString &mutedTip, std::function<void(int)> action) {
     constexpr int kPerRow = 3;

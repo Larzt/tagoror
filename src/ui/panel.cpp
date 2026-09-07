@@ -13,7 +13,9 @@
 #include <QAudioDevice>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QGraphicsDropShadowEffect>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -45,6 +47,10 @@ constexpr int kShellMinHeight = 340;   // el calendario necesita más alto que l
 
 // Las rutas de datos son largas y la fila del menú las corta por la mitad;
 // bajo el home se muestran con ~ para que se lea la parte que importa.
+// Cada cuánto se puede pedir la copia. El cero es "solo a mano" y va primero
+// porque es el interruptor: quien no quiere programación lo apaga ahí.
+const QList<int> kBackupPeriods{0, 1, 3, 7, 15, 30};
+
 QString prettyPath(const QString &path) {
     const QString home = QDir::homePath();
     return path.startsWith(home + "/") ? "~" + path.mid(home.size()) : path;
@@ -119,16 +125,24 @@ Panel::Panel() {
     m_expandedSize = m_store.prefs().windowSize;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
 
+    connect(&m_store, &Store::reloaded, this, &Panel::onStoreReloaded);
+
     m_alarm = new Alarm(this);
     m_dueTimer = new QTimer(this);
     m_dueTimer->setInterval(5000);
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::checkReminders);
+    // El mismo latido vigila la carpeta de datos: mirar si existe es una
+    // llamada a stat, y es lo que hace que un pendrive montado a los diez
+    // minutos se recoja solo en vez de quedarse el panel vacío.
+    connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollDataDir);
+    connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollBackup);
     m_dueTimer->start();
 
     buildShell();
     buildTray();
     rebuildList();
     applyTheme();
+    refreshDataWarning();
     checkReminders();   // puede haber vencido algo con la app cerrada
 
     if (!m_expandedSize.isValid())
@@ -174,6 +188,14 @@ void Panel::buildShell() {
     col->setSpacing(0);
 
     col->addWidget(buildHeader());
+
+    // Aviso de carpeta ausente. Va aquí arriba, no en el pie, porque no es un
+    // detalle: mientras esté puesto, escribir en el panel no guarda nada.
+    m_dataWarn = new QLabel;
+    m_dataWarn->setObjectName("warnBanner");
+    m_dataWarn->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
+    m_dataWarn->hide();
+    col->addWidget(m_dataWarn);
 
     // barra de búsqueda (oculta por defecto)
     m_searchBar = new QWidget;
@@ -394,6 +416,7 @@ void Panel::retranslate() {
     m_emptyText->setText(L("Todavía no hay notas"));
     m_emptyBtn->setText(L("Crear la primera"));
     m_footerHint->setText(L("clic dcho · opciones"));
+    refreshDataWarning();
 
     for (QToolButton *b : m_headerButtons)
         b->setToolTip(L(b->property("tip").toString()));
@@ -861,8 +884,14 @@ void Panel::openSettings(QWidget *anchor) {
 
     menu->addSeparator();
     menu->addHeader(L("Datos"));
-    menu->addItem("notes", L("Carpeta de guardado…"), prettyPath(appDataDir()),
+    menu->addItem("notes", L("Carpeta de guardado…"),
+                  m_store.available()
+                      ? prettyPath(appDataDir())
+                      : L("No disponible · %1").arg(prettyPath(appDataDir())),
                   [this] { chooseDataFolder(); });
+    menu->addItem("copy", L("Copias de seguridad…"),
+                  backupPeriodLabel(m_store.prefs().backupEveryDays),
+                  [this, anchor] { openBackups(anchor); });
 
     menu->addSeparator();
     menu->addHeader(L("Micrófono"));
@@ -900,9 +929,192 @@ void Panel::openAccentEditor(QWidget *anchor) {
 }
 
 void Panel::chooseDataFolder() {
-    const QString to = QFileDialog::getExistingDirectory(
-        this, L("Carpeta donde guardar las notas"), appDataDir());
-    m_store.changeDataDir(to);
+    // El diálogo abre donde estén los datos, salvo que ese sitio no exista
+    // ahora mismo: apuntar a una carpeta ausente deja el selector en blanco.
+    const QString start = m_store.available() ? appDataDir() : QDir::homePath();
+    const QString to =
+        QFileDialog::getExistingDirectory(this, L("Carpeta donde guardar las notas"), start);
+    if (to.isEmpty()) return;
+
+    // Si allí ya hay notas, hay que preguntar: llevarse las de aquí borra las
+    // de allí, y es justo lo que se hace al apuntar a un pendrive que ya las
+    // tiene. Si no las hay, no hay ambigüedad que resolver.
+    if (QFile::exists(to + "/notes.json"))
+        confirmDataFolder(to);
+    else
+        m_store.changeDataDir(to);
+}
+
+void Panel::confirmDataFolder(const QString &to) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Esa carpeta ya tiene notas"));
+    menu->addItem("notes", L("Abrir las de esa carpeta"),
+                  L("Se quedan las que hay allí"),
+                  [this, to] { m_store.adoptDataDir(to); });
+    menu->addItem("copy", L("Llevar allí estas notas"),
+                  L("Se sobrescriben las de allí"),
+                  [this, to] { m_store.changeDataDir(to); });
+    menu->addSeparator();
+    menu->addItem("minus", L("Cancelar"), QString(), [] {});
+    menu->showAt(mapToGlobal(rect().center()));
+}
+
+QString Panel::backupPeriodLabel(int days) {
+    switch (days) {
+        case 0: return L("Nunca");
+        case 1: return L("Cada día");
+        case 7: return L("Cada semana");
+        case 30: return L("Cada mes");
+        default: return L("Cada %1 días").arg(days);
+    }
+}
+
+void Panel::openBackups(QWidget *anchor) {
+    auto *menu = new Popup(m_theme, this);
+    const Store::Prefs &prefs = m_store.prefs();
+    const QList<Store::Backup> list = m_store.backups();
+
+    // --- a mano -------------------------------------------------------------
+    menu->addHeader(L("Copias de seguridad"));
+    if (!m_store.available()) {
+        // Sin carpeta no hay dónde copiar, y ofrecerlo sería mentir.
+        menu->addItem("minus", L("Carpeta no disponible"),
+                      L("No se puede copiar ahora mismo"), [] {});
+        menu->showUnder(anchor);
+        return;
+    }
+    menu->addItem("copy", L("Crear una copia ahora"),
+                  list.isEmpty() ? L("Todavía no hay ninguna") : L("%1 guardadas").arg(list.size()),
+                  [this, anchor] {
+                      m_store.makeBackup();
+                      save();
+                      openBackups(anchor);   // el menú se reabre con el estado nuevo
+                  });
+
+    // --- cada cuánto --------------------------------------------------------
+    menu->addSeparator();
+    menu->addHeader(L("Cada cuánto"));
+    QStringList periods;
+    for (int d : kBackupPeriods) periods << (d == 0 ? L("Nunca") : L("%1 d").arg(d));
+    menu->addChoice(periods, int(kBackupPeriods.indexOf(prefs.backupEveryDays)),
+                    [this, anchor](int i) {
+                        m_store.prefs().backupEveryDays = kBackupPeriods.at(i);
+                        save();
+                        openBackups(anchor);
+                    });
+
+    // --- a qué hora ---------------------------------------------------------
+    // Solo cuando hay programación: una hora sin frecuencia no significa nada.
+    if (prefs.backupEveryDays > 0) {
+        menu->addHeader(L("A qué hora"));
+        QStringList hours;
+        QList<QTime> times;
+        for (int h = 0; h < 24; h += 3) {
+            times << QTime(h, 0);
+            hours << times.last().toString("HH:mm");
+        }
+        menu->addChoice(hours, int(times.indexOf(prefs.backupAt)),
+                        [this, anchor, times](int i) {
+                            m_store.prefs().backupAt = times.at(i);
+                            save();
+                            openBackups(anchor);
+                        });
+        // Vacío a propósito: la hora puesta ya la dice el chip encendido, y
+        // repetirla aquí solo sirve para que el campo abra con el texto
+        // seleccionado y parezca que hay algo que corregir.
+        menu->addEditor(L("otra hora · HH:mm"), QString(),
+                        [this, anchor](const QString &value) {
+                            const QTime t = QTime::fromString(value.trimmed(), "HH:mm");
+                            if (!t.isValid()) return;
+                            m_store.prefs().backupAt = t;
+                            save();
+                            openBackups(anchor);
+                        });
+
+        // Una programación que no dice cuándo va a actuar no se puede
+        // comprobar; y si la hora de hoy ya pasó, la siguiente es mañana.
+        const QDateTime due = m_store.nextBackupDue();
+        if (due.isValid())
+            menu->addItem("clock", backupPeriodLabel(prefs.backupEveryDays),
+                          L("La siguiente: %1")
+                              .arg(Lang::locale().toString(due, "ddd d MMM · HH:mm")),
+                          [] {});
+    }
+
+    // --- volver a una -------------------------------------------------------
+    if (!list.isEmpty()) {
+        menu->addSeparator();
+        menu->addHeader(L("Volver a una copia"));
+        for (const Store::Backup &b : list) {
+            // Nunca QLocale::system(): la fecha se escribe en el idioma
+            // elegido en ajustes, como todo lo demás.
+            const QString when = b.when.isValid()
+                                     ? Lang::locale().toString(b.when, "d MMM yyyy · HH:mm")
+                                     : QFileInfo(b.path).fileName();
+            menu->addItem("copy", when, L("%1 notas").arg(b.notes),
+                          [this, file = b.path] { confirmRestore(file); });
+        }
+    }
+    menu->showUnder(anchor);
+}
+
+void Panel::confirmRestore(const QString &file) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Volver a esa copia"));
+    menu->addItem("copy", L("Restaurar"), L("Lo de ahora queda guardado como copia"),
+                  [this, file] { m_store.restoreBackup(file); });
+    menu->addSeparator();
+    menu->addItem("minus", L("Cancelar"), QString(), [] {});
+    menu->showAt(mapToGlobal(rect().center()));
+}
+
+// --- carpeta de datos -------------------------------------------------------
+
+void Panel::pollBackup() {
+    // La copia programada la dispara esto cuando la app está abierta a esa
+    // hora; si estaba cerrada, la recoge Store::load() al arrancar.
+    if (m_store.backupIfDue()) scheduleSave();   // deja apuntada la fecha
+}
+
+void Panel::pollDataDir() {
+    if (m_store.available()) return;
+    m_store.retryLoad();   // emite reloaded() la vez que lo consigue
+}
+
+void Panel::onStoreReloaded() {
+    m_theme.accent = m_store.prefs().accent;
+    m_theme.opacity = m_store.prefs().opacity;
+    VoiceRecorder::setPreferredInput(m_store.prefs().input);
+    applyTheme();
+    // El idioma lo deja puesto Store::load(); retranslate() reescribe la
+    // ventana con él y rehace tarjetas, calendario y bandeja de una vez.
+    retranslate();
+    // El tamaño y la posición no se tocan a propósito: la ventana es donde el
+    // usuario la tiene ahora, no donde estaba cuando se guardó ese fichero.
+    checkReminders();
+}
+
+void Panel::refreshDataWarning() {
+    if (!m_dataWarn) return;
+    const bool missing = !m_store.available();
+    if (missing) {
+        // La ruta va en la ayuda emergente, no en el texto: metida dentro, el
+        // cartel ocupa tres líneas de las que dos son una ruta que el usuario
+        // ya tiene en la fila de ajustes. No es la trampa de *Card widths*:
+        // medido, un cartel con la ruta pide 81px de mínimo, porque wordWrap
+        // sí parte una palabra larga cuando no le cabe entera.
+        m_dataWarn->setText(
+            L("La carpeta de notas no está disponible. Nada de lo que escribas se guardará."));
+        m_dataWarn->setToolTip(appDataDir());
+    }
+    // isHidden(), no isVisible(): lo segundo es falso también con el panel
+    // escondido en la bandeja, y el cartel se estaría rehaciendo cada vez.
+    if (missing == !m_dataWarn->isHidden()) return;
+    m_dataWarn->setVisible(missing);
+    // El cartel ocupa alto dentro del shell: si la ventana está en su mínimo,
+    // aparecer sin rehacerlo lo pinta encima de la primera tarjeta. Ver
+    // *Window behavior*: el mínimo sale del layout, nunca de una constante.
+    syncShellMinimum();
 }
 
 // --- plegado ---------------------------------------------------------------

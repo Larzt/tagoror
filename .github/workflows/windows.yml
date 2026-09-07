@@ -2,6 +2,10 @@
 #
 # En cada push a main sirve de aviso de que algo dejó de compilar allí;
 # al publicar una etiqueta (v1.3.0), además cuelga los dos ficheros de la release.
+#
+# release.yml lo llama además con workflow_call para no repetir aquí su build.
+# Cuando lo llama, la versión llega como entrada: la release se decide desde
+# CMakeLists.txt en un push a main, donde no hay etiqueta de la que sacarla.
 
 name: Windows
 
@@ -11,10 +15,24 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Versión a compilar; si falta se deduce como en un push'
+        required: false
+        type: string
 
+# El nombre del workflow entra en el grupo, y hace falta: en un push a main que
+# además publica, este build corre dos veces -- una por su propio disparador y
+# otra llamado por release.yml -- y con el mismo grupo se cancelarían entre
+# ellos, tumbando la release. En una llamada, github.workflow es el del que
+# llama ("Release"), así que quedan en grupos distintos.
+#
+# Y solo se cancela el suyo propio: cancelar el de una release a medias deja la
+# publicación sin sus ficheros de Windows.
 concurrency:
-  group: windows-${{ github.ref }}
-  cancel-in-progress: true
+  group: windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.workflow == 'Windows' }}
 
 permissions:
   contents: write
@@ -34,8 +52,14 @@ jobs:
       - name: Averiguar la versión
         id: version
         shell: bash
+        # Por variable de entorno y no interpolada dentro del script: así el
+        # valor no puede convertirse en código de shell pase lo que pase.
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          if [[ -n "$INPUT_VERSION" ]]; then
+            version="$INPUT_VERSION"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             version="${GITHUB_REF#refs/tags/v}"
           else
             version="$(sed -n 's/^project(tagoror VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"

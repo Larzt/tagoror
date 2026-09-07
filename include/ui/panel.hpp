@@ -110,6 +110,23 @@ private:
     void openSettings(QWidget *anchor);
     void openAccentEditor(QWidget *anchor);
     void chooseDataFolder();
+    // Apuntar a una carpeta que ya tiene notas es ambiguo: puede querer decir
+    // "llévame las mías allí" o "abre las que hay". Se pregunta en vez de
+    // suponer, porque suponer lo primero borra las del destino.
+    void confirmDataFolder(const QString &to);
+    void openBackups(QWidget *anchor);            // el menú propio de las copias
+    static QString backupPeriodLabel(int days);   // "Cada día", "Cada 3 días"…
+    void pollBackup();                            // ¿toca copia programada?
+    void confirmRestore(const QString &file);
+
+    // --- carpeta de datos ---
+    // Vuelve a mirar si la carpeta configurada ha aparecido: un pendrive se
+    // monta cuando su dueño lo abre, mucho después del arranque de sesión.
+    void pollDataDir();
+    // La lista y las preferencias son otras tras recuperar la carpeta.
+    void onStoreReloaded();
+    // Enseña u oculta el cartel de "no se está guardando".
+    void refreshDataWarning();
 
     // --- bandeja del sistema ---
     // El widget vive ahí en vez de en la barra de tareas: el icono es lo que
@@ -161,6 +178,10 @@ private:
     QFrame *m_shell = nullptr;
     QWidget *m_badge = nullptr;
     QLabel *m_badgeCount = nullptr;
+    // Cartel rojo bajo la cabecera: la carpeta de notas no está y nada de lo
+    // que se escriba se va a guardar. Sin él, el panel abría vacío sin decir
+    // por qué, que es como se pierden las notas sin enterarse.
+    QLabel *m_dataWarn = nullptr;
 
     QStackedWidget *m_body = nullptr;    // lista de notas / calendario
     QScrollArea *m_scroll = nullptr;

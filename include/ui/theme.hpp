@@ -264,6 +264,16 @@ QLabel#chip[state="overdue"], QLabel#chip[state="ringing"] {
     background: rgba(255,122,107,0.16);
     border: 1px solid rgba(255,122,107,0.55);
 }
+/* Carpeta de datos ausente: en el mismo rojo que un recordatorio vencido,
+   porque dice lo mismo —esto necesita atención ahora—, y pegado a la cabecera
+   para que no se lea como parte de ninguna nota. */
+QLabel#warnBanner {
+    color: #ff7a6b; font-size: 10.5px; font-weight: 600;
+    background: rgba(255,122,107,0.14);
+    border-bottom: 1px solid rgba(255,122,107,0.35);
+    padding: 7px 10px;
+}
+
 QLabel#chip:hover {
     background: rgba(242,183,87,0.22);
     border: 1px solid rgba(242,183,87,0.65);
@@ -462,6 +472,12 @@ QToolButton#popupChip {
 }
 QToolButton#popupChip:hover { color: %5; border: 1px solid %5; background: %8; }
 QToolButton#popupChip[past="true"] { color: %4; }
+/* El elegido de un grupo de opciones: teñido del acento, como la píldora de
+   "Hoy" del calendario y el botón de la página activa. Así una fila de chips
+   dice a la vez qué se puede elegir y qué está puesto. */
+QToolButton#popupChip[chosen="true"] {
+    color: %5; background: %8; border: 1px solid %9;
+}
 )")
         .arg(card())      // %1
         .arg(line())      // %2

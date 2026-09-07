@@ -5,7 +5,13 @@
   Frameless, translucent, and made to sit <em>on</em> the desktop rather than get in
   the way — text notes, checklists, reminders that actually ring (with a month
   view to go with them), voice notes with a waveform, and links you can attach
-  to any of them.
+  to any of them.<br>
+  Your notes are kept where you choose — including a USB stick — and backed up
+  on a schedule you set.
+</p>
+
+<p align="center">
+  <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
@@ -119,6 +125,44 @@
 - Or move a card one step at a time with *Subir* / *Bajar* in its menu.
 - The order you see is the order that gets saved.
 
+### Backups you can set to your own rhythm
+
+<p align="center">
+  <img src="docs/backups.png" alt="The backups menu: make a copy now, how often, at what time, and the list to go back to" width="260">
+</p>
+
+- A copy of `notes.json` is **set aside before it is overwritten**, into
+  `backups/` inside your storage folder — so the history travels to the USB
+  stick along with the notes, and changing the folder carries it across.
+- **You decide the rhythm**: never, or every 1, 3, 7, 15 or 30 days, at any
+  hour you like — a preset every three hours, or an `HH:mm` you type. The menu
+  spells out when the next one falls, so the schedule can be checked rather
+  than trusted.
+- A scheduled copy is not lost if the app was closed at that hour: it catches
+  up on the next launch.
+- *Make a copy now* is there for the moment before you do something drastic.
+- **Go back to any of them** from the same menu, with its date and how many
+  notes it holds. Restoring sets the current state aside as a copy first, so
+  picking the wrong one is not the end of it.
+- The ten most recent are kept; older ones are pruned.
+
+### It tells you when it cannot save
+
+<p align="center">
+  <img src="docs/no-folder.png" alt="The panel warning that the notes folder is not available" width="330">
+</p>
+
+- If your storage folder lives on a USB stick, a network share, or anything else
+  that may not be there — Tagoror **does not create it and does not seed a fresh
+  set of notes**. It says so, in red, under the header, and writes nothing at
+  all while the folder is missing.
+- When the folder appears it is **picked up on its own** within a few seconds,
+  and anything you typed while it was gone is kept, not thrown away.
+- Choosing a folder that **already holds notes** asks which you meant: open the
+  ones already there, or move these ones over.
+- Saving is atomic — written to a temporary file and renamed over the old one —
+  so pulling the drive mid-write cannot leave a half-written file behind.
+
 ### The window
 
 - **Lives on the desktop** by default, below other windows. "Always on top" is
@@ -151,7 +195,8 @@
 
 - Filter notes as you type — titles, bodies, checklist items and links.
 - An empty panel offers a button to create the first note.
-- Everything is saved automatically, a moment after you stop typing.
+- Everything is saved automatically, a moment after you stop typing — and a
+  copy of the previous file is kept on the schedule you choose.
 
 ## Building
 
@@ -343,6 +388,45 @@ Flatpak requires the desktop entry, the icons and the AppStream file to be named
 after the app ID, so that build passes `-DTAGOROR_APP_ID=io.github.larzt.tagoror`
 and CMake renames all of them together. Everywhere else the ID stays `tagoror`.
 
+### Cutting a release
+
+**Releases publish themselves.** `.github/workflows/release.yml` runs on every
+push to `main`, but the push is not what decides: the version in
+`CMakeLists.txt` is. If a tag `vx.y.z` for it already exists, nothing happens —
+so ordinary pushes publish nothing. The first push that carries a *new* version
+is the release, and the workflow tags it, builds the AppImage, the double-click
+installer, the Windows ZIP and the Windows installer, and attaches all four,
+with the release notes taken from `CHANGELOG.md`.
+
+So publishing is: bump the version, write the changelog entry, push.
+
+1. `project(tagoror VERSION x.y.z)` in `CMakeLists.txt` — the only place the
+   version lives in code, and what the workflow reads. A `build/` tree
+   configured earlier keeps the old value cached:
+   `cmake -B build -U TAGOROR_VERSION`.
+2. A `## [x.y.z]` section at the top of [`CHANGELOG.md`](CHANGELOG.md). The
+   release **fails on purpose** if it is missing — a release with no notes
+   should not go out — and it fails in the first ten seconds, before anything
+   is compiled.
+3. `git push`. That is the release.
+
+Three things the workflow deliberately does *not* touch, because they are
+published elsewhere and on their own schedule:
+
+- A `<release version="x.y.z" date="…">` **with a description** in
+  `packaging/tagoror.metainfo.xml.in` — Flathub rejects an undescribed version.
+  Check it with `appstreamcli validate` after substituting the app ID.
+- `pkgver` in `packaging/arch/PKGBUILD`, then `updpkgsums` and a regenerated
+  `.SRCINFO`. The `PKGBUILD` fetches the tarball of the tag, so it can only be
+  updated once the release above exists.
+- `tag:` in `packaging/flatpak/io.github.larzt.tagoror.yml`, same reason.
+
+> The version had drifted apart before this was automated: the tags reached
+> `v1.3.1` while `CMakeLists.txt`, the `PKGBUILD` and the Flatpak manifest sat
+> at `1.2.0`, and one commit called itself `1.4.1` without ever being tagged.
+> The workflow reads `CMakeLists.txt` and nothing else, so at least the tag and
+> the binaries can no longer disagree.
+
 ## Where your notes live
 
 ```
@@ -350,12 +434,26 @@ and CMake renames all of them together. Everywhere else the ID stays `tagoror`.
 ├── notes.json     # notes, accent, opacity, window size, preferences
 ├── alarm.wav      # the generated alarm tone
 ├── audio/         # one WAV per voice note
-└── images/        # the images attached to notes
+├── images/        # the images attached to notes
+└── backups/       # notes-<timestamp>.json, the ten most recent
 ```
 
 The folder is configurable from settings. Changing it copies the attachments —
-voice takes and images — across and leaves the originals where they were, so
-nothing is lost if the copy fails.
+voice takes and images — and the backup history across, and leaves the originals
+where they were, so nothing is lost if the copy fails. If you point it at a
+folder that already has notes in it, you are asked whether to open those or to
+move these ones over.
+
+`notes.json` is written to a temporary file and renamed into place, so an
+interrupted write cannot leave it half-finished. Before each scheduled
+overwrite the previous file is copied into `backups/`; you can restore any of
+them from *Settings → Backups…*, and doing so sets aside what you have now.
+
+> **If the folder is not there, Tagoror does nothing.** Put your notes on a USB
+> stick and the app will start before the stick is mounted. It will not create
+> the folder, will not seed a fresh set of notes, and will not write a single
+> byte — it shows a warning instead and picks the folder up when it appears.
+> Older versions did the opposite, and it cost someone their notes.
 
 > The chosen folder lives in `QSettings` (`~/.config/Stride/Tagoror.conf`) and
 > not in `notes.json`, since it is what decides where `notes.json` is. That

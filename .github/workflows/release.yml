@@ -1,0 +1,183 @@
+# Publica una release sola, sin etiquetar a mano.
+#
+# El disparador es un push a main, pero lo que decide no es el push: es la
+# versión de CMakeLists.txt, que es donde vive de verdad. Si ya existe la
+# etiqueta v<versión> no se hace nada, así que los push normales no publican
+# nada; en cuanto uno trae la versión subida, esa es la release.
+#
+# Publicar es entonces: subir la versión en CMakeLists.txt, escribir su sección
+# en CHANGELOG.md, y push. El resto -- etiqueta, notas, AppImage, instalador,
+# ZIP y .exe de Windows -- sale de aquí.
+#
+# La etiqueta la crea la propia release (softprops la pone si no está) en vez
+# de empujarla desde un paso anterior, y eso es a propósito: una etiqueta
+# empujada con GITHUB_TOKEN no dispara otros workflows, así que windows.yml no
+# se enteraría. Por eso se le llama con workflow_call desde aquí.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Sin cancel-in-progress: una release a medio publicar es peor que esperar.
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  check:
+    name: ¿Toca publicar?
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.decide.outputs.version }}
+      should_release: ${{ steps.decide.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # hacen falta las etiquetas para saber si ya existe
+
+      - name: Leer la versión y mirar si ya está publicada
+        id: decide
+        run: |
+          version="$(sed -n 's/^project(tagoror VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Versión inválida en CMakeLists.txt: '$version'"
+            exit 1
+          fi
+
+          if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+            echo "v$version ya está publicada; no hay nada que hacer."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "v$version no existe todavía: se publica."
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Se comprueba aquí, antes de compilar nada: si falta la sección del
+      # CHANGELOG es mejor enterarse en diez segundos que después de dos
+      # compilaciones, y una release sin notas no debería salir.
+      - name: Sacar las notas del CHANGELOG
+        if: steps.decide.outputs.should_release == 'true'
+        env:
+          VERSION: ${{ steps.decide.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## / { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+
+          if [[ ! -s notes.md ]]; then
+            echo "::error::CHANGELOG.md no tiene una sección '## [$VERSION]'."
+            exit 1
+          fi
+          echo "--- notas de la release ---"
+          cat notes.md
+
+      - name: Guardar las notas
+        if: steps.decide.outputs.should_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: notes.md
+          if-no-files-found: error
+
+  linux:
+    name: AppImage e instalador
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    # Deliberadamente vieja, no ubuntu-latest: un AppImage no lleva la glibc
+    # dentro, así que solo arranca en sistemas con una igual o más nueva que la
+    # de la máquina donde se compiló. Compilar en la imagen más nueva dejaría
+    # fuera a media distribución instalada. Ver la advertencia en
+    # packaging/appimage/build-appimage.sh.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build g++ file wget desktop-file-utils \
+            libgl1-mesa-dev libxkbcommon-dev libxkbcommon-x11-0 \
+            libxcb1-dev libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1
+
+      # CMakeLists pide >= 3.25 y jammy trae 3.22.
+      - uses: lukka/get-cmake@latest
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.9.*'
+          host: linux
+          target: desktop
+          modules: qtmultimedia
+          cache: true
+
+      - name: AppImage
+        run: sh packaging/appimage/build-appimage.sh "${{ needs.check.outputs.version }}"
+
+      # Se le pasa el AppImage ya hecho como segundo argumento: si no, el script
+      # lo construiría otra vez por su cuenta.
+      - name: Instalador de doble clic
+        run: |
+          sh packaging/installer/make-installer.sh \
+            "${{ needs.check.outputs.version }}" \
+            "Tagoror-${{ needs.check.outputs.version }}-x86_64.AppImage"
+
+      - name: Guardar los dos
+        uses: actions/upload-artifact@v4
+        with:
+          name: tagoror-linux-${{ needs.check.outputs.version }}
+          path: |
+            Tagoror-*-x86_64.AppImage
+            Tagoror-*-x86_64-installer.run
+          if-no-files-found: error
+
+  windows:
+    name: Windows
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    uses: ./.github/workflows/windows.yml
+    with:
+      version: ${{ needs.check.outputs.version }}
+    permissions:
+      contents: write
+
+  publish:
+    name: Publicar
+    needs: [check, linux, windows]
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recoger todo lo compilado
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Ver qué se va a colgar
+        run: find artifacts -type f | sort
+
+      # La etiqueta no existe todavía: la crea esta acción sobre el commit que
+      # disparó el workflow.
+      - name: Crear la release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check.outputs.version }}
+          name: Tagoror ${{ needs.check.outputs.version }}
+          body_path: artifacts/release-notes/notes.md
+          draft: false
+          files: |
+            artifacts/**/Tagoror-*-x86_64.AppImage
+            artifacts/**/Tagoror-*-x86_64-installer.run
+            artifacts/**/Tagoror-*-win64.zip
+            artifacts/**/Tagoror-*-setup.exe
+          fail_on_unmatched_files: true

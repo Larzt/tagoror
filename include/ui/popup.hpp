@@ -46,6 +46,10 @@ public:
     // como filas de menú mide más que el calendario que la abre.
     void addChips(const QStringList &labels, const QList<bool> &muted,
                   const QString &mutedTip, std::function<void(int)> action);
+    // Chips de los que uno está elegido. Es otra cosa que addChips: aquello es
+    // una lista de acciones (qué hora pongo), esto es un ajuste con estado
+    // (cada cuánto), y el menú tiene que enseñar cuál está puesto.
+    void addChoice(const QStringList &labels, int chosen, std::function<void(int)> action);
     void addSeparator();
 
     // Sitúa el popup pegado a un widget, corrigiendo si se sale de la pantalla.
