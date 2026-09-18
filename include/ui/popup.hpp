@@ -33,9 +33,6 @@ public:
     void addItem(const QString &iconKind, const QString &title,
                  const QString &subtitle = QString(),
                  std::function<void()> action = nullptr);
-    void addSwatches(const QList<QColor> &colors, const QColor &current,
-                     std::function<void(const QColor &)> action);
-    void addSlider(int min, int max, int value, std::function<void(int)> live);
     void addEditor(const QString &placeholder, const QString &text,
                    std::function<void(const QString &)> commit);
     // Varios campos en un mismo popup, confirmados a la vez. Con addEditor no

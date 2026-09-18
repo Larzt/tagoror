@@ -12,7 +12,6 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QScreen>
-#include <QSlider>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -94,48 +93,6 @@ private:
     bool m_hover = false;
 };
 
-// Punto de color del selector de acento, con anillo si está seleccionado.
-class Swatch : public QWidget {
-public:
-    Swatch(const QColor &color, bool current, std::function<void()> onClick,
-           QWidget *parent = nullptr)
-        : QWidget(parent), m_color(color), m_current(current), m_click(std::move(onClick)) {
-        setFixedSize(26, 26);
-        setCursor(Qt::PointingHandCursor);
-        setAttribute(Qt::WA_Hover);
-        setToolTip(color.name());
-    }
-
-protected:
-    void enterEvent(QEnterEvent *) override { m_hover = true;  update(); }
-    void leaveEvent(QEvent *) override      { m_hover = false; update(); }
-
-    void mouseReleaseEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton && m_click) m_click();
-    }
-
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-        const QPointF c(width() / 2.0, height() / 2.0);
-
-        if (m_current || m_hover) {
-            p.setPen(QPen(m_current ? m_color : QColor(255, 255, 255, 60), 1.4));
-            p.setBrush(Qt::NoBrush);
-            p.drawEllipse(c, 11.2, 11.2);
-        }
-        p.setPen(Qt::NoPen);
-        p.setBrush(m_color);
-        p.drawEllipse(c, 7.4, 7.4);
-    }
-
-private:
-    QColor m_color;
-    bool m_current = false;
-    bool m_hover = false;
-    std::function<void()> m_click;
-};
-
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -181,49 +138,6 @@ void Popup::addItem(const QString &iconKind, const QString &title,
     auto *row = new PopupRow(paintIcon(iconKind, tint), title, subtitle,
                              [this, action] { run(action); });
     m_col->addWidget(row);
-}
-
-void Popup::addSwatches(const QList<QColor> &colors, const QColor &current,
-                        std::function<void(const QColor &)> action) {
-    auto *host = new QWidget;
-    auto *l = new QHBoxLayout(host);
-    l->setContentsMargins(7, 3, 7, 5);
-    l->setSpacing(3);
-
-    for (const QColor &c : colors) {
-        l->addWidget(new Swatch(c, c.rgb() == current.rgb(), [this, c, action] {
-            // El acento se aplica en caliente, pero el popup se cierra igual
-            // para que el usuario vea el resultado sin nada por encima.
-            run([c, action] { if (action) action(c); });
-        }));
-    }
-    l->addStretch();
-    m_col->addWidget(host);
-}
-
-void Popup::addSlider(int min, int max, int value, std::function<void(int)> live) {
-    auto *host = new QWidget;
-    auto *l = new QHBoxLayout(host);
-    l->setContentsMargins(9, 3, 9, 6);
-    l->setSpacing(8);
-
-    auto *slider = new QSlider(Qt::Horizontal);
-    slider->setRange(min, max);
-    slider->setValue(value);
-    slider->setFixedWidth(150);
-
-    auto *readout = new QLabel(QString("%1%").arg(value));
-    readout->setObjectName("meta");
-    readout->setFixedWidth(30);
-
-    QObject::connect(slider, &QSlider::valueChanged, this, [readout, live](int v) {
-        readout->setText(QString("%1%").arg(v));
-        if (live) live(v);
-    });
-
-    l->addWidget(slider);
-    l->addWidget(readout);
-    m_col->addWidget(host);
 }
 
 void Popup::addEditor(const QString &placeholder, const QString &text,

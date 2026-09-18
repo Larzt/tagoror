@@ -10,6 +10,7 @@
 #include <QString>
 #include <functional>
 
+#include "core/birthday.hpp"
 #include "core/lang.hpp"
 #include "core/note.hpp"
 
@@ -37,6 +38,11 @@ public:
         QByteArray input;              // micrófono elegido en ajustes
         bool onTop = false;            // por defecto vive en el escritorio
         Lang::Code lang = Lang::Es;    // idioma de la interfaz
+        // Cómo se ordena la página de cumpleaños: por lo que falta para cada
+        // uno (lo de serie) o por meses del año, de enero a diciembre. Vive
+        // aquí y no en birthdays.json porque es una preferencia de la interfaz,
+        // de la misma familia que el idioma, no un dato de la agenda.
+        bool birthdaysByMonth = false;
 
         // Cada cuántos días se aparta una copia, y a qué hora. Cero significa
         // solo a mano. Viajan en notes.json, así que la pauta se muda con las
@@ -59,6 +65,16 @@ public:
     // pantalla en vez de calcular índices por su cuenta.
     void setOrder(const QList<Note *> &order);
 
+    // --- cumpleaños (mismo dueño y mismo fichero que las notas) ------------
+    // Viven aquí y no en la lista de notas porque son otra cosa (ver
+    // birthday.hpp), pero se guardan en el mismo notes.json: así viajan con
+    // las notas al cambiar de carpeta y entran en las copias de seguridad sin
+    // tener que duplicar nada de todo eso.
+    const QList<Birthday *> &birthdays() const { return m_birthdays; }
+    int birthdayCount() const { return int(m_birthdays.size()); }
+    void addBirthday(Birthday *b);
+    void removeBirthday(Birthday *b);
+
     Prefs &prefs() { return m_prefs; }
     const Prefs &prefs() const { return m_prefs; }
 
@@ -76,6 +92,7 @@ public:
 
     // --- persistencia -------------------------------------------------------
     QString path() const;              // notes.json
+    QString birthdaysPath() const;     // birthdays.json, al lado del anterior
     void load();                       // siembra dos notas si no hay fichero
     void save();
 
@@ -133,13 +150,20 @@ private:
     // tocar nada: el que no se pueda leer es justo el que no hay que pisar.
     bool readFile();
     bool readObject(const QJsonObject &root);
+    // Los cumpleaños viven en su propio fichero. No hay un tercer desenlace
+    // como en las notas: que no exista es lo normal (una instalación que
+    // todavía no tiene ninguno, o una que viene de cuando iban dentro de
+    // notes.json), y solo el fichero que está pero no se deja leer manda callar
+    // la escritura -- ver m_birthdaysReadable.
+    void loadBirthdays();
+    void saveBirthdays();
     void seedDemoNotes();
 
     // Escribe el fichero entero o no lo toca. QSaveFile escribe a un temporal
     // y renombra encima, que es atómico: sin esto, retirar el pendrive a
     // mitad de la escritura deja un notes.json truncado, y un JSON a medias
     // no se lee — son todas las notas, no las últimas.
-    bool writeAtomic(const QByteArray &data);
+    bool writeAtomic(const QString &file, const QByteArray &data);
     // Aparta el fichero que hay tal como está en disco. Quién decide cuándo es
     // la pauta (backupIfDue), no esto: guardar se llama cada 600 ms mientras
     // se teclea, y copiar en cada pulsación dejaría diez copias del último
@@ -148,7 +172,12 @@ private:
     void pruneBackups();
 
     QList<Note *> m_notes;
+    QList<Birthday *> m_birthdays;
     Prefs m_prefs;
     QTimer *m_saveTimer = nullptr;
     bool m_available = true;
+    // Había un birthdays.json y no se pudo leer: entonces no se escribe encima,
+    // por la misma razón que con las notas -- lo que hay en memoria no son los
+    // cumpleaños de su dueño, son los que no se pudieron cargar.
+    bool m_birthdaysReadable = true;
 };

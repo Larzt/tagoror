@@ -19,6 +19,11 @@ constexpr int kSaveDelayMs = 600;
 // siga estando cuando alguien tarda una semana en darse cuenta de que le
 // faltan notas; son ficheros de unos pocos KB.
 constexpr auto kBackupPrefix = "notes-";
+// Los cumpleaños se copian a la vez y con la misma marca de tiempo, para que
+// una copia sea siempre las dos mitades del mismo instante y restaurar una
+// pueda arrastrar la otra. Sin esto, separar el fichero habría dejado la
+// agenda entera fuera de la historia.
+constexpr auto kBirthdayBackupPrefix = "birthdays-";
 
 // Nombres con los que se guardaron los datos en marcas anteriores, del más
 // reciente al más antiguo. Renombrar la aplicación nunca debe dejar a nadie sin
@@ -73,6 +78,7 @@ Store::Store(QObject *parent) : QObject(parent) {
 Store::~Store() {
     save();
     qDeleteAll(m_notes);
+    qDeleteAll(m_birthdays);
 }
 
 void Store::resolveDataDir() {
@@ -125,9 +131,31 @@ void Store::setOrder(const QList<Note *> &order) {
     scheduleSave();
 }
 
+// --- cumpleaños --------------------------------------------------------------
+
+// El orden en que se guardan da igual: la página los ordena por lo que falta
+// para cada uno, que es lo único que se quiere mirar de una lista así.
+void Store::addBirthday(Birthday *b) {
+    m_birthdays.append(b);
+    // Diferido como el de las notas: quien da uno de alta lo rellena justo
+    // después, y ese guardado ya escribe los dos cambios de una vez.
+    scheduleSave();
+}
+
+void Store::removeBirthday(Birthday *b) {
+    m_birthdays.removeOne(b);
+    delete b;
+    save();
+}
+
 // --- persistencia ----------------------------------------------------------
 
 QString Store::path() const { return appDataDir() + "/notes.json"; }
+
+// Los cumpleaños son una agenda, no notas: viven en su propio fichero, al lado
+// del de las notas y dentro de la misma carpeta de datos, así que siguen
+// mudándose con ellas y entrando en las copias de seguridad.
+QString Store::birthdaysPath() const { return appDataDir() + "/birthdays.json"; }
 
 void Store::scheduleSave() { m_saveTimer->start(); }
 
@@ -161,15 +189,65 @@ void Store::save() {
     root["input"] = QString::fromLatin1(m_prefs.input);
     root["onTop"] = m_prefs.onTop;
     root["lang"] = Lang::toString(m_prefs.lang);
+    root["birthdaysByMonth"] = m_prefs.birthdaysByMonth;
     root["backupEvery"] = m_prefs.backupEveryDays;
     root["backupAt"] = m_prefs.backupAt.toString("HH:mm");
     root["lastBackup"] = m_prefs.lastBackupMs;
 
-    writeAtomic(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    writeAtomic(path(), QJsonDocument(root).toJson(QJsonDocument::Indented));
+    saveBirthdays();
 }
 
-bool Store::writeAtomic(const QByteArray &data) {
-    QSaveFile f(path());
+// Aparte de save() para poder no escribirlo: un birthdays.json ilegible no se
+// pisa, igual que no se pisa un notes.json que no se pudo leer.
+void Store::saveBirthdays() {
+    if (!m_available || !m_birthdaysReadable) return;
+
+    QJsonArray arr;
+    for (Birthday *b : m_birthdays) arr.append(b->toJson());
+
+    QJsonObject root;
+    root["birthdays"] = arr;
+    writeAtomic(birthdaysPath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+void Store::loadBirthdays() {
+    m_birthdaysReadable = true;
+    if (!m_available) return;
+
+    QFile f(birthdaysPath());
+    if (!f.exists()) {
+        // No hay fichero. O no hay ningún cumpleaños todavía, o vienen de
+        // cuando se guardaban dentro de notes.json: en ese caso readObject ya
+        // los ha dejado en memoria y basta con pedir que se escriban donde
+        // toca ahora. Lo de notes.json se queda ahí hasta el siguiente
+        // guardado, que ya no vuelve a poner la clave.
+        if (!m_birthdays.isEmpty()) scheduleSave();
+        return;
+    }
+
+    if (!f.open(QIODevice::ReadOnly)) {
+        m_birthdaysReadable = false;
+        return;
+    }
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    if (!root.contains("birthdays")) {
+        // El fichero está pero no es lo que dice ser (truncado a medias, otra
+        // cosa copiada ahí): no se toca, que es lo contrario de vaciarlo.
+        m_birthdaysReadable = false;
+        return;
+    }
+
+    // El fichero manda sobre lo que trajera notes.json: si existe, es el sitio
+    // bueno y lo de dentro de las notas es un resto de la versión anterior.
+    qDeleteAll(m_birthdays);
+    m_birthdays.clear();
+    for (const QJsonValue v : root["birthdays"].toArray())
+        m_birthdays.append(Birthday::fromJson(v.toObject()));
+}
+
+bool Store::writeAtomic(const QString &file, const QByteArray &data) {
+    QSaveFile f(file);
     if (!f.open(QIODevice::WriteOnly)) return false;
     if (f.write(data) != data.size()) {
         f.cancelWriting();
@@ -189,6 +267,14 @@ bool Store::copyToBackup(const QString &name) {
     const QString target = dir + "/" + name;
     if (QFile::exists(target)) return false;
     if (!QFile::copy(src, target)) return false;
+
+    // La otra mitad, con el mismo nombre y otro prefijo. Puede no existir
+    // todavía (nadie ha apuntado ningún cumpleaños) y eso no invalida la copia:
+    // lo que manda es la de las notas.
+    QString mate = name;
+    mate.replace(0, int(qstrlen(kBackupPrefix)), kBirthdayBackupPrefix);
+    if (QFile::exists(birthdaysPath())) QFile::copy(birthdaysPath(), dir + "/" + mate);
+
     pruneBackups();
     return true;
 }
@@ -258,10 +344,14 @@ void Store::pruneBackups() {
     if (dir.isEmpty()) return;
 
     // El nombre lleva la fecha en ISO, así que ordenar por nombre es ordenar
-    // por antigüedad y no hace falta preguntarle al sistema de ficheros.
-    QStringList files = QDir(dir).entryList({QString(kBackupPrefix) + "*.json"}, QDir::Files);
-    files.sort();
-    while (files.size() > Store::kBackupsKept) QFile::remove(dir + "/" + files.takeFirst());
+    // por antigüedad y no hace falta preguntarle al sistema de ficheros. Las
+    // dos mitades se podan por separado y con el mismo tope: comparten marca
+    // de tiempo, así que caen a la vez.
+    for (const char *prefix : {kBackupPrefix, kBirthdayBackupPrefix}) {
+        QStringList files = QDir(dir).entryList({QString(prefix) + "*.json"}, QDir::Files);
+        files.sort();
+        while (files.size() > Store::kBackupsKept) QFile::remove(dir + "/" + files.takeFirst());
+    }
 }
 
 QList<Store::Backup> Store::backups() const {
@@ -316,10 +406,32 @@ bool Store::restoreBackup(const QString &file) {
     m_notes.clear();
     m_prefs = Prefs{};
     readObject(root);
+
+    // La mitad de los cumpleaños de esa misma copia, si está. Si no está —una
+    // copia de antes de que existieran— los de ahora se quedan como están: no
+    // es lo mismo "esa copia no tenía ninguno" que "esa copia no sabía de
+    // esto", y vaciar la agenda por lo segundo sería perderla entera.
+    QString mate = QFileInfo(file).fileName();
+    if (mate.startsWith(kBackupPrefix)) {
+        mate.replace(0, int(qstrlen(kBackupPrefix)), kBirthdayBackupPrefix);
+        const QString matePath = QFileInfo(file).path() + "/" + mate;
+        if (QFile mf(matePath); mf.exists() && mf.open(QIODevice::ReadOnly)) {
+            const QJsonObject broot = QJsonDocument::fromJson(mf.readAll()).object();
+            if (broot.contains("birthdays")) {
+                qDeleteAll(m_birthdays);
+                m_birthdays.clear();
+                for (const QJsonValue v : broot["birthdays"].toArray())
+                    m_birthdays.append(Birthday::fromJson(v.toObject()));
+            }
+        }
+    }
     // readObject trae el "última copia" que llevaba dentro la copia, que es
     // viejo: dejarlo pediría otra copia inmediatamente. La que vale es la que
     // se acaba de hacer.
     m_prefs.lastBackupMs = qMax(justNow, m_prefs.lastBackupMs);
+    // Restaurar es justamente decir "quiero esto encima de lo que haya", así
+    // que el candado de un birthdays.json ilegible se levanta aquí.
+    m_birthdaysReadable = true;
     save();
     emit reloaded();
     return true;
@@ -351,10 +463,17 @@ void Store::load() {
         m_prefs.lang = Lang::systemDefault();
         Lang::setCurrent(m_prefs.lang);
         seedDemoNotes();
+        // Puede haber cumpleaños sin notas: quien borró todas las notas, o
+        // quien llegó aquí con un birthdays.json copiado a mano.
+        loadBirthdays();
         return;
     }
 
     if (m_available && readFile()) {
+        // Después de readFile: si los cumpleaños siguen dentro de notes.json
+        // (la versión anterior), ahí es donde acaban de leerse, y esto decide
+        // si el fichero propio los sustituye.
+        loadBirthdays();
         // Aquí y no solo tras copiar: un día que ya tiene su copia sale antes
         // de podar, así que colgada únicamente de eso la carpeta podía crecer
         // sin límite. Una vez por lanzamiento acota el número sin tener que
@@ -400,6 +519,7 @@ bool Store::readObject(const QJsonObject &root) {
     // arranque en blanco.
     m_prefs.lang = Lang::fromString(root["lang"].toString(), Lang::Es);
     Lang::setCurrent(m_prefs.lang);
+    m_prefs.birthdaysByMonth = root["birthdaysByMonth"].toBool();
     if (root.contains("w") && root.contains("h"))
         m_prefs.windowSize = QSize(root["w"].toInt(), root["h"].toInt());
     if (root.contains("x") && root.contains("y")) {
@@ -416,6 +536,10 @@ bool Store::readObject(const QJsonObject &root) {
 
     for (const QJsonValue v : root["notes"].toArray())
         m_notes.append(Note::fromJson(v.toObject()));
+    // Un fichero de antes de que existieran los cumpleaños no trae la clave, y
+    // entonces toArray() devuelve una lista vacía: no hace falta guarda.
+    for (const QJsonValue v : root["birthdays"].toArray())
+        m_birthdays.append(Birthday::fromJson(v.toObject()));
     return true;
 }
 
@@ -427,12 +551,23 @@ bool Store::retryLoad() {
         // queda arriba como cualquier nota recién creada: recuperar el fichero
         // no puede costarle una nota a nadie.
         const QList<Note *> pending = m_notes;
+        const QList<Birthday *> pendingBdays = m_birthdays;
         m_notes.clear();
+        m_birthdays.clear();
         if (!readFile()) {
             m_notes = pending;
+            m_birthdays = pendingBdays;
             return false;
         }
         for (int i = int(pending.size()) - 1; i >= 0; --i) m_notes.prepend(pending[i]);
+
+        // loadBirthdays mira si hay fichero propio y, de haberlo, se queda con
+        // lo que diga; por eso lo que se escribió mientras la carpeta no estaba
+        // se vuelve a poner después. No tienen orden que respetar (la página
+        // los ordena por fecha), así que van detrás y ya está.
+        m_available = true;      // lo que consulta loadBirthdays
+        loadBirthdays();
+        m_birthdays += pendingBdays;
     }
     // Si la carpeta apareció sin fichero, se queda lo que hubiera en memoria:
     // sembrar los ejemplos ahora sería ponerlos encima de lo que el usuario
@@ -466,15 +601,20 @@ void Store::changeDataDir(const QString &raw) {
     // La historia se muda con las notas: son unos pocos KB y sin ella el
     // primer día en la carpeta nueva es un día sin nada a lo que volver.
     QDir().mkpath(to + "/backups");
-    for (const QString &name : QDir(from + "/backups")
-                                   .entryList({QString(kBackupPrefix) + "*.json"}, QDir::Files))
-        QFile::copy(from + "/backups/" + name, to + "/backups/" + name);
+    for (const char *prefix : {kBackupPrefix, kBirthdayBackupPrefix})
+        for (const QString &name : QDir(from + "/backups")
+                                       .entryList({QString(prefix) + "*.json"}, QDir::Files))
+            QFile::copy(from + "/backups/" + name, to + "/backups/" + name);
 
     dataDirOverride() = to;
     QSettings().setValue("dataDir", to);
     // La carpeta nueva sí está —viene del selector—, así que se puede volver a
-    // escribir aunque la anterior hubiera desaparecido.
+    // escribir aunque la anterior hubiera desaparecido. Lo mismo vale para el
+    // candado de los cumpleaños: el fichero ilegible era el de la carpeta que
+    // se deja atrás. El save() de abajo escribe notes.json y birthdays.json en
+    // el destino, así que ninguno de los dos hay que copiarlo a mano.
     m_available = true;
+    m_birthdaysReadable = true;
     save();
 }
 
@@ -489,6 +629,8 @@ void Store::adoptDataDir(const QString &raw) {
     save();   // lo que había en memoria se queda guardado donde estaba
     qDeleteAll(m_notes);
     m_notes.clear();
+    qDeleteAll(m_birthdays);
+    m_birthdays.clear();
     m_prefs = Prefs{};
 
     dataDirOverride() = to;

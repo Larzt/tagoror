@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 1.5.0 LANGUAGES CXX)
+project(tagoror VERSION 2.0.0 LANGUAGES CXX)
 
 # La versión que enseñan el .exe de Windows y su instalador. La CI la pisa
 # con la de la etiqueta que se está publicando.
@@ -27,6 +27,7 @@ add_executable(tagoror
 
     src/core/store.cpp
     src/core/lang.cpp
+    include/core/birthday.hpp
     include/core/lang.hpp
     include/core/note.hpp
     include/core/paths.hpp
@@ -35,12 +36,16 @@ add_executable(tagoror
     src/ui/panel.cpp
     src/ui/notecard.cpp
     src/ui/calendar.cpp
+    src/ui/birthdays.cpp
+    src/ui/settings.cpp
     src/ui/popup.cpp
     src/ui/waveform.cpp
     src/ui/workarea.cpp
     include/ui/panel.hpp
     include/ui/notecard.hpp
     include/ui/calendar.hpp
+    include/ui/birthdays.hpp
+    include/ui/settings.hpp
     include/ui/popup.hpp
     include/ui/theme.hpp
     include/ui/waveform.hpp

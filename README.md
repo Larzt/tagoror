@@ -4,8 +4,8 @@
   A sticky-notes widget for the Linux desktop, written in C++20 with Qt 6.<br>
   Frameless, translucent, and made to sit <em>on</em> the desktop rather than get in
   the way — text notes, checklists, reminders that actually ring (with a month
-  view to go with them), voice notes with a waveform, and links you can attach
-  to any of them.<br>
+  view to go with them), birthdays that do not get forgotten, voice notes with a
+  waveform, and links you can attach to any of them.<br>
   Your notes are kept where you choose — including a USB stick — and backed up
   on a schedule you set.
 </p>
@@ -34,7 +34,7 @@
 | | |
 |---|---|
 | **Text** | A plain note whose editor grows with the content. |
-| **Checklist** | Items you can tick off (done ones get struck through), a progress bar, and an add row that reads as a pending task rather than a form. |
+| **Checklist** | Items you can tick off (done ones get struck through) and rename in place, a progress bar, and an add row that reads as a pending task rather than a form. |
 | **Reminder** | A real date, not just a label: when the time comes it rings until you stop it. |
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
 
@@ -85,6 +85,32 @@
   and the list to share the space. Growing the window again brings back a list
   that folded on its own, but never one you folded on purpose.
 
+### Birthdays
+
+<p align="center">
+  <img src="docs/birthdays.png" alt="The birthdays page: the next one highlighted, the rest grouped by month" width="380">
+</p>
+
+- A page of their own, from the cake button in the header. **The next birthday
+  due is highlighted on a card** — whether it falls today or in three months —
+  and the rest are listed below.
+- Each person has a name, a day, an optional year (without it there is simply no
+  *turns 32*) and a free-text relation: *sister*, *work*, *uni*, whatever you
+  use to tell two Marías apart.
+- **Grouped by month**, so it reads like the list you would write on paper. The
+  order is yours: *Coming up* runs from this month forward and wraps round the
+  year, *Months* is the plain January-to-December agenda.
+- **They can ring.** Give one an hour and it goes off that day through the same
+  alarm as a reminder — red dock, red tray icon — until you stop it.
+- On the day, the card offers to mark the person as greeted. The mark expires by
+  itself at the end of the year, so nothing has to be cleared by hand.
+- A 29 February is only ever a 29 February: it waits for the leap year instead
+  of quietly sliding to the 28th.
+- They are **not** notes with a yearly reminder attached. Twenty birthdays in
+  the note list would be twenty cards nobody wants to read there, so they live
+  in `birthdays.json` beside your notes — travelling to the USB stick with them
+  and backed up alongside them.
+
 ### Voice notes
 
 - Records 16-bit PCM WAV straight from the microphone.
@@ -131,8 +157,9 @@
   <img src="docs/backups.png" alt="The backups menu: make a copy now, how often, at what time, and the list to go back to" width="260">
 </p>
 
-- A copy of `notes.json` is **set aside before it is overwritten**, into
-  `backups/` inside your storage folder — so the history travels to the USB
+- From *Settings → Backups*. A copy of your notes and your birthdays is **set
+  aside before either is overwritten**, into `backups/` inside your storage
+  folder — so the history travels to the USB
   stick along with the notes, and changing the folder carries it across.
 - **You decide the rhythm**: never, or every 1, 3, 7, 15 or 30 days, at any
   hour you like — a preset every three hours, or an `HH:mm` you type. The menu
@@ -179,13 +206,31 @@
 
 <p align="center">
   <img src="docs/dock.png" alt="The collapsed dock" width="100">
-  &nbsp;&nbsp;&nbsp;
-  <img src="docs/settings.png" alt="The settings menu" width="260">
 </p>
+
+- The header names the page you are on, and **Escape closes any of them** back
+  to the note list.
+
+### Settings, on a page of their own
+
+<p align="center">
+  <img src="docs/settings.png" alt="The settings page: accent, opacity, language, window, data and microphone" width="380">
+</p>
+
+- Everything in one place, from the gear in the header: the accent colour, the
+  opacity, the language, whether the window stays on top, where your notes are
+  kept, the backups and which microphone to record from.
+- It used to be a dropdown, and a menu row had nowhere to put a switch, a
+  slider and a folder path without becoming a column taller than the panel it
+  was covering.
+- Backups and the custom accent colour are still menus of their own, reached
+  from a button: they are small dialogues with their own flow, not rows.
 
 ### Look and feel
 
 - Accent colour from a swatch or any hex value you type, plus an opacity slider.
+- The interface speaks **Spanish or English**, chosen in settings and remembered
+  — dates included, which follow the setting rather than the system.
 - Every menu is drawn by the app itself — no native `QMenu` — so right-clicking
   a note gives you the note's own options instead of a cut/copy/paste menu.
 - No image assets at all: the icons are drawn with `QPainter` and the alarm tone
@@ -432,10 +477,11 @@ published elsewhere and on their own schedule:
 ```
 ~/.local/share/Stride/Tagoror/
 ├── notes.json     # notes, accent, opacity, window size, preferences
+├── birthdays.json # the birthdays
 ├── alarm.wav      # the generated alarm tone
 ├── audio/         # one WAV per voice note
 ├── images/        # the images attached to notes
-└── backups/       # notes-<timestamp>.json, the ten most recent
+└── backups/       # notes-<timestamp>.json + birthdays-<timestamp>.json
 ```
 
 The folder is configurable from settings. Changing it copies the attachments —
@@ -444,10 +490,17 @@ where they were, so nothing is lost if the copy fails. If you point it at a
 folder that already has notes in it, you are asked whether to open those or to
 move these ones over.
 
-`notes.json` is written to a temporary file and renamed into place, so an
-interrupted write cannot leave it half-finished. Before each scheduled
-overwrite the previous file is copied into `backups/`; you can restore any of
-them from *Settings → Backups…*, and doing so sets aside what you have now.
+Birthdays are kept apart from the notes, in `birthdays.json`. A folder written
+by an earlier version has them inside `notes.json`; they are moved across the
+first time 2.0 opens it, and nothing has to be done by hand.
+
+Both files are written to a temporary file and renamed into place, so an
+interrupted write cannot leave one half-finished. Before each scheduled
+overwrite the previous pair is copied into `backups/` under a single timestamp;
+you can restore any of them from *Settings → Backups*, which brings back both
+halves and sets aside what you have now. A copy made before birthdays existed
+has no second half, and then the ones you have are left alone rather than
+wiped.
 
 > **If the folder is not there, Tagoror does nothing.** Put your notes on a USB
 > stick and the app will start before the stick is mounted. It will not create
@@ -466,9 +519,10 @@ them from *Settings → Backups…*, and doing so sets aside what you have now.
 The code is split into three layers, and headers mirror the sources:
 
 ```
-include/core/    note, paths, store        the data and where it is kept
-include/ui/      panel, notecard, calendar, popup, theme, waveform, dragwidgets
-include/audio/   recorder, alarm, wave     microphone, alarm tone, WAV
+include/core/    note, birthday, paths, store   the data and where it is kept
+include/ui/      panel, notecard, calendar, birthdays, settings, popup, theme,
+                 waveform, dragwidgets
+include/audio/   recorder, alarm, wave          microphone, alarm tone, WAV
 src/             the matching implementations, same folders
 packaging/       .desktop template and the rasterised icons
 tagoror.svg        app icon
@@ -476,8 +530,14 @@ tagoror-small.svg  simplified variant, used below 32px
 ```
 
 `core` knows nothing about the interface, `ui` never touches the disk — it goes
-through `Store`, which owns the notes and the JSON file — and `audio` only deals
-with the microphone and WAV files.
+through `Store`, which owns the notes, the birthdays and their two JSON files —
+and `audio` only deals with the microphone and WAV files.
+
+The panel is one window with four pages inside it: the note list, the calendar,
+the birthdays and the settings. `CalendarView`, `BirthdayView` and
+`SettingsView` are built the same way — each reads from the `Store` and reports
+what the user asked for upwards, leaving `Panel` as the only thing that changes
+anything or saves.
 
 The icon ships twice on purpose: the detailed five-ring mark as the scalable
 SVG, and the simplified three-ring one rasterised into the small sizes, where
@@ -512,7 +572,8 @@ third-party assets to attribute.
   (`startSystemMove` / `startSystemResize`), which is what makes them work on
   Wayland. In exchange, on Wayland "always on top" and "on the desktop" are
   requests the compositor may decline.
-- Reminders are checked every 5 seconds, so an alarm can be up to that late.
+- Reminders and birthday alarms are checked every 5 seconds, so one can be up
+  to that late.
 - It is a utility window by design, so it stays out of the taskbar and the
   alt-tab list. Fold it into the dock instead of minimising it.
 - There is no automated test suite yet.

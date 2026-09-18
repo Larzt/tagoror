@@ -64,6 +64,13 @@ private:
     void addCheckRow(QVBoxLayout *l, int index);
     void rebuildItems();          // re-numera las filas tras borrar una
     void refreshProgress();
+    // Renombrar un elemento. La fila en edición se dibuja con un campo en vez
+    // de con su etiqueta, así que basta con apuntar cuál es y rehacerlas: el
+    // índice que capturan las lambdas sigue siendo el bueno, que es justo lo
+    // que pide *Reordering / rebuildItems* en CLAUDE.md.
+    void beginItemEdit(int index);
+    void commitItemEdit(int index, const QString &text);
+    void cancelItemEdit();
 
     void openDuePopup(const QPoint &globalPos);   // chip o menú contextual
     // El único sitio que mueve la fecha de un aviso: instante, etiqueta y
@@ -106,6 +113,8 @@ private:
     QLabel *m_meta = nullptr;
     QVBoxLayout *m_itemsLayout = nullptr;
     QLineEdit *m_newItem = nullptr;
+    int m_editingItem = -1;       // elemento que se está renombrando, o -1
+    QLineEdit *m_itemEdit = nullptr;   // su campo, mientras dura
 
     QWidget *m_linksBox = nullptr;       // contenedor de las filas de enlaces
     QVBoxLayout *m_linksLayout = nullptr;

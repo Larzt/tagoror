@@ -1,7 +1,9 @@
 #include "ui/panel.hpp"
 #include "audio/alarm.hpp"
 #include "audio/recorder.hpp"
+#include "ui/birthdays.hpp"
 #include "ui/calendar.hpp"
+#include "ui/settings.hpp"
 #include "ui/dragwidgets.hpp"
 #include "ui/notecard.hpp"
 #include "ui/popup.hpp"
@@ -26,6 +28,7 @@
 #include <QLocale>
 #include <QMediaDevices>
 #include <QMenu>
+#include <QKeyEvent>
 #include <QMoveEvent>
 #include <QPushButton>
 #include <QScreen>
@@ -236,15 +239,17 @@ QFrame *Panel::buildHeader() {
     auto *search = iconButton("search", "Buscar");
     auto *add = iconButton("plus", "Nueva nota");
     m_calendarBtn = iconButton("calendar", "Calendario");
-    auto *gear = iconButton("gear", "Ajustes");
+    m_birthdayBtn = iconButton("cake", "Cumpleaños");
+    m_settingsBtn = iconButton("gear", "Ajustes");
     auto *min = iconButton("minus", "Plegar a icono");
-    m_headerButtons = {m_calendarBtn, search, add, gear, min};
+    m_headerButtons = {m_calendarBtn, m_birthdayBtn, search, add, m_settingsBtn, min};
 
     connect(search, &QToolButton::clicked, this, &Panel::toggleSearch);
     connect(min, &QToolButton::clicked, this, &Panel::collapse);
     connect(add, &QToolButton::clicked, this, [this, add] { openNewNoteMenu(add); });
-    connect(gear, &QToolButton::clicked, this, [this, gear] { openSettings(gear); });
+    connect(m_settingsBtn, &QToolButton::clicked, this, &Panel::toggleSettings);
     connect(m_calendarBtn, &QToolButton::clicked, this, &Panel::toggleCalendar);
+    connect(m_birthdayBtn, &QToolButton::clicked, this, &Panel::toggleBirthdays);
 
     for (QToolButton *b : m_headerButtons) l->addWidget(b);
     return header;
@@ -309,9 +314,64 @@ QWidget *Panel::buildBody() {
     // ventana rehace su mínimo y crece si hace falta.
     connect(m_calendar, &CalendarView::roomChanged, this, &Panel::syncShellMinimum);
 
+    // ---- cumpleaños -------------------------------------------------------
+    m_birthdays = new BirthdayView(m_theme);
+    m_birthdays->setByMonth(m_store.prefs().birthdaysByMonth);
+    m_birthdays->setSource(&m_store.birthdays());
+    connect(m_birthdays, &BirthdayView::addRequested, this,
+            [this](QWidget *anchor) { openBirthdayEditor(nullptr, anchor); });
+    connect(m_birthdays, &BirthdayView::editRequested, this, &Panel::openBirthdayEditor);
+    connect(m_birthdays, &BirthdayView::remindRequested, this, &Panel::askBirthdayReminder);
+    connect(m_birthdays, &BirthdayView::greetToggled, this, &Panel::toggleGreeted);
+    connect(m_birthdays, &BirthdayView::dismissRequested, this, &Panel::dismissBirthday);
+    connect(m_birthdays, &BirthdayView::orderChanged, this, [this](bool byMonth) {
+        m_store.prefs().birthdaysByMonth = byMonth;
+        save();
+    });
+
+    // ---- ajustes ----------------------------------------------------------
+    m_settings = new SettingsView(m_theme);
+    m_settings->setSource(&m_store);
+    connect(m_settings, &SettingsView::accentPicked, this, [this](const QColor &c) {
+        m_theme.accent = c;
+        m_store.prefs().accent = c;
+        applyTheme();
+        rebuildList();   // las tarjetas llevan el acento pintado en línea
+        save();
+    });
+    connect(m_settings, &SettingsView::accentEditorRequested, this, &Panel::openAccentEditor);
+    connect(m_settings, &SettingsView::opacityChanged, this, [this](int v) {
+        m_theme.opacity = v;
+        m_store.prefs().opacity = v;
+        applyTheme();
+        scheduleSave();
+    });
+    connect(m_settings, &SettingsView::languagePicked, this, &Panel::setLanguage);
+    connect(m_settings, &SettingsView::onTopToggled, this, [this](bool on) {
+        m_store.prefs().onTop = on;
+        applyWindowFlags();
+        refreshSettings();
+        save();
+    });
+    connect(m_settings, &SettingsView::x11Toggled, this, [this](bool on) {
+        QSettings().setValue("platform", on ? "" : "wayland");
+        refreshSettings();
+    });
+    connect(m_settings, &SettingsView::dataFolderRequested, this, &Panel::chooseDataFolder);
+    connect(m_settings, &SettingsView::backupsRequested, this, &Panel::openBackups);
+    connect(m_settings, &SettingsView::inputPicked, this, [this](const QByteArray &id) {
+        m_store.prefs().input = id;
+        VoiceRecorder::setPreferredInput(id);
+        refreshSettings();
+        save();
+    });
+    connect(m_settings, &SettingsView::quitRequested, qApp, &QApplication::quit);
+
     m_body = new QStackedWidget;
     m_body->addWidget(m_scroll);
     m_body->addWidget(m_calendar);
+    m_body->addWidget(m_birthdays);
+    m_body->addWidget(m_settings);
     // Desde el principio, no solo al cambiar de página: el calendario pide más
     // alto que la lista y, sin esto, se lo impondría a la ventana ya al nacer.
     showBodyPage(m_scroll);
@@ -335,7 +395,7 @@ QFrame *Panel::buildFooter() {
     l->addWidget(m_footerText);
     l->addStretch();
 
-    m_footerHint = new QLabel(L("clic dcho · opciones"));
+    m_footerHint = new QLabel;
     m_footerHint->setObjectName("meta");
     l->addWidget(m_footerHint);
     l->addWidget(new GripCorner, 0, Qt::AlignBottom);
@@ -383,12 +443,17 @@ QWidget *Panel::buildBadge() {
 void Panel::applyTheme() {
     setStyleSheet(m_theme.sheet());
 
+    // El de la página en la que se está va en el acento; los demás, en gris.
     for (QToolButton *b : m_headerButtons)
-        b->setIcon(paintIcon(b->property("iconKind").toString(), QColor(Theme::muted())));
-    if (m_calendarBtn && m_calendarBtn->property("active").toBool())
-        setCalendarActive(true);      // el activo va en color de acento
+        b->setIcon(paintIcon(b->property("iconKind").toString(),
+                             b->property("active").toBool() ? m_theme.accent
+                                                            : QColor(Theme::muted())));
 
     if (m_calendar) m_calendar->setTheme(m_theme);
+    if (m_birthdays) m_birthdays->setTheme(m_theme);
+    // El de ajustes no se rehace: repinta lo que lleva el acento y deja en pie
+    // el deslizador de la opacidad, que es quien acaba de llamar aquí.
+    if (m_settings) m_settings->setTheme(m_theme);
     applyBadgeAlert();
 
     // El dock se pinta en línea porque su fondo depende de la opacidad actual.
@@ -411,22 +476,34 @@ void Panel::setLanguage(Lang::Code code) {
 // el calendario se rehacen enteros, que sale más simple que ir buscando cada
 // etiqueta dentro de ellos y aquí no hay nada que perder salvo el foco.
 void Panel::retranslate() {
-    m_titleLabel->setText(L("Tagoror"));
     m_search->setPlaceholderText(L("Filtrar notas…"));
     m_emptyText->setText(L("Todavía no hay notas"));
     m_emptyBtn->setText(L("Crear la primera"));
-    m_footerHint->setText(L("clic dcho · opciones"));
+    refreshFooterHint();
     refreshDataWarning();
 
     for (QToolButton *b : m_headerButtons)
         b->setToolTip(L(b->property("tip").toString()));
-    // El del calendario además dice en qué página estás, así que se rehace
-    // por su propio camino.
-    setCalendarActive(m_calendarBtn->property("active").toBool());
+    // Los de las páginas además dicen en cuál estás, así que se rehacen por su
+    // propio camino.
+    setPageActive(m_calendarBtn, m_calendarBtn->property("active").toBool(),
+                  L("Ver notas"), L("Calendario"));
+    setPageActive(m_birthdayBtn, m_birthdayBtn->property("active").toBool(),
+                  L("Ver notas"), L("Cumpleaños"));
+    setPageActive(m_settingsBtn, m_settingsBtn->property("active").toBool(),
+                  L("Ver notas"), L("Ajustes"));
 
     buildTrayMenu();
     applyBadgeAlert();   // la ayuda del icono de la bandeja lleva texto
     if (m_calendar) m_calendar->retranslate();
+    if (m_birthdays) {
+        // Tras recargar el Store las preferencias son otras, y el orden de la
+        // lista es una de ellas; retranslate() repinta la página de todas formas.
+        m_birthdays->setByMonth(m_store.prefs().birthdaysByMonth);
+        m_birthdays->retranslate();
+    }
+    if (m_settings) m_settings->retranslate();
+    refreshTitle();
     // Rehace las tarjetas y, de paso, el pie, el calendario y el dock.
     rebuildList();
 }
@@ -467,12 +544,22 @@ void Panel::rebuildList() {
     m_badgeCount->setText(QString::number(m_store.count()));
     refreshFooter();
     refreshCalendar();
+    refreshBirthdays();
     applyBadgeAlert();
     if (m_search && !m_search->text().isEmpty())
         applyFilter(m_search->text());
 }
 
+// La pista del pie depende de dónde estés: en la lista, el menú de la tarjeta;
+// en cualquier otra página, cómo se sale de ella.
+void Panel::refreshFooterHint() {
+    if (!m_footerHint) return;
+    const bool onList = !m_body || m_body->currentWidget() == m_scroll;
+    m_footerHint->setText(onList ? L("clic dcho · opciones") : L("esc · cerrar"));
+}
+
 void Panel::refreshFooter() {
+    refreshFooterHint();
     if (!m_footerText) return;
 
     if (m_body && m_body->currentWidget() == m_calendar) {
@@ -480,6 +567,14 @@ void Panel::refreshFooter() {
         for (Note *n : m_store.notes())
             if (n->isScheduled()) ++scheduled;
         m_footerText->setText(L("%1 CON FECHA").arg(scheduled));
+        return;
+    }
+    if (m_body && m_body->currentWidget() == m_birthdays) {
+        m_footerText->setText(L("%1 CUMPLEAÑOS").arg(m_store.birthdayCount()));
+        return;
+    }
+    if (m_body && m_body->currentWidget() == m_settings) {
+        m_footerText->setText(L("AJUSTES"));
         return;
     }
     m_footerText->setText(L("%1 EN EL TAGOROR").arg(m_store.count()));
@@ -635,27 +730,87 @@ void Panel::toggleCalendar() {
     showBodyPage(m_calendar);
     m_calendar->refresh();
     setCalendarActive(true);
+    setBirthdaysActive(false);
+    setSettingsActive(false);
     refreshFooter();
+    refreshTitle();
+}
+
+void Panel::toggleBirthdays() {
+    if (m_body->currentWidget() == m_birthdays) {
+        showNotes();
+        return;
+    }
+    m_searchBar->hide();
+    m_birthdays->refresh();
+    showBodyPage(m_birthdays);
+    setBirthdaysActive(true);
+    setCalendarActive(false);
+    setSettingsActive(false);
+    refreshFooter();
+    refreshTitle();
+}
+
+void Panel::toggleSettings() {
+    if (m_body->currentWidget() == m_settings) {
+        showNotes();
+        return;
+    }
+    m_searchBar->hide();
+    m_settings->refresh();
+    showBodyPage(m_settings);
+    setSettingsActive(true);
+    setCalendarActive(false);
+    setBirthdaysActive(false);
+    refreshFooter();
+    refreshTitle();
 }
 
 void Panel::showNotes() {
-    if (m_body->currentWidget() != m_calendar) return;
+    if (m_body->currentWidget() == m_scroll) return;
 
     showBodyPage(m_scroll);
     setCalendarActive(false);
+    setBirthdaysActive(false);
+    setSettingsActive(false);
     refreshFooter();
+    refreshTitle();
 }
 
-// El botón no cambia de icono al abrir el calendario: se queda encendido.
-// Así el icono siempre dice adónde lleva y el realce dice dónde estás.
-void Panel::setCalendarActive(bool on) {
-    m_calendarBtn->setProperty("active", on);
-    m_calendarBtn->setToolTip(on ? L("Ver notas") : L("Calendario"));
-    m_calendarBtn->setIcon(paintIcon("calendar",
-                                     on ? m_theme.accent : QColor(Theme::muted())));
+// El botón no cambia de icono al abrir su página: se queda encendido. Así el
+// icono siempre dice adónde lleva y el realce dice dónde estás.
+void Panel::setPageActive(QToolButton *button, bool on,
+                          const QString &tipOn, const QString &tipOff) {
+    button->setProperty("active", on);
+    button->setToolTip(on ? tipOn : tipOff);
+    button->setIcon(paintIcon(button->property("iconKind").toString(),
+                              on ? m_theme.accent : QColor(Theme::muted())));
     // Una propiedad dinámica no repinta sola.
-    m_calendarBtn->style()->unpolish(m_calendarBtn);
-    m_calendarBtn->style()->polish(m_calendarBtn);
+    button->style()->unpolish(button);
+    button->style()->polish(button);
+}
+
+void Panel::setCalendarActive(bool on) {
+    setPageActive(m_calendarBtn, on, L("Ver notas"), L("Calendario"));
+}
+
+void Panel::setBirthdaysActive(bool on) {
+    setPageActive(m_birthdayBtn, on, L("Ver notas"), L("Cumpleaños"));
+}
+
+void Panel::setSettingsActive(bool on) {
+    setPageActive(m_settingsBtn, on, L("Ver notas"), L("Ajustes"));
+}
+
+// El rótulo de la cabecera nombra la página abierta. En la lista vuelve a ser
+// el nombre de la aplicación, que es donde tiene sentido que esté.
+void Panel::refreshTitle() {
+    if (!m_titleLabel || !m_body) return;
+    QWidget *page = m_body->currentWidget();
+    m_titleLabel->setText(page == m_calendar    ? L("Calendario")
+                          : page == m_birthdays ? L("Cumpleaños")
+                          : page == m_settings  ? L("Ajustes")
+                                                : L("Tagoror"));
 }
 
 void Panel::refreshCalendar() {
@@ -718,11 +873,162 @@ void Panel::revealNote(Note *n) {
     }
 }
 
+// --- cumpleaños -------------------------------------------------------------
+
+// La página de ajustes enseña cosas que cambian por fuera de ella (la carpeta
+// de datos, las copias, el micrófono), así que se repinta cuando pasa algo.
+void Panel::refreshSettings() {
+    if (m_settings && m_body->currentWidget() == m_settings) m_settings->refresh();
+}
+
+void Panel::refreshBirthdays() {
+    // Igual que el calendario: cada tecleo en una tarjeta pasa por rebuildList,
+    // y si la página no está a la vista no hay nada que repintar.
+    if (m_birthdays && m_body->currentWidget() == m_birthdays) m_birthdays->refresh();
+}
+
+// Alta y edición por el mismo sitio, con b nulo para lo primero: el formato de
+// la fecha y lo que se pide se escriben una sola vez, y así no pueden discrepar.
+void Panel::openBirthdayEditor(Birthday *b, QWidget *anchor) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(b ? L("Editar cumpleaños") : L("Nuevo cumpleaños"));
+    menu->addFields({L("Nombre"), L("dd/mm o dd/mm/aaaa"), L("Relación (opcional)")},
+                    {b ? b->name : QString(),
+                     b ? b->dateText() : QString(),
+                     b ? b->relation : QString()},
+                    [this, b](const QStringList &values) {
+                        int d = 0, m = 0, y = 0;
+                        if (!Birthday::parseDate(values.value(1), &d, &m, &y)) return;
+                        if (values.value(0).trimmed().isEmpty()) return;
+
+                        Birthday *target = b ? b : new Birthday;
+                        target->name = values.value(0).trimmed();
+                        target->day = d;
+                        target->month = m;
+                        target->year = y;
+                        target->relation = values.value(2).trimmed();
+                        // La marca de felicitado es de una fecha concreta: si
+                        // la fecha cambia, deja de querer decir nada.
+                        if (!target->isToday()) target->greetedYear = 0;
+                        // Se da de alta ya relleno: apuntarlo antes dejaría un
+                        // "1 de enero" sin nombre escrito en disco.
+                        if (!b) m_store.addBirthday(target);
+                        m_birthdays->refresh();
+                        refreshFooter();
+                        save();
+                    });
+
+    if (!b) {
+        menu->showUnder(anchor);
+        return;
+    }
+
+    menu->addSeparator();
+    menu->addItem(b->remindAt.isValid() ? "bell" : "clock",
+                  b->remindAt.isValid()
+                      ? L("Aviso a las %1").arg(b->remindAt.toString("HH:mm"))
+                      : L("Avisarme ese día…"),
+                  L("Suena una vez, el día que toca"),
+                  [this, b, anchor] { askBirthdayReminder(b, anchor); });
+    menu->addItem(b->greeted() ? "minus" : "check",
+                  b->greeted() ? L("Sin felicitar") : L("Marcar como felicitado"),
+                  QString(), [this, b] { toggleGreeted(b); });
+    menu->addSeparator();
+    menu->addItem("trash", L("Eliminar cumpleaños"), QString(),
+                  [this, b] { removeBirthday(b); });
+    menu->showUnder(anchor);
+}
+
+void Panel::askBirthdayReminder(Birthday *b, QWidget *anchor) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(b->name.isEmpty() ? L("Sin nombre") : b->name);
+
+    QStringList labels;
+    QList<QTime> times;
+    for (int h = 8; h <= 21; h += 2) {
+        times << QTime(h, 0);
+        labels << times.last().toString("HH:mm");
+    }
+    // addChoice y no addChips: la hora del aviso es un ajuste con estado, no
+    // una lista de acciones, y el menú tiene que enseñar cuál está puesta.
+    menu->addChoice(labels, int(times.indexOf(b->remindAt)), [this, b, times](int i) {
+        b->remindAt = times.at(i);
+        // La hora nueva vuelve a armar el aviso de este año: cambiarla justo
+        // después de callarlo tiene que servir para algo.
+        b->firedYear = 0;
+        m_birthdays->refresh();
+        save();
+    });
+
+    menu->addSeparator();
+    menu->addHeader(L("A mano · HH:mm"));
+    menu->addEditor(L("p. ej. 20:30"), QString(), [this, b](const QString &value) {
+        const QTime t = QTime::fromString(value.trimmed(), "HH:mm");
+        if (!t.isValid()) return;
+        b->remindAt = t;
+        b->firedYear = 0;
+        m_birthdays->refresh();
+        save();
+    });
+
+    if (b->remindAt.isValid()) {
+        menu->addSeparator();
+        menu->addItem("minus", L("Sin aviso"), L("Se queda solo apuntado"),
+                      [this, b] {
+                          b->remindAt = QTime();
+                          silenceBirthday(b);
+                          m_birthdays->refresh();
+                          save();
+                      });
+    }
+    menu->showBelow(anchor);
+}
+
+void Panel::removeBirthday(Birthday *b) {
+    // Puede estar sonando justo cuando se borra: el tono se queda colgado si
+    // nadie lo apaga antes de que desaparezca la única cosa que lo pedía.
+    const bool wasRinging = b->ringing;
+    m_store.removeBirthday(b);
+    if (wasRinging && !anyRinging()) m_alarm->stop();
+    m_birthdays->refresh();
+    refreshFooter();
+    applyBadgeAlert();
+}
+
+void Panel::toggleGreeted(Birthday *b) {
+    b->greetedYear = b->greeted() ? 0 : QDate::currentDate().year();
+    // Felicitar es enterarse: no tiene sentido que siga sonando.
+    if (b->ringing) {
+        silenceBirthday(b);
+        if (!anyRinging()) m_alarm->stop();
+        applyBadgeAlert();
+    }
+    m_birthdays->refresh();
+    save();
+}
+
+void Panel::silenceBirthday(Birthday *b) {
+    b->ringing = false;
+    // Se apunta el año, no un "ya sonó" a secas: la marca tiene que caducar
+    // sola para que el año que viene vuelva a avisar.
+    b->firedYear = QDate::currentDate().year();
+}
+
+void Panel::dismissBirthday(Birthday *b) {
+    silenceBirthday(b);
+    if (!anyRinging()) m_alarm->stop();
+    m_birthdays->refresh();
+    applyBadgeAlert();
+    save();
+}
+
 // --- recordatorios ---------------------------------------------------------
 
 bool Panel::anyRinging() const {
     for (Note *n : m_store.notes())
         if (n->ringing) return true;
+    for (Birthday *b : m_store.birthdays())
+        if (b->ringing) return true;
     return false;
 }
 
@@ -736,11 +1042,22 @@ void Panel::checkReminders() {
             started = true;
         }
     }
+    // Los cumpleaños con hora puesta suenan por el mismo latido y con el mismo
+    // tono: para quien lo oye es el mismo aviso, y duplicar la maquinaria solo
+    // daría dos maneras de que se quedara sonando.
+    const QDateTime nowAt = QDateTime::currentDateTime();
+    for (Birthday *b : m_store.birthdays()) {
+        if (b->alarmDue(nowAt) && !b->ringing) {
+            b->ringing = true;
+            started = true;
+        }
+    }
     if (!started) return;
 
     m_alarm->start();
     refreshDueCards();
     refreshCalendar();
+    refreshBirthdays();
     applyBadgeAlert();
 }
 
@@ -821,97 +1138,6 @@ void Panel::openNewNoteMenu(QWidget *anchor) {
     menu->showUnder(anchor);
 }
 
-void Panel::openSettings(QWidget *anchor) {
-    auto *menu = new Popup(m_theme, this);
-
-    menu->addHeader(L("Acento"));
-    const QList<QColor> swatches = {QColor("#7c9cff"), QColor("#6fcf97"), QColor("#f2b757"),
-                                    QColor("#ff7a6b"), QColor("#b98cff"), QColor("#4ecdc4")};
-    menu->addSwatches(swatches, m_theme.accent, [this](const QColor &c) {
-        m_theme.accent = c;
-        m_store.prefs().accent = c;
-        applyTheme();
-        rebuildList();   // las tarjetas llevan el acento pintado en línea
-        save();
-    });
-
-    menu->addItem("palette", L("Color personalizado…"),
-                  m_theme.accent.name(), [this, anchor] { openAccentEditor(anchor); });
-
-    menu->addSeparator();
-    menu->addHeader(L("Opacidad"));
-    menu->addSlider(40, 100, m_theme.opacity, [this](int v) {
-        m_theme.opacity = v;
-        m_store.prefs().opacity = v;
-        applyTheme();
-        scheduleSave();
-    });
-
-    menu->addSeparator();
-    menu->addHeader(L("Idioma"));
-    // Los nombres de los idiomas van en el suyo propio, no traducidos: quien
-    // abre el menú con la interfaz en el idioma que no entiende tiene que
-    // poder reconocer el otro.
-    const Lang::Code lang = m_store.prefs().lang;
-    for (const auto &[code, label] : {std::pair{Lang::Es, "Español"}, {Lang::En, "English"}})
-        menu->addItem(code == lang ? "check" : "minus", label, QString(),
-                      [this, code = code] { setLanguage(code); });
-
-    menu->addSeparator();
-    menu->addHeader(L("Ventana"));
-    const bool onTop = m_store.prefs().onTop;
-    menu->addItem(onTop ? "check" : "minus", L("Siempre encima"),
-                  onTop ? L("Activado · por encima de todo")
-                        : L("Desactivado · pegado al escritorio"),
-                  [this] {
-                      m_store.prefs().onTop = !m_store.prefs().onTop;
-                      applyWindowFlags();
-                      save();
-                  });
-
-#ifdef Q_OS_LINUX
-    // Ver choosePlatform() en main.cpp: de esto depende que el panel pueda
-    // abrirse hacia el centro de la pantalla y que "siempre encima" se cumpla.
-    // Fuera de Linux no hay tal disyuntiva y la fila no pinta nada.
-    const bool nativeWayland = QSettings().value("platform").toString() == "wayland";
-    menu->addItem(nativeWayland ? "minus" : "check", L("Compatibilidad X11"),
-                  nativeWayland ? L("Desactivada · Wayland nativo")
-                                : L("Activada · %1").arg(qApp->platformName()),
-                  [nativeWayland] {
-                      QSettings().setValue("platform", nativeWayland ? "" : "wayland");
-                  });
-#endif
-
-    menu->addSeparator();
-    menu->addHeader(L("Datos"));
-    menu->addItem("notes", L("Carpeta de guardado…"),
-                  m_store.available()
-                      ? prettyPath(appDataDir())
-                      : L("No disponible · %1").arg(prettyPath(appDataDir())),
-                  [this] { chooseDataFolder(); });
-    menu->addItem("copy", L("Copias de seguridad…"),
-                  backupPeriodLabel(m_store.prefs().backupEveryDays),
-                  [this, anchor] { openBackups(anchor); });
-
-    menu->addSeparator();
-    menu->addHeader(L("Micrófono"));
-    const QAudioDevice current = QMediaDevices::defaultAudioInput();
-    const QByteArray chosenId = m_store.prefs().input;
-    for (const QAudioDevice &dev : QMediaDevices::audioInputs()) {
-        const bool chosen = chosenId.isEmpty() ? dev.id() == current.id() : dev.id() == chosenId;
-        menu->addItem("mic", dev.description(), chosen ? L("En uso") : QString(),
-                      [this, id = dev.id()] {
-                          m_store.prefs().input = id;
-                          VoiceRecorder::setPreferredInput(id);
-                          save();
-                      });
-    }
-
-    menu->addSeparator();
-    menu->addItem("power", L("Salir"), QString(), [] { qApp->quit(); });
-    menu->showUnder(anchor);
-}
-
 void Panel::openAccentEditor(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(L("Color de acento"));
@@ -939,10 +1165,12 @@ void Panel::chooseDataFolder() {
     // Si allí ya hay notas, hay que preguntar: llevarse las de aquí borra las
     // de allí, y es justo lo que se hace al apuntar a un pendrive que ya las
     // tiene. Si no las hay, no hay ambigüedad que resolver.
-    if (QFile::exists(to + "/notes.json"))
+    if (QFile::exists(to + "/notes.json")) {
         confirmDataFolder(to);
-    else
-        m_store.changeDataDir(to);
+        return;
+    }
+    m_store.changeDataDir(to);
+    refreshSettings();   // la tarjeta enseña la ruta, y acaba de cambiar
 }
 
 void Panel::confirmDataFolder(const QString &to) {
@@ -950,10 +1178,10 @@ void Panel::confirmDataFolder(const QString &to) {
     menu->addHeader(L("Esa carpeta ya tiene notas"));
     menu->addItem("notes", L("Abrir las de esa carpeta"),
                   L("Se quedan las que hay allí"),
-                  [this, to] { m_store.adoptDataDir(to); });
+                  [this, to] { m_store.adoptDataDir(to); refreshSettings(); });
     menu->addItem("copy", L("Llevar allí estas notas"),
                   L("Se sobrescriben las de allí"),
-                  [this, to] { m_store.changeDataDir(to); });
+                  [this, to] { m_store.changeDataDir(to); refreshSettings(); });
     menu->addSeparator();
     menu->addItem("minus", L("Cancelar"), QString(), [] {});
     menu->showAt(mapToGlobal(rect().center()));
@@ -988,6 +1216,7 @@ void Panel::openBackups(QWidget *anchor) {
                   [this, anchor] {
                       m_store.makeBackup();
                       save();
+                      refreshSettings();     // la tarjeta lleva la cuenta
                       openBackups(anchor);   // el menú se reabre con el estado nuevo
                   });
 
@@ -1000,6 +1229,7 @@ void Panel::openBackups(QWidget *anchor) {
                     [this, anchor](int i) {
                         m_store.prefs().backupEveryDays = kBackupPeriods.at(i);
                         save();
+                        refreshSettings();   // la tarjeta dice cada cuánto
                         openBackups(anchor);
                     });
 
@@ -1062,7 +1292,7 @@ void Panel::confirmRestore(const QString &file) {
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(L("Volver a esa copia"));
     menu->addItem("copy", L("Restaurar"), L("Lo de ahora queda guardado como copia"),
-                  [this, file] { m_store.restoreBackup(file); });
+                  [this, file] { m_store.restoreBackup(file); refreshSettings(); });
     menu->addSeparator();
     menu->addItem("minus", L("Cancelar"), QString(), [] {});
     menu->showAt(mapToGlobal(rect().center()));
@@ -1095,6 +1325,7 @@ void Panel::onStoreReloaded() {
 }
 
 void Panel::refreshDataWarning() {
+    refreshSettings();   // la página enseña la carpeta y si está disponible
     if (!m_dataWarn) return;
     const bool missing = !m_store.available();
     if (missing) {
@@ -1358,9 +1589,12 @@ void Panel::expand() {
     if (anyRinging()) {
         for (Note *n : m_store.notes())
             if (n->ringing) silence(n);
+        for (Birthday *b : m_store.birthdays())
+            if (b->ringing) silenceBirthday(b);
         m_alarm->stop();
         refreshDueCards();
         refreshCalendar();
+        refreshBirthdays();
         applyBadgeAlert();
         scheduleSave();
     }
@@ -1460,6 +1694,18 @@ void Panel::restoreWindowPos() {
     const QScreen *sc = QGuiApplication::screenAt(QRect(saved, size()).center());
     const QRect area = placementArea(sc);
     move(area.isValid() ? clampInto(saved, size(), area) : saved);
+}
+
+// Escape cierra la página en la que se esté y devuelve a las notas, que es lo
+// que anuncia el pie. Solo llega aquí lo que no se ha quedado ningún hijo: el
+// editor de una tarjeta ya usa Escape para cerrarse y se lo queda antes.
+void Panel::keyPressEvent(QKeyEvent *e) {
+    if (e->key() == Qt::Key_Escape && m_body && m_body->currentWidget() != m_scroll) {
+        showNotes();
+        e->accept();
+        return;
+    }
+    QWidget::keyPressEvent(e);
 }
 
 void Panel::moveEvent(QMoveEvent *e) {

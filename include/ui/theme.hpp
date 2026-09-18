@@ -94,6 +94,16 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.setBrush(color);
         p.drawEllipse(QPointF(c - 2.4, c + 1.8), 1.0, 1.0);
         p.drawEllipse(QPointF(c + 1.0, c + 1.8), 1.0, 1.0);
+    } else if (kind == "cake") {
+        // Tarta: base, una vela y la llama. A 16 px un pastel con relleno se
+        // convierte en un borrón, así que va con la misma línea fina que el
+        // resto de los iconos de la cabecera.
+        p.drawRoundedRect(QRectF(c - 5.6, c - 0.6, 11.2, 6.4), 1.8, 1.8);
+        p.drawLine(QPointF(c - 5.6, c + 2.4), QPointF(c + 5.6, c + 2.4));
+        p.drawLine(QPointF(c, c - 3.4), QPointF(c, c - 0.6));
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        p.drawEllipse(QPointF(c, c - 4.6), 1.2, 1.5);
     } else if (kind == "chevronLeft") {
         p.drawPolyline(QPolygonF({QPointF(c + 2.0, c - 4.4), QPointF(c - 2.4, c),
                                   QPointF(c + 2.0, c + 4.4)}));
@@ -323,6 +333,13 @@ QLineEdit#newItemEdit {
     font-size: 11.5px; color: %3;
 }
 QLineEdit#newItemEdit:focus { border: none; }
+/* Renombrar un elemento: el mismo campo sin caja, con el tamaño del texto al
+   que sustituye para que la fila no dé un salto al entrar en edición. */
+QLineEdit#checkTextEdit {
+    background: transparent; border: none; padding: 0;
+    font-size: 11.5px; color: %3;
+}
+QLineEdit#checkTextEdit:focus { border: none; }
 QTextEdit {
     color: %3; background: %6;
     border: 1px solid %2; border-radius: 8px;
@@ -445,7 +462,122 @@ QLabel#imgTitle {
 QWidget#dayHeader { background: transparent; border-radius: 7px; }
 QWidget#dayHeader:hover { background: %7; }
 
-/* --- popups propios (nueva nota, ajustes, menú de tarjeta, fecha) --------- */
+/* --- cumpleaños ----------------------------------------------------------- */
+QWidget#birthdays { background: transparent; }
+/* El de hoy, destacado: es la única fila de la página sobre la que hay algo
+   que hacer, así que lleva marco teñido en vez de ser una fila más. */
+QFrame#bdayToday {
+    background: %6;
+    border: 1px solid %9;
+    border-radius: 11px;
+}
+QLabel#bdayName { color: %3; font-size: 13px; font-weight: 700; }
+QLabel#bdayTodayChip {
+    color: %5; font-size: 8.5px; font-weight: 700;
+    font-family: "IBM Plex Mono", monospace;
+    background: %10; border: 1px solid %9;
+    border-radius: 5px; padding: 1px 5px;
+}
+/* Ya felicitado: la misma píldora en verde, porque dice lo contrario que la
+   de arriba —aquí no queda nada por hacer— y en el acento se confundirían. */
+QLabel#bdayDoneChip {
+    color: #6fcf97; font-size: 8.5px; font-weight: 700;
+    font-family: "IBM Plex Mono", monospace;
+    background: rgba(111,207,151,0.14);
+    border: 1px solid rgba(111,207,151,0.40);
+    border-radius: 5px; padding: 1px 5px;
+}
+/* Botón secundario de la tarjeta de hoy: el de felicitar ya es el QPushButton
+   con el acento de relleno, y dos rellenos seguidos no dicen cuál es cuál. */
+QToolButton#bdayGhost {
+    color: %4; background: %6;
+    border: 1px solid %2; border-radius: 8px;
+    padding: 5px 10px; font-size: 11px; font-weight: 600;
+}
+QToolButton#bdayGhost:hover { color: %5; border: 1px solid %5; background: %8; }
+/* Mientras suena, el botón principal es el de callarlo, y va en el rojo de
+   todo lo vencido en vez de en el acento. */
+QPushButton#bdayStop { background: #ff7a6b; }
+QPushButton#bdayStop:hover { background: #ff8f82; }
+/* Los dos órdenes de la lista, como pestañas pequeñas. Mismo lenguaje que los
+   chips de los popups —el elegido teñido del acento— pero con su propio nombre:
+   estos no viven en un menú y compartir el objectName ataría dos sitios que no
+   tienen por qué cambiar a la vez. */
+QToolButton#bdayTab {
+    color: %4; background: transparent;
+    border: 1px solid transparent; border-radius: 7px;
+    padding: 2px 7px; font-size: 9px; font-weight: 700;
+    font-family: "IBM Plex Mono", monospace;
+}
+QToolButton#bdayTab:hover { color: %3; background: %7; }
+QToolButton#bdayTab[chosen="true"] {
+    color: %5; background: %8; border: 1px solid %9;
+}
+
+/* Separador de mes: el nombre en el acento y una línea hasta el borde. En el
+   gris de #meta se perdía entre las filas, que es justo lo que no puede pasar
+   -- está ahí para que se vea de un golpe en qué mes cae cada uno. */
+QLabel#bdayMonth {
+    color: %5; font-size: 9px; font-weight: 700;
+    font-family: "IBM Plex Mono", monospace;
+}
+QFrame#bdayMonthRule { background: %2; border: none; }
+
+/* Filas: QWidget lisos, así que necesitan WA_StyledBackground (birthdays.cpp). */
+QWidget#bdayRow { background: transparent; border-radius: 9px; }
+QWidget#bdayRow:hover { background: %7; }
+QLabel#bdayRowName { color: %3; font-size: 12px; font-weight: 600; }
+QLabel#bdayDate {
+    color: %4; font-size: 10px;
+    font-family: "IBM Plex Mono", monospace;
+}
+QLabel#bdayWhen { color: %5; font-size: 9.5px; font-weight: 600; }
+/* Lo que cae hoy o mañana se lee antes en el acento; lo demás es contexto. */
+QLabel#bdayWhen[soon="false"] { color: %4; }
+
+/* --- página de ajustes ---------------------------------------------------- */
+QWidget#settings { background: transparent; }
+QLabel#setSection {
+    color: %4; font-size: 9px; font-weight: 700;
+    font-family: "IBM Plex Mono", monospace;
+    padding: 6px 2px 1px 2px;
+}
+QLabel#setValue {
+    color: %3; font-size: 10px; font-weight: 700;
+    font-family: "IBM Plex Mono", monospace;
+    padding-top: 6px;
+}
+QLabel#setRowText { color: %3; font-size: 11.5px; }
+/* Filas: QWidget lisos, así que necesitan WA_StyledBackground (settings.cpp). */
+QWidget#setRow { background: transparent; border-radius: 8px; }
+QWidget#setRow:hover { background: %7; }
+/* Grupos de un solo elegido (idioma) y los botones de las tarjetas. El elegido
+   va teñido del acento, igual que la píldora de "Hoy" del calendario. */
+QToolButton#segButton {
+    color: %4; background: %6;
+    border: 1px solid %2; border-radius: 8px;
+    padding: 6px 10px; font-size: 11px; font-weight: 600;
+}
+QToolButton#segButton:hover { color: %3; background: %7; }
+QToolButton#segButton[chosen="true"] {
+    color: %5; background: %8; border: 1px solid %9;
+}
+QToolButton#segButton:disabled { color: rgba(139,144,154,0.45); background: transparent; }
+QFrame#setCard {
+    background: %6;
+    border: 1px solid %2;
+    border-radius: 10px;
+}
+/* Salir va en rojo y con borde, no relleno: es el final de la página y no
+   compite con el acento, pero tampoco se pulsa sin querer. */
+QToolButton#quitBtn {
+    color: #ff7a6b; background: transparent;
+    border: 1px solid rgba(255,122,107,0.35); border-radius: 8px;
+    padding: 6px 11px; font-size: 11px; font-weight: 600;
+}
+QToolButton#quitBtn:hover { background: rgba(255,122,107,0.14); }
+
+/* --- popups propios (nueva nota, menú de tarjeta, fecha, copias) ---------- */
 QFrame#popupShell {
     background: %1;
     border: 1px solid %2;

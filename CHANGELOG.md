@@ -4,6 +4,60 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.0] — 2026-09-18
+
+Two new pages and a settings screen that is no longer a dropdown. The version
+jumps to 2.0.0 because the panel stopped being "a list of notes with a calendar
+attached": it now has four pages, and birthdays are kept in a file of their own.
+
+### Added
+
+- **Birthdays.** A page of their own, reached from the cake button in the
+  header. The next birthday due is highlighted on a card — whether it falls
+  today or in three months — and the rest are listed under month separators.
+  Each person keeps a name, a day (the year is optional: without it there is no
+  "turns 32"), a free-text relation, and an optional reminder that rings on the
+  day through the same alarm as everything else. Today's card offers to mark
+  them as greeted, a mark that expires on its own at the end of the year.
+  - A birthday is **not** a yearly reminder note. Twenty of them in the note
+    list would be twenty cards nobody wants to read there.
+  - The list can be ordered **by how long is left** — the current month first,
+    wrapping round the year — or **by the calendar**, January to December. The
+    choice is remembered.
+  - A 29 February is only ever a 29 February: it waits for the leap year
+    instead of sliding to the 28th, the same rule repeating reminders follow.
+- **Renaming checklist items.** Each row has a pencil that turns its text into a
+  field; Enter or clicking away saves it, Escape leaves it alone. Clearing the
+  field does **not** delete the item — there is a button for that, and emptying
+  it by accident must not cost the line.
+
+### Changed
+
+- **Settings are a page, not a dropdown.** A menu row had nowhere to put a
+  switch, a slider and a folder path without becoming a column taller than the
+  panel it covered. The accent, the opacity, the language, the window options,
+  the storage folder, the backups and the microphone now live on a page built
+  like the calendar and the birthdays pages. Backups and the custom accent
+  colour stay as their own menus, reached from a button: they are dialogues
+  with their own flow, not rows.
+- The header title names the page you are on, and **Escape closes any page**
+  back to the note list.
+- **Birthdays are stored in `birthdays.json`**, beside `notes.json` in the same
+  data folder, so they still travel with the notes and still ride the USB
+  stick. A folder from an earlier version has them inside `notes.json` and they
+  are moved across on first run. Both halves are backed up together under one
+  timestamp, and restoring one restores the other; a copy from before the split
+  has no birthdays half, and then the current ones are left alone rather than
+  wiped.
+
+### Fixed
+
+- **A checklist item that was one long unbroken word clipped every card in the
+  list.** `wordWrap` breaks at spaces, so a password or a separator-less file
+  name demanded the width of that whole word as the card's minimum — measured,
+  335px against the 284 the list has — and one card over the edge clips all of
+  them. The card's minimum no longer depends on what anybody types.
+
 ## [1.5.0] — 2026-09-07
 
 This release exists because Tagoror lost someone's notes. A storage folder on a

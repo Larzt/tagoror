@@ -22,13 +22,16 @@ class QTimer;
 class QToolButton;
 class QVBoxLayout;
 class Alarm;
+class BirthdayView;
 class CalendarView;
 class NoteCard;
+class SettingsView;
 
 // Ventana única del widget: dibuja su propio chrome (sin decoración del WM) y
 // presenta lo que guarda el Store, que es quien sabe de disco. El
 // QStackedWidget exterior alterna entre el panel expandido y el icono plegado;
-// dentro, otro alterna entre la lista de notas y el calendario.
+// dentro, otro alterna entre la lista de notas, el calendario, los cumpleaños y
+// los ajustes.
 class Panel : public QWidget {
     Q_OBJECT
 
@@ -53,6 +56,9 @@ protected:
     // esperar al destructor. Al apagar el equipo la sesión mata el proceso y
     // ese último guardado no llega nunca.
     void moveEvent(QMoveEvent *e) override;
+    // Escape vuelve a las notas desde cualquier otra página, que es lo que
+    // anuncia el pie mientras se está en una.
+    void keyPressEvent(QKeyEvent *e) override;
 
 private:
     // --- construcción de la interfaz ---
@@ -69,6 +75,7 @@ private:
     void retranslate();
     void rebuildList();
     void refreshFooter();
+    void refreshFooterHint();
     QList<NoteCard *> cards() const;
 
     // --- notas ---
@@ -85,14 +92,37 @@ private:
     void endCardDrag(NoteCard *card);
     void commitOrder();
 
-    // --- calendario ---
+    // --- páginas del cuerpo ---
     void toggleCalendar();
+    void toggleBirthdays();
+    void toggleSettings();
+    // Enciende o apaga el botón de una página. El icono no cambia -- dice
+    // adónde lleva --, lo que cambia es el realce, que dice dónde estás.
+    void setPageActive(QToolButton *button, bool on,
+                       const QString &tipOn, const QString &tipOff);
     void setCalendarActive(bool on);
+    void setBirthdaysActive(bool on);
+    void setSettingsActive(bool on);
+    // El rótulo de la cabecera dice en qué página estás, como en el diseño.
+    void refreshTitle();
     void showNotes();
     void askReminderTime(const QDate &day, QWidget *anchor);
     void createReminder(const QDateTime &when);
     void revealNote(Note *n);       // del calendario a su tarjeta en la lista
     void refreshCalendar();
+
+    // --- cumpleaños ---
+    void refreshBirthdays();
+    // Alta y edición comparten popup: con b nulo es uno nuevo. Así el formato
+    // de la fecha y lo que se pide se escriben una sola vez.
+    void openBirthdayEditor(Birthday *b, QWidget *anchor);
+    void askBirthdayReminder(Birthday *b, QWidget *anchor);
+    void removeBirthday(Birthday *b);
+    void toggleGreeted(Birthday *b);
+    void dismissBirthday(Birthday *b);
+    // Calla el aviso de un cumpleaños: queda apuntado el año para que no
+    // vuelva a sonar hasta el que viene.
+    void silenceBirthday(Birthday *b);
 
     // --- recordatorios ---
     void checkReminders();          // ¿alguno ha vencido? → suena y avisa
@@ -107,7 +137,7 @@ private:
 
     // --- selectores ---
     void openNewNoteMenu(QWidget *anchor);
-    void openSettings(QWidget *anchor);
+    void refreshSettings();
     void openAccentEditor(QWidget *anchor);
     void chooseDataFolder();
     // Apuntar a una carpeta que ya tiene notas es ambiguo: puede querer decir
@@ -156,8 +186,8 @@ private:
     void collapse();
     void expand();
     void showPage(QWidget *page);   // ajusta el tamaño a la página visible
-    // Lo mismo para las dos páginas de dentro (lista y calendario): la que no
-    // se ve no puede imponer su mínimo a la que sí.
+    // Lo mismo para las páginas de dentro (lista, calendario, cumpleaños y
+    // ajustes): la que no se ve no puede imponer su mínimo a la que sí.
     void showBodyPage(QWidget *page);
     // El alto mínimo que pide el layout de la página visible, y aplicarlo.
     // No es una constante: el calendario necesita más que la lista, y con la
@@ -188,6 +218,8 @@ private:
     QWidget *m_listHost = nullptr;
     QVBoxLayout *m_listLayout = nullptr;   // tarjetas + stretch final
     CalendarView *m_calendar = nullptr;
+    BirthdayView *m_birthdays = nullptr;
+    SettingsView *m_settings = nullptr;
 
     QLabel *m_titleLabel = nullptr;
     QWidget *m_empty = nullptr;            // cartel de "no hay notas"
@@ -198,6 +230,8 @@ private:
     QLineEdit *m_search = nullptr;
     QLabel *m_footerText = nullptr;
     QToolButton *m_calendarBtn = nullptr;
+    QToolButton *m_birthdayBtn = nullptr;
+    QToolButton *m_settingsBtn = nullptr;
     QList<QToolButton *> m_headerButtons;
 
     QSystemTrayIcon *m_tray = nullptr;

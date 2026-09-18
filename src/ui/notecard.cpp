@@ -449,6 +449,16 @@ void NoteCard::showDetailsEditor(bool focus) {
 // El cierre va diferido: aquí todavía se está despachando un evento del propio
 // editor, y showDetailsGhost() lo destruye.
 bool NoteCard::eventFilter(QObject *watched, QEvent *event) {
+    // Escape deja el elemento como estaba. Al soltar el foco salta además
+    // editingFinished, pero para entonces ya no hay fila en edición y el
+    // guardado se descarta solo.
+    if (watched == m_itemEdit && m_itemEdit && event->type() == QEvent::KeyPress &&
+        static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
+        cancelItemEdit();
+        m_itemEdit->clearFocus();
+        return true;
+    }
+
     if (watched == m_detailBody && m_detailBody) {
         const bool leaving = event->type() == QEvent::FocusOut;
         const bool escape = event->type() == QEvent::KeyPress &&
@@ -562,21 +572,70 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     box->setCursor(Qt::PointingHandCursor);
     rl->addWidget(box, 0, Qt::AlignTop);
 
-    auto *text = new ClickableLabel(item.text, [box](const QPoint &) { box->toggle(); });
-    text->setObjectName("checkText");
-    text->setContextMenuPolicy(Qt::NoContextMenu);
-    text->setWordWrap(true);
-    text->setToolTip(item.text);
-    strikeOut(text, item.done);
-    rl->addWidget(text, 1);
+    // En edición la fila enseña un campo en lugar de la etiqueta. Es un
+    // QLineEdit y no la etiqueta hecha editable porque un QLineEdit no pide el
+    // ancho de su texto —ya lo hacen el título de la tarjeta y la fila de
+    // añadir—, así que renombrar no puede reventar el ancho de la lista.
+    QLabel *text = nullptr;
+    if (index == m_editingItem) {
+        auto *edit = new QLineEdit(item.text);
+        edit->setObjectName("checkTextEdit");
+        edit->setContextMenuPolicy(Qt::NoContextMenu);
+        edit->installEventFilter(this);   // Escape cancela; ver eventFilter
+        m_itemEdit = edit;
+        connect(edit, &QLineEdit::editingFinished, this, [this, index, edit] {
+            // editingFinished salta con Enter y también al perder el foco, así
+            // que llega dos veces seguidas; la segunda ya no hay nada que hacer.
+            if (m_editingItem != index) return;
+            commitItemEdit(index, edit->text());
+        });
+        rl->addWidget(edit, 1);
+        // Diferido: quien lo construye es rebuildItems(), y pedir el foco en
+        // mitad de ese reparto lo pierde al terminar de colocar las filas.
+        QTimer::singleShot(0, edit, [edit] {
+            edit->setFocus();
+            edit->selectAll();
+        });
+    } else {
+        text = new ClickableLabel(item.text, [box](const QPoint &) { box->toggle(); });
+        text->setObjectName("checkText");
+        text->setContextMenuPolicy(Qt::NoContextMenu);
+        text->setWordWrap(true);
+        // wordWrap parte por los espacios, no por dentro de una palabra: un
+        // elemento que sea una sola palabra larga —una contraseña, un nombre de
+        // fichero sin separadores— pedía como mínimo el ancho de esa palabra
+        // (medido: 335 px contra los 284 que tiene la lista), y ese mínimo se
+        // convierte en el de la tarjeta y recorta TODAS las de la lista, no
+        // solo esta. Con el mínimo acotado, la palabra se corta por el borde de
+        // su propia fila y las demás tarjetas se quedan como estaban; el texto
+        // entero sigue estando en la ayuda emergente y en el campo al
+        // renombrar. Es la misma regla que aplica ElidedLabel.
+        text->setMinimumWidth(24);
+        text->setToolTip(item.text);
+        strikeOut(text, item.done);
+        rl->addWidget(text, 1);
+    }
 
     connect(box, &QCheckBox::toggled, this, [this, text, index](bool on) {
         if (index >= m_note->items.size()) return;
         m_note->items[index].done = on;
-        strikeOut(text, on);
+        if (text) strikeOut(text, on);
         refreshProgress();
         emit dirty();
     });
+
+    // Renombrar. Va en un botón propio y no en el clic sobre el texto: ahí ya
+    // hay un gesto —marcar el elemento— y quitárselo para meter este cambiaría
+    // algo que funciona por añadir algo que falta.
+    auto *rename = new QToolButton;
+    rename->setIcon(paintIcon("pencil", QColor(Theme::muted()), 12));
+    rename->setIconSize(QSize(12, 12));
+    rename->setFixedSize(18, 18);
+    rename->setCursor(Qt::PointingHandCursor);
+    rename->setToolTip(L("Renombrar elemento"));
+    rename->setVisible(index != m_editingItem);
+    connect(rename, &QToolButton::clicked, this, [this, index] { beginItemEdit(index); });
+    rl->addWidget(rename, 0, Qt::AlignTop);
 
     auto *del = new QToolButton;
     del->setIcon(paintIcon("minus", QColor(Theme::muted()), 12));
@@ -596,7 +655,41 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     l->addWidget(row);
 }
 
+// El campo de edición se cierra solo al perder el foco, así que basta con
+// apuntar cuál es la fila y rehacerlas.
+void NoteCard::beginItemEdit(int index) {
+    if (index < 0 || index >= m_note->items.size()) return;
+    m_editingItem = index;
+    rebuildItems();
+}
+
+// Un texto vacío no borra el elemento: para eso está el botón de quitar, y
+// vaciarlo sin querer no puede costar la línea. Se deja como estaba.
+void NoteCard::commitItemEdit(int index, const QString &text) {
+    m_editingItem = -1;
+    if (index < 0 || index >= m_note->items.size()) {
+        rebuildItems();
+        return;
+    }
+
+    const QString clean = text.trimmed();
+    const bool changed = !clean.isEmpty() && clean != m_note->items.at(index).text;
+    if (changed) m_note->items[index].text = clean;
+
+    // Diferido: quien llama es el propio campo, desde su editingFinished, y
+    // rebuildItems() lo destruye en mitad de su propia señal.
+    QTimer::singleShot(0, this, [this] { rebuildItems(); });
+    if (changed) emit dirty();
+}
+
+void NoteCard::cancelItemEdit() {
+    if (m_editingItem < 0) return;
+    m_editingItem = -1;
+    QTimer::singleShot(0, this, [this] { rebuildItems(); });
+}
+
 void NoteCard::rebuildItems() {
+    m_itemEdit = nullptr;   // lo que hubiera muere en este mismo barrido
     // Las filas capturan su índice, así que al borrar una hay que rehacerlas.
     // Se ocultan antes de borrarlas: hasta que corre deleteLater() siguen
     // pintadas donde estaban y siguen aceptando eventos.

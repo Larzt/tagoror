@@ -92,6 +92,20 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="2.0.0" date="2026-09-18">
+      <description>
+        <p>Birthdays. A page of their own: the next one due is highlighted,
+           the rest are listed under month separators, and each person can
+           have a reminder that rings on the day. The list can be ordered by
+           how long is left or by the calendar, January to December.</p>
+        <p>Settings are now a page instead of a dropdown, with the accent,
+           the opacity, the language, the window options, the storage folder,
+           the backups and the microphone all in one place. The header names
+           the page you are on and Escape closes it.</p>
+        <p>Checklist items can be renamed. Also fixes a bug where an item
+           made of one long unbroken word clipped every card in the list.</p>
+      </description>
+    </release>
     <release version="1.5.0" date="2026-09-07">
       <description>
         <p>Backups. A copy of the notes file is set aside before it is
