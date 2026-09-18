@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia Network)
 
 # El nombre del .desktop, el de los iconos instalados, el ID de AppStream y el
 # que la ventana declara con setDesktopFileName() tienen que ser el mismo: de
@@ -27,11 +27,13 @@ add_executable(tagoror
 
     src/core/store.cpp
     src/core/lang.cpp
+    src/core/updater.cpp
     include/core/birthday.hpp
     include/core/lang.hpp
     include/core/note.hpp
     include/core/paths.hpp
     include/core/store.hpp
+    include/core/updater.hpp
 
     src/ui/panel.cpp
     src/ui/notecard.cpp
@@ -108,7 +110,11 @@ qt_add_resources(tagoror "appicon"
 
 target_include_directories(tagoror PRIVATE include)
 target_compile_definitions(tagoror PRIVATE TAGOROR_APP_ID="${TAGOROR_APP_ID}")
-target_link_libraries(tagoror PRIVATE Qt6::Widgets Qt6::Multimedia)
+# Hasta ahora la versión solo llegaba al .rc de Windows y el binario no sabía
+# cuál era. El buscador de actualizaciones necesita compararla con la publicada,
+# así que entra también como definición, igual que el ID de la aplicación.
+target_compile_definitions(tagoror PRIVATE TAGOROR_VERSION="${TAGOROR_VERSION}")
+target_link_libraries(tagoror PRIVATE Qt6::Widgets Qt6::Multimedia Qt6::Network)
 
 # El gestor de ventanas no admite colocar una ventana fuera de _NET_WORKAREA, y
 # esa área no coincide con la que informa Qt (ver src/ui/workarea.cpp). Leer la

@@ -44,6 +44,14 @@ public:
         // de la misma familia que el idioma, no un dato de la agenda.
         bool birthdaysByMonth = false;
 
+        // Buscar si hay versión nueva una vez al día. Es lo único de la
+        // aplicación que sale a la red, así que va como un ajuste a la vista y
+        // no escondido; 'latestSeen' guarda la última versión que contestó el
+        // servidor para poder enseñarla sin volver a preguntar.
+        bool updateCheck = true;
+        qint64 lastUpdateMs = 0;
+        QString latestSeen;
+
         // Cada cuántos días se aparta una copia, y a qué hora. Cero significa
         // solo a mano. Viajan en notes.json, así que la pauta se muda con las
         // notas: el pendrive lleva sus copias y con qué frecuencia se hacen.

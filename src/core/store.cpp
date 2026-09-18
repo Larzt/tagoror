@@ -190,6 +190,9 @@ void Store::save() {
     root["onTop"] = m_prefs.onTop;
     root["lang"] = Lang::toString(m_prefs.lang);
     root["birthdaysByMonth"] = m_prefs.birthdaysByMonth;
+    root["updateCheck"] = m_prefs.updateCheck;
+    root["lastUpdate"] = m_prefs.lastUpdateMs;
+    root["latestSeen"] = m_prefs.latestSeen;
     root["backupEvery"] = m_prefs.backupEveryDays;
     root["backupAt"] = m_prefs.backupAt.toString("HH:mm");
     root["lastBackup"] = m_prefs.lastBackupMs;
@@ -520,6 +523,11 @@ bool Store::readObject(const QJsonObject &root) {
     m_prefs.lang = Lang::fromString(root["lang"].toString(), Lang::Es);
     Lang::setCurrent(m_prefs.lang);
     m_prefs.birthdaysByMonth = root["birthdaysByMonth"].toBool();
+    // Un fichero de antes de que existiera esto no trae la clave, y entonces
+    // toBool() daría false: se respeta el valor por defecto en su lugar.
+    if (root.contains("updateCheck")) m_prefs.updateCheck = root["updateCheck"].toBool();
+    m_prefs.lastUpdateMs = qint64(root["lastUpdate"].toDouble());
+    m_prefs.latestSeen = root["latestSeen"].toString();
     if (root.contains("w") && root.contains("h"))
         m_prefs.windowSize = QSize(root["w"].toInt(), root["h"].toInt());
     if (root.contains("x") && root.contains("y")) {

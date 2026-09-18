@@ -10,10 +10,12 @@
 #include "ui/workarea.hpp"
 
 #include "core/lang.hpp"
+#include "core/updater.hpp"
 
 #include <QApplication>
 #include <QAudioDevice>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -29,6 +31,7 @@
 #include <QMediaDevices>
 #include <QMenu>
 #include <QKeyEvent>
+#include <QMouseEvent>
 #include <QMoveEvent>
 #include <QPushButton>
 #include <QScreen>
@@ -113,6 +116,28 @@ QPoint clampInto(QPoint pos, const QSize &size, const QRect &area) {
             qBound(area.top(), pos.y(), qMax(area.top(), area.bottom() + 1 - size.height()))};
 }
 
+// Tira pulsable bajo la cabecera. Es un QWidget liso, así que necesita
+// WA_StyledBackground para que la hoja de estilos le pinte el fondo, igual que
+// las filas del calendario y de los cumpleaños.
+class ClickableBar : public QWidget {
+public:
+    explicit ClickableBar(std::function<void()> onClick, QWidget *parent = nullptr)
+        : QWidget(parent), m_click(std::move(onClick)) {
+        setAttribute(Qt::WA_StyledBackground, true);
+        setAttribute(Qt::WA_Hover, true);
+        setCursor(Qt::PointingHandCursor);
+    }
+
+protected:
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton && rect().contains(e->position().toPoint()) && m_click)
+            m_click();
+    }
+
+private:
+    std::function<void()> m_click;
+};
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -139,13 +164,18 @@ Panel::Panel() {
     // minutos se recoja solo en vez de quedarse el panel vacío.
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollDataDir);
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollBackup);
+    connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollUpdates);
     m_dueTimer->start();
+
+    m_updater = new Updater(this);
+    connect(m_updater, &Updater::finished, this, &Panel::onUpdateChecked);
 
     buildShell();
     buildTray();
     rebuildList();
     applyTheme();
     refreshDataWarning();
+    refreshUpdateBanner();   // con lo que se supiera de la última comprobación
     checkReminders();   // puede haber vencido algo con la app cerrada
 
     if (!m_expandedSize.isValid())
@@ -199,6 +229,22 @@ void Panel::buildShell() {
     m_dataWarn->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
     m_dataWarn->hide();
     col->addWidget(m_dataWarn);
+
+    // Aviso de versión nueva. Es una tira pulsable y no un diálogo: enterarse
+    // no debería interrumpir a nadie, y quien no quiera saber nada lo apaga en
+    // ajustes.
+    auto *bar = new ClickableBar([this] { openLatestRelease(); });
+    bar->setObjectName("updateBanner");
+    auto *ul = new QHBoxLayout(bar);
+    ul->setContentsMargins(10, 6, 10, 6);
+    ul->setSpacing(7);
+    m_updateText = new QLabel;
+    m_updateText->setObjectName("updateBannerText");
+    m_updateText->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
+    ul->addWidget(m_updateText, 1);
+    m_updateBar = bar;
+    m_updateBar->hide();
+    col->addWidget(m_updateBar);
 
     // barra de búsqueda (oculta por defecto)
     m_searchBar = new QWidget;
@@ -365,6 +411,14 @@ QWidget *Panel::buildBody() {
         refreshSettings();
         save();
     });
+    connect(m_settings, &SettingsView::updateCheckToggled, this, [this](bool on) {
+        m_store.prefs().updateCheck = on;
+        refreshSettings();
+        save();
+        if (on) pollUpdates();   // si tocaba, se mira ya
+    });
+    connect(m_settings, &SettingsView::checkUpdatesRequested, this, &Panel::checkUpdatesNow);
+    connect(m_settings, &SettingsView::openLatestRequested, this, &Panel::openLatestRelease);
     connect(m_settings, &SettingsView::quitRequested, qApp, &QApplication::quit);
 
     m_body = new QStackedWidget;
@@ -1304,6 +1358,78 @@ void Panel::pollBackup() {
     // La copia programada la dispara esto cuando la app está abierta a esa
     // hora; si estaba cerrada, la recoge Store::load() al arrancar.
     if (m_store.backupIfDue()) scheduleSave();   // deja apuntada la fecha
+}
+
+// --- actualizaciones --------------------------------------------------------
+
+bool Panel::updateAvailable() const {
+    // Sin saber la versión propia no se puede afirmar que haya otra más nueva:
+    // comparar contra una cadena vacía haría que cualquier número ganara y el
+    // aviso se quedaría puesto para siempre.
+    const QString mia = Updater::current();
+    const QString latest = m_store.prefs().latestSeen;
+    if (mia.isEmpty() || latest.isEmpty()) return false;
+    return Updater::compare(latest, mia) > 0;
+}
+
+// Una vez al día, sobre el mismo latido que los recordatorios y las copias.
+// Preguntar es una petición HTTP, así que la frecuencia la marca la fecha
+// guardada y no el temporizador.
+void Panel::pollUpdates() {
+    if (!m_store.prefs().updateCheck || m_updater->busy()) return;
+
+    constexpr qint64 kDayMs = 24LL * 3600 * 1000;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 last = m_store.prefs().lastUpdateMs;
+    // Una fecha en el futuro (el reloj del equipo movido hacia atrás) valdría
+    // por "nunca más": se trata como si no hubiera ninguna.
+    if (last > 0 && last <= now && now - last < kDayMs) return;
+
+    m_updater->check();
+    if (m_settings) m_settings->setUpdateState(true, QString());
+}
+
+void Panel::checkUpdatesNow() {
+    if (m_updater->busy()) return;
+    m_updater->check();
+    if (m_settings) m_settings->setUpdateState(true, QString());
+}
+
+void Panel::onUpdateChecked(const QString &version, const QString &url, const QString &error) {
+    if (error.isEmpty()) {
+        m_store.prefs().latestSeen = version;
+        m_latestUrl = url;
+        // Solo cuenta como comprobada la que contestó: si falló, mañana se
+        // vuelve a intentar en vez de esperar un día entero.
+        m_store.prefs().lastUpdateMs = QDateTime::currentMSecsSinceEpoch();
+        save();
+    }
+    if (m_settings) m_settings->setUpdateState(false, error);
+    refreshUpdateBanner();
+}
+
+void Panel::openLatestRelease() {
+    // Sin URL guardada (la versión venía del fichero, no de esta sesión) se
+    // abre la página de releases, que lleva al mismo sitio.
+    QDesktopServices::openUrl(QUrl(m_latestUrl.isEmpty()
+                                       ? QStringLiteral("https://github.com/Larzt/tagoror/releases/latest")
+                                       : m_latestUrl));
+}
+
+void Panel::refreshUpdateBanner() {
+    if (!m_updateBar) return;
+    const bool show = updateAvailable();
+    if (show)
+        m_updateText->setText(L("Tagoror %1 ya está disponible · pulsa para verla")
+                                  .arg(m_store.prefs().latestSeen));
+
+    // isHidden(), no isVisible(): lo segundo también es falso con el panel
+    // escondido en la bandeja, y la tira se estaría rehaciendo cada vez.
+    if (show == !m_updateBar->isHidden()) return;
+    m_updateBar->setVisible(show);
+    // Ocupa alto dentro del shell: con la ventana en su mínimo, aparecer sin
+    // rehacerlo la pintaría encima de la primera tarjeta.
+    syncShellMinimum();
 }
 
 void Panel::pollDataDir() {

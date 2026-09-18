@@ -226,6 +226,20 @@
 - Backups and the custom accent colour are still menus of their own, reached
   from a button: they are small dialogues with their own flow, not rows.
 
+### It tells you when there is a new version
+
+- Once a day Tagoror asks GitHub for the latest release and, if it is newer than
+  the one you are running, says so in a strip under the header. Click it and the
+  release page opens in your browser.
+- There is a **Check now** button in *Settings → Updates* for when you do not
+  want to wait for the daily one.
+- **It only asks; it never downloads or installs anything.** On Windows the
+  installer upgrades in place — the `AppId` never changes — so there is nothing
+  to uninstall first: run the new `-setup.exe` over what you have and your notes
+  stay where they are.
+- **It is the only thing in the app that uses the network**, it is a switch you
+  can see in settings, and turning it off stops every request.
+
 ### Look and feel
 
 - Accent colour from a swatch or any hex value you type, plus an opacity slider.
@@ -242,6 +256,7 @@
 - An empty panel offers a button to create the first note.
 - Everything is saved automatically, a moment after you stop typing — and a
   copy of the previous file is kept on the schedule you choose.
+- The settings page shows which version you are running.
 
 ## Building
 
@@ -519,7 +534,8 @@ wiped.
 The code is split into three layers, and headers mirror the sources:
 
 ```
-include/core/    note, birthday, paths, store   the data and where it is kept
+include/core/    note, birthday, paths, store, updater   the data, where it is
+                 kept, and the update check
 include/ui/      panel, notecard, calendar, birthdays, settings, popup, theme,
                  waveform, dragwidgets
 include/audio/   recorder, alarm, wave          microphone, alarm tone, WAV

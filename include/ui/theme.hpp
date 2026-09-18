@@ -535,6 +535,16 @@ QLabel#bdayWhen { color: %5; font-size: 9.5px; font-weight: 600; }
 /* Lo que cae hoy o mañana se lee antes en el acento; lo demás es contexto. */
 QLabel#bdayWhen[soon="false"] { color: %4; }
 
+/* Hay versión nueva. En el acento y no en rojo: es una novedad, no un problema
+   —el rojo lo tiene el aviso de "no se está guardando", que sí lo es y va justo
+   encima cuando coinciden los dos. */
+QWidget#updateBanner {
+    background: %8;
+    border-bottom: 1px solid %9;
+}
+QWidget#updateBanner:hover { background: %10; }
+QLabel#updateBannerText { color: %5; font-size: 10.5px; font-weight: 600; }
+
 /* --- página de ajustes ---------------------------------------------------- */
 QWidget#settings { background: transparent; }
 QLabel#setSection {

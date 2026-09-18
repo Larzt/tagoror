@@ -22,6 +22,7 @@ class QTimer;
 class QToolButton;
 class QVBoxLayout;
 class Alarm;
+class Updater;
 class BirthdayView;
 class CalendarView;
 class NoteCard;
@@ -147,6 +148,15 @@ private:
     void openBackups(QWidget *anchor);            // el menú propio de las copias
     static QString backupPeriodLabel(int days);   // "Cada día", "Cada 3 días"…
     void pollBackup();                            // ¿toca copia programada?
+
+    // --- actualizaciones ---
+    void pollUpdates();               // ¿toca mirar? una vez al día
+    void checkUpdatesNow();           // el botón de ajustes
+    void onUpdateChecked(const QString &version, const QString &url, const QString &error);
+    void openLatestRelease();
+    // Enseña u oculta la tira de "hay una versión nueva".
+    void refreshUpdateBanner();
+    bool updateAvailable() const;
     void confirmRestore(const QString &file);
 
     // --- carpeta de datos ---
@@ -212,6 +222,10 @@ private:
     // que se escriba se va a guardar. Sin él, el panel abría vacío sin decir
     // por qué, que es como se pierden las notas sin enterarse.
     QLabel *m_dataWarn = nullptr;
+    // Tira bajo la cabecera cuando hay versión nueva. Va debajo del aviso de
+    // carpeta ausente: ese dice que ahora mismo no se guarda nada, y manda.
+    QWidget *m_updateBar = nullptr;
+    QLabel *m_updateText = nullptr;
 
     QStackedWidget *m_body = nullptr;    // lista de notas / calendario
     QScrollArea *m_scroll = nullptr;
@@ -240,6 +254,8 @@ private:
     NoteCard *m_dragCard = nullptr;        // tarjeta que se está arrastrando
     QTimer *m_dueTimer = nullptr;          // vigilancia de recordatorios
     Alarm *m_alarm = nullptr;
+    Updater *m_updater = nullptr;
+    QString m_latestUrl;              // la página de la última publicada
     Theme m_theme;
     QSize m_expandedSize;                  // se restaura al desplegar (y se guarda)
     QPoint m_dockOffset;                   // por qué punto del panel entra y sale el dock

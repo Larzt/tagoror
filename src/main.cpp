@@ -45,6 +45,8 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("Stride");
     QCoreApplication::setApplicationName("Tagoror");
+    // La necesita el buscador de actualizaciones para saber con qué comparar.
+    QCoreApplication::setApplicationVersion(TAGOROR_VERSION);
 
     // Enlaza la ventana con su entrada .desktop: de ahí sacan el nombre y el
     // icono el lanzador y el conmutador de ventanas (imprescindible en Wayland).

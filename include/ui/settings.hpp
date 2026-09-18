@@ -37,6 +37,12 @@ public:
     void refresh();
     void retranslate() { refresh(); }
 
+    // Estado del buscador de actualizaciones. Se escribe encima de la tarjeta
+    // ya montada en vez de rehacer la página: la comprobación diaria puede
+    // terminar en cualquier momento, y si eso reconstruyera los ajustes se
+    // llevaría por delante el deslizador que se estuviera arrastrando.
+    void setUpdateState(bool busy, const QString &error);
+
 signals:
     void accentPicked(const QColor &c);
     void accentEditorRequested(QWidget *anchor);
@@ -47,6 +53,9 @@ signals:
     void dataFolderRequested();
     void backupsRequested(QWidget *anchor);
     void inputPicked(const QByteArray &id);
+    void updateCheckToggled(bool on);
+    void checkUpdatesRequested();
+    void openLatestRequested();
     void quitRequested();
 
 private:
@@ -57,7 +66,10 @@ private:
     void addWindow();
     void addData();
     void addInputs();
+    void addUpdates();
     void addQuit();
+    // Lo que dice la tarjeta de actualizaciones ahora mismo.
+    QString updateSubtitle(bool busy, const QString &error) const;
     // Fila con interruptor: rótulo a la izquierda, el mando a la derecha.
     void addToggle(const QString &label, const QString &hint, bool on,
                    std::function<void(bool)> changed);
@@ -70,4 +82,10 @@ private:
     Theme m_theme;
     const Store *m_store = nullptr;
     QVBoxLayout *m_layout = nullptr;   // contenido + stretch final
+
+    // De la tarjeta de actualizaciones, para reescribirla sin rehacer nada.
+    class QLabel *m_updateSub = nullptr;
+    class QToolButton *m_updateBtn = nullptr;
+    bool m_updateBusy = false;
+    QString m_updateError;
 };

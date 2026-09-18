@@ -2,10 +2,12 @@
 
 #include "audio/recorder.hpp"
 #include "core/lang.hpp"
+#include "core/updater.hpp"
 #include "ui/elidedlabel.hpp"
 
 #include <QApplication>
 #include <QAudioDevice>
+#include <QDateTime>
 #include <QDir>
 #include <QEnterEvent>
 #include <QFrame>
@@ -188,6 +190,8 @@ void SettingsView::setTheme(const Theme &theme) {
 }
 
 void SettingsView::refresh() {
+    m_updateSub = nullptr;   // lo que hubiera muere en este mismo barrido
+    m_updateBtn = nullptr;
     while (m_layout->count() > 1) {
         QLayoutItem *item = m_layout->takeAt(0);
         if (QWidget *w = item->widget()) {
@@ -204,6 +208,7 @@ void SettingsView::refresh() {
     addWindow();
     addData();
     addInputs();
+    addUpdates();
     addQuit();
 }
 
@@ -352,6 +357,80 @@ void SettingsView::addInputs() {
         l->addWidget(name, 1);
         m_layout->insertWidget(m_layout->count() - 1, row);
     }
+}
+
+// Qué dice la tarjeta: buscando, lo que falló, hay una nueva, o al día.
+QString SettingsView::updateSubtitle(bool busy, const QString &error) const {
+    if (busy) return L("Buscando…");
+    if (!error.isEmpty()) return error;
+
+    const QString latest = m_store->prefs().latestSeen;
+    if (!latest.isEmpty() && Updater::compare(latest, Updater::current()) > 0)
+        return L("%1 disponible").arg(latest);
+
+    const qint64 last = m_store->prefs().lastUpdateMs;
+    if (last <= 0) return L("Sin comprobar todavía");
+    return L("Al día · %1").arg(
+        Lang::locale().toString(QDateTime::fromMSecsSinceEpoch(last), "d MMM · HH:mm"));
+}
+
+void SettingsView::addUpdates() {
+    addSection(L("ACTUALIZACIONES"));
+
+    const bool on = m_store->prefs().updateCheck;
+    addToggle(L("Buscar automáticamente"),
+              on ? L("Una vez al día") : L("Desactivado · solo a mano"), on,
+              [this](bool v) { emit updateCheckToggled(v); });
+
+    // Hay versión nueva: el botón lleva a verla. Si no, busca.
+    const QString latest = m_store->prefs().latestSeen;
+    const bool hayNueva = !latest.isEmpty() &&
+                          Updater::compare(latest, Updater::current()) > 0;
+
+    auto *card = new QFrame;
+    card->setObjectName("setCard");
+    auto *l = new QHBoxLayout(card);
+    l->setContentsMargins(9, 7, 7, 7);
+    l->setSpacing(8);
+
+    auto *texts = new QVBoxLayout;
+    texts->setContentsMargins(0, 0, 0, 0);
+    texts->setSpacing(1);
+
+    auto *name = new ElidedLabel(QString("Tagoror %1").arg(Updater::current()),
+                                 QColor(Theme::fg()));
+    name->setObjectName("setRowText");
+    texts->addWidget(name);
+
+    m_updateSub = new ElidedLabel(updateSubtitle(m_updateBusy, m_updateError),
+                                  QColor(hayNueva ? m_theme.accent : QColor(Theme::muted())));
+    m_updateSub->setObjectName("meta");
+    texts->addWidget(m_updateSub);
+    l->addLayout(texts, 1);
+
+    m_updateBtn = new QToolButton;
+    m_updateBtn->setObjectName("segButton");
+    m_updateBtn->setProperty("chosen", hayNueva);   // teñido cuando hay novedad
+    m_updateBtn->setText(hayNueva ? L("Ver") : L("Buscar ahora"));
+    m_updateBtn->setEnabled(!m_updateBusy);
+    m_updateBtn->setCursor(Qt::PointingHandCursor);
+    connect(m_updateBtn, &QToolButton::clicked, this, [this, hayNueva] {
+        if (hayNueva) emit openLatestRequested();
+        else emit checkUpdatesRequested();
+    });
+    l->addWidget(m_updateBtn, 0, Qt::AlignVCenter);
+
+    m_layout->insertWidget(m_layout->count() - 1, card);
+}
+
+// Solo toca los dos trozos que cambian; ver el comentario de la cabecera.
+void SettingsView::setUpdateState(bool busy, const QString &error) {
+    m_updateBusy = busy;
+    m_updateError = error;
+    if (!m_updateSub || !m_updateBtn) return;
+
+    m_updateSub->setText(updateSubtitle(busy, error));
+    m_updateBtn->setEnabled(!busy);
 }
 
 void SettingsView::addQuit() {
