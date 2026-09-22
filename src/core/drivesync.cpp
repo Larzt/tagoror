@@ -4,6 +4,8 @@
 #include "core/paths.hpp"
 #include "core/store.hpp"
 
+#include <memory>
+
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>

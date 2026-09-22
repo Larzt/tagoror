@@ -4,6 +4,7 @@
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 #include <QCheckBox>
