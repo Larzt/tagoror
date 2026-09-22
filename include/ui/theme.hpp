@@ -405,7 +405,7 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 QWidget#linkRow { background: transparent; border-radius: 7px; }
 QWidget#linkRow:hover { background: %7; }
 QLabel#linkText { font-size: {fs:11.5}px; }
-
+)" R"(
 /* --- calendario ---------------------------------------------------------- */
 QWidget#calendar { background: transparent; }
 QFrame#calSeparator { background: %2; border: none; }
@@ -560,7 +560,7 @@ QWidget#updateBanner {
 }
 QWidget#updateBanner:hover { background: %10; }
 QLabel#updateBannerText { color: %5; font-size: 10.5px; font-weight: 600; }
-
+)" R"(
 /* --- temporizadores ------------------------------------------------------- */
 QWidget#timers { background: transparent; }
 /* Filas: QWidget lisos, así que necesitan WA_StyledBackground (timers.cpp). */
