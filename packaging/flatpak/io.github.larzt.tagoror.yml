@@ -39,6 +39,11 @@ finish-args:
   - --own-name=org.kde.StatusNotifierItem-4-1
   - --own-name=org.kde.StatusNotifierItem-5-1
 
+  # Red: la comprobación de versiones nueva y la copia en Google Drive. Las
+  # dos están a la vista en ajustes y se pueden apagar; la de Drive, además,
+  # escucha un momento en 127.0.0.1 para recoger la autorización del navegador.
+  - --share=network
+
   # Las notas viven en ~/.var/app/<id>/data sin pedir permiso, pero la carpeta
   # de guardado se puede cambiar a cualquier sitio desde ajustes y el diálogo
   # devuelve una ruta, no un documento del portal: sin esto, elegir una carpeta

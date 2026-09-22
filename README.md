@@ -33,7 +33,7 @@
 
 | | |
 |---|---|
-| **Text** | A plain note whose editor grows with the content. |
+| **Text** | A note whose editor grows with the content, and that understands **Markdown**: headings, `**bold**`, `*italic*`, `` `code` ``, lists, `- [ ]` checkboxes, quotes and `[links](…)` are shown formatted, and turn back into plain text the moment you click in to edit. Single line breaks stay line breaks, so notes written before this look the same. |
 | **Checklist** | Items you can tick off (done ones get struck through) and rename in place, a progress bar, and an add row that reads as a pending task rather than a form. |
 | **Reminder** | A real date, not just a label: when the time comes it rings until you stop it. |
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
@@ -45,7 +45,7 @@
 ### Reminders that actually go off
 
 - Presets (in 5 minutes, in an hour, 18:00, tomorrow at 9:00), a date typed by
-  hand, or a day picked on the calendar.
+  hand, or a day and hour picked in the planner.
 - Click the date chip **or** right-click the note to change it.
 - **They can come back every week or every year** — the bin on Thursdays, a
   birthday — from the *Repetir* section of the same date menu. A repeating
@@ -61,29 +61,48 @@
 - Folded away, the dock itself turns into a red bell, so an alarm is visible
   even when the panel is not.
 
-### A month view for them
+### A planner for your week
 
 <p align="center">
-  <img src="docs/calendar.png" alt="The calendar page, with a day's reminders listed below the month" width="380">
+  <img src="docs/planner.png" alt="The planner in week view: a mini month, today's tasks and the categories on the left, the week's events laid out by hour" width="640">
 </p>
 
-- The calendar button in the header swaps the note list for a month grid; the
-  same button swaps back.
-- Every reminder shows up as a dot on its day, coloured one by one: accent for
-  what is still ahead, red for what has passed. A repeating one is on **all** of
-  its days, past ones included, so browsing back a year still shows the
-  birthday; a turn that is simply over is not painted as overdue.
-- Pick a day to list its reminders by time, click one to jump to its note, or
-  add a new one straight from the day — a preset hour or a time you type.
-- Reminders with a free-text date have no instant to place, so they stay in the
-  list and out of the grid.
-- The month moves with the arrows, the mouse wheel, or **Hoy** to come back.
-- Each entry shows its time, a bar in the colour of its state, and — once it is
-  past due — a `VENCIDO` tag, or a stop button while it is actually ringing.
-- **The day's list folds away**, from the arrow on its header or the whole
-  header row, and folds itself when the panel gets too short for the month grid
-  and the list to share the space. Growing the window again brings back a list
-  that folded on its own, but never one you folded on purpose.
+- The calendar button in the header opens it; the same button goes back. The
+  panel **widens while it is open** — a week does not fit in 300 pixels — and
+  returns to its size when you leave, unless you resized it in between.
+- **Day, week and month views.** Day and week lay things out by the hour, side
+  by side when they overlap, with a red line at the current time; month writes
+  each day's entries inside its cell, with `+N more` when they do not fit.
+- **Events and tasks** with a start and an end, a category (work, personal,
+  studies, other) and an optional repeat — every day, week or month. A task has
+  a box to tick, and a repeating task is ticked per day, not all at once.
+- They can **ring ten minutes before** they start, through the same alarm as
+  everything else; a red strip under the header says what is starting and stops
+  it.
+- Your reminders and birthdays appear on the same grid — reminders as a dashed
+  block you can click to jump to the note, birthdays as an all-day tag — and the
+  category list on the left hides any of them, reminders and birthdays included.
+- Click an empty hour to create something there, or use **+**. The form can
+  also create a plain reminder note, which is what the old calendar did when you
+  picked a day.
+- Events live in `events.json` next to your notes and are backed up with them.
+- Narrow the window and the side panel folds away; the grid keeps working.
+
+### Timers
+
+<p align="center">
+  <img src="docs/timers.png" alt="The timers page: a running Pomodoro on the big dial, a paused one and a saved one below" width="380">
+</p>
+
+- From the stopwatch button in the header. Name it if you like, set hours,
+  minutes and seconds (or pick 1, 5, 10 or 25 minutes) and it starts.
+- A dial shows the one you open; the rest are grouped as *active*, *paused* and
+  *saved*. Reset one and it stays as a saved template — a Pomodoro you start
+  again tomorrow.
+- **Time keeps running with the app closed**: a timer stores when it ends, not
+  how much is left, so it rings on the next launch if it ran out meanwhile.
+- The countdown of the running one sits in the footer on every page. When it
+  reaches zero the alarm plays and a red strip offers **+1 min** or **Stop**.
 
 ### Birthdays
 
@@ -218,8 +237,12 @@
 </p>
 
 - Everything in one place, from the gear in the header: the accent colour, the
-  opacity, the language, whether the window stays on top, where your notes are
-  kept, the backups and which microphone to record from.
+  opacity, **the text size**, the language, whether the window stays on top,
+  where your notes are kept, the backups and which microphone to record from.
+- **Text size** comes in four steps, from small to extra large, with a live
+  sample underneath. It scales what you write — titles, note bodies, checklist
+  items, the planner — and leaves the chrome around it alone, so a larger size
+  never pushes the panel wider than it is.
 - It used to be a dropdown, and a menu row had nowhere to put a switch, a
   slider and a folder path without becoming a column taller than the panel it
   was covering.
@@ -237,8 +260,74 @@
   installer upgrades in place — the `AppId` never changes — so there is nothing
   to uninstall first: run the new `-setup.exe` over what you have and your notes
   stay where they are.
-- **It is the only thing in the app that uses the network**, it is a switch you
-  can see in settings, and turning it off stops every request.
+- **Along with the Google Drive copy, it is the only thing in the app that uses
+  the network**, it is a switch you can see in settings, and turning it off
+  stops every request. The Drive copy does nothing until you connect an account.
+
+### Sync between computers through Google Drive
+
+- From *Settings → Google Drive*: **Connect** opens your browser to sign in to
+  Google. Every computer where you connect the same account shares the same
+  notes, checklists, reminders, planner events and tasks, birthdays and timers,
+  voice notes and images, through a `Tagoror` folder in your Drive.
+- **It merges, it does not overwrite.** Each note, event, birthday or timer
+  remembers when it last changed; when two computers disagree, the newer version
+  of *that element* wins, and anything that exists on only one side is added.
+  Adding a task on one computer and a timer on the other gives you both on both.
+- **Deletions travel too**: delete a note on one computer and it disappears from
+  the others, unless someone edited it there after you deleted it — then the
+  edit wins.
+- It syncs about twenty seconds after you change something, every minute and a
+  half to pick up what the others did, and on launch. **Sync now** does it on
+  the spot.
+- It never merges while you are typing in the panel; it waits until you are
+  done, so the list is not rebuilt under your cursor.
+- If two computers upload at the same moment, neither loses anything: the one
+  that is overwritten in Drive still has its changes locally and puts them back
+  on its next pass.
+- Only what changed is transferred, and your window size, position and other
+  settings of each computer stay on that computer.
+- It asks for the narrowest permission Google has (`drive.file`): the app sees
+  the files it created and nothing else in your Drive.
+- The connection belongs to the computer, not to the notes: it is kept in the
+  app's settings, not in `notes.json`, so it does not travel to a USB stick or
+  into the backups. **Disconnect** revokes it; your notes stay on the computer
+  and in Drive. Local backups are not synced.
+- Keep the clocks of your computers right (they normally are): "newer" is
+  decided by the time each change was made.
+- What is sent where, and what is not, is spelled out in the
+  [privacy policy](PRIVACY.md).
+
+#### Setting it up (for whoever builds Tagoror)
+
+Google only lets registered applications ask for access, so a build needs an
+OAuth client of its own. Without one Tagoror builds and works as always, and the
+Drive row in settings is simply disabled.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/) create a
+   project and enable the **Google Drive API** for it.
+2. Set up the **OAuth consent screen** (*Google Auth Platform → Branding /
+   Audience*): external, with an app name and a support e-mail. Add the scope
+   `.../auth/drive.file`. While the app is in *Testing*, only the accounts listed
+   as test users can connect **and their access expires after 7 days**; publish
+   it (*In production*) to avoid that. `drive.file` is not a sensitive scope, so
+   publishing does not require Google's verification.
+3. Under *Clients* create an **OAuth client ID** of type **Desktop app** and copy
+   its ID and secret. (A desktop client's secret is not really secret — it ships
+   inside every binary — but there is no need to publish it either.)
+4. The simplest way: copy `google-oauth.mk.example` to `google-oauth.mk`, fill it
+   in, and `make` / `make install` / `make appimage` pick it up. That file is in
+   `.gitignore` — **the repository is public and these values never go in it**.
+   Or pass both when configuring, as CMake variables or environment variables:
+
+   ```sh
+   cmake -B build -DTAGOROR_GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com \
+                  -DTAGOROR_GOOGLE_CLIENT_SECRET=GOCSPX-...
+   ```
+
+   In GitHub Actions, add them as repository secrets named
+   `TAGOROR_GOOGLE_CLIENT_ID` and `TAGOROR_GOOGLE_CLIENT_SECRET`; the release
+   workflows already pass them to the AppImage and Windows builds.
 
 ### Look and feel
 
@@ -249,6 +338,17 @@
   a note gives you the note's own options instead of a cut/copy/paste menu.
 - No image assets at all: the icons are drawn with `QPainter` and the alarm tone
   is synthesised on first use.
+
+### Keyboard
+
+- **Tab** goes through everything that can be clicked: the header buttons, each
+  note's title and body, checklist boxes, link rows, the date chip, the settings
+  switches and swatches, the timers, and the blocks of the planner one by one.
+- **Enter** or **Space** activates what has the focus; arrows move through the
+  items of any menu and through the days of the planner's month; **Escape**
+  closes a form, then the page.
+- The focus is marked with a ring in the accent colour — only when it got there
+  from the keyboard, so clicking with the mouse leaves no ring behind.
 
 ### Other
 
@@ -491,12 +591,13 @@ published elsewhere and on their own schedule:
 
 ```
 ~/.local/share/Stride/Tagoror/
-├── notes.json     # notes, accent, opacity, window size, preferences
+├── notes.json     # notes, timers, accent, opacity, window size, preferences
 ├── birthdays.json # the birthdays
+├── events.json    # the planner's events and tasks
 ├── alarm.wav      # the generated alarm tone
 ├── audio/         # one WAV per voice note
 ├── images/        # the images attached to notes
-└── backups/       # notes-<timestamp>.json + birthdays-<timestamp>.json
+└── backups/       # notes-, birthdays- and events-<timestamp>.json
 ```
 
 The folder is configurable from settings. Changing it copies the attachments —
@@ -507,14 +608,15 @@ move these ones over.
 
 Birthdays are kept apart from the notes, in `birthdays.json`. A folder written
 by an earlier version has them inside `notes.json`; they are moved across the
-first time 2.0 opens it, and nothing has to be done by hand.
+first time 2.0 opens it, and nothing has to be done by hand. The planner's
+events follow the same rules in `events.json`.
 
-Both files are written to a temporary file and renamed into place, so an
+All three files are written to a temporary file and renamed into place, so an
 interrupted write cannot leave one half-finished. Before each scheduled
-overwrite the previous pair is copied into `backups/` under a single timestamp;
-you can restore any of them from *Settings → Backups*, which brings back both
-halves and sets aside what you have now. A copy made before birthdays existed
-has no second half, and then the ones you have are left alone rather than
+overwrite the previous set is copied into `backups/` under a single timestamp;
+you can restore any of them from *Settings → Backups*, which brings back every
+part and sets aside what you have now. A copy made before birthdays or events
+existed has no such part, and then the ones you have are left alone rather than
 wiped.
 
 > **If the folder is not there, Tagoror does nothing.** Put your notes on a USB
@@ -534,10 +636,10 @@ wiped.
 The code is split into three layers, and headers mirror the sources:
 
 ```
-include/core/    note, birthday, paths, store, updater   the data, where it is
+include/core/    note, birthday, event, timer, paths, store, updater   the data, where it is
                  kept, and the update check
-include/ui/      panel, notecard, calendar, birthdays, settings, popup, theme,
-                 waveform, dragwidgets
+include/ui/      panel, notecard, planner, timers, birthdays, settings, popup,
+                 theme, keynav, waveform, dragwidgets
 include/audio/   recorder, alarm, wave          microphone, alarm tone, WAV
 src/             the matching implementations, same folders
 packaging/       .desktop template and the rasterised icons
@@ -546,12 +648,12 @@ tagoror-small.svg  simplified variant, used below 32px
 ```
 
 `core` knows nothing about the interface, `ui` never touches the disk — it goes
-through `Store`, which owns the notes, the birthdays and their two JSON files —
-and `audio` only deals with the microphone and WAV files.
+through `Store`, which owns the notes, the timers, the birthdays, the events and
+their three JSON files — and `audio` only deals with the microphone and WAV files.
 
-The panel is one window with four pages inside it: the note list, the calendar,
-the birthdays and the settings. `CalendarView`, `BirthdayView` and
-`SettingsView` are built the same way — each reads from the `Store` and reports
+The panel is one window with five pages inside it: the note list, the planner,
+the timers, the birthdays and the settings. `PlannerView`, `TimerView`,
+`BirthdayView` and `SettingsView` are built the same way — each reads from the `Store` and reports
 what the user asked for upwards, leaving `Panel` as the only thing that changes
 anything or saves.
 

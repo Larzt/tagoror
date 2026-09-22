@@ -28,16 +28,21 @@ add_executable(tagoror
     src/core/store.cpp
     src/core/lang.cpp
     src/core/updater.cpp
+    src/core/drivesync.cpp
     include/core/birthday.hpp
+    include/core/drivesync.hpp
+    include/core/event.hpp
     include/core/lang.hpp
     include/core/note.hpp
     include/core/paths.hpp
     include/core/store.hpp
+    include/core/timer.hpp
     include/core/updater.hpp
 
     src/ui/panel.cpp
     src/ui/notecard.cpp
-    src/ui/calendar.cpp
+    src/ui/planner.cpp
+    src/ui/timers.cpp
     src/ui/birthdays.cpp
     src/ui/settings.cpp
     src/ui/popup.cpp
@@ -45,7 +50,9 @@ add_executable(tagoror
     src/ui/workarea.cpp
     include/ui/panel.hpp
     include/ui/notecard.hpp
-    include/ui/calendar.hpp
+    include/ui/planner.hpp
+    include/ui/timers.hpp
+    include/ui/keynav.hpp
     include/ui/birthdays.hpp
     include/ui/settings.hpp
     include/ui/popup.hpp
@@ -114,6 +121,20 @@ target_compile_definitions(tagoror PRIVATE TAGOROR_APP_ID="${TAGOROR_APP_ID}")
 # cuál era. El buscador de actualizaciones necesita compararla con la publicada,
 # así que entra también como definición, igual que el ID de la aplicación.
 target_compile_definitions(tagoror PRIVATE TAGOROR_VERSION="${TAGOROR_VERSION}")
+
+# La copia en Google Drive necesita un ID de cliente OAuth de tipo "aplicación
+# de escritorio", registrado en Google Cloud (ver el README). No se escribe en
+# el repositorio: se pasa al configurar, o por el entorno, que es como lo
+# recibe la CI desde sus secretos. Vacío, la aplicación compila igual y la
+# fila de Drive de ajustes sale desactivada. El "secreto" de un cliente de
+# escritorio no es secreto para Google -- va dentro de cualquier binario --,
+# pero tampoco hay por qué publicarlo.
+set(TAGOROR_GOOGLE_CLIENT_ID "$ENV{TAGOROR_GOOGLE_CLIENT_ID}" CACHE STRING
+    "ID de cliente OAuth de Google para la copia en Drive (vacío = sin Drive)")
+set(TAGOROR_GOOGLE_CLIENT_SECRET "$ENV{TAGOROR_GOOGLE_CLIENT_SECRET}" CACHE STRING
+    "Secreto del cliente OAuth de escritorio de Google")
+set_source_files_properties(src/core/drivesync.cpp PROPERTIES COMPILE_DEFINITIONS
+    "TAGOROR_GOOGLE_CLIENT_ID=\"${TAGOROR_GOOGLE_CLIENT_ID}\";TAGOROR_GOOGLE_CLIENT_SECRET=\"${TAGOROR_GOOGLE_CLIENT_SECRET}\"")
 target_link_libraries(tagoror PRIVATE Qt6::Widgets Qt6::Multimedia Qt6::Network)
 
 # El gestor de ventanas no admite colocar una ventana fuera de _NET_WORKAREA, y

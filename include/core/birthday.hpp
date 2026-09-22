@@ -32,6 +32,11 @@ struct Birthday {
     int greetedYear = 0;     // el último año en el que se marcó como felicitado
     int firedYear = 0;       // el último año en el que sonó (y se calló)
     bool ringing = false;    // solo en memoria: está sonando ahora mismo
+    // Cuándo cambió por última vez, para la sincronización con Drive: entre
+    // dos equipos gana la versión más reciente de cada elemento. No lo pone
+    // quien edita sino Store al guardar (ver Store::stampChanges), así que
+    // ninguna tarjeta tiene que acordarse de tocarlo.
+    qint64 updatedMs = 0;
 
     // 2004 es bisiesto: así un 29 de febrero se admite al escribirlo, aunque
     // el año que viene no exista ese día.
@@ -183,6 +188,7 @@ struct Birthday {
         o["remindAt"] = remindAt.isValid() ? remindAt.toString("HH:mm") : QString();
         o["greetedYear"] = greetedYear;
         o["firedYear"] = firedYear;
+        o["updated"] = double(updatedMs);
         return o;
     }
 
@@ -197,6 +203,7 @@ struct Birthday {
         b->remindAt = QTime::fromString(o["remindAt"].toString(), "HH:mm");
         b->greetedYear = o["greetedYear"].toInt(0);
         b->firedYear = o["firedYear"].toInt(0);
+        b->updatedMs = qint64(o["updated"].toDouble());
         return b;
     }
 };

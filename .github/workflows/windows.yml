@@ -140,6 +140,11 @@ jobs:
       # valor 1.3.0 sea separado por el shell.
       - name: Configurar
         shell: pwsh
+        # El cliente OAuth de Google para la copia en Drive. Si los secretos no
+        # existen llegan vacíos y la aplicación sale sin Drive, que compila igual.
+        env:
+          TAGOROR_GOOGLE_CLIENT_ID: ${{ secrets.TAGOROR_GOOGLE_CLIENT_ID }}
+          TAGOROR_GOOGLE_CLIENT_SECRET: ${{ secrets.TAGOROR_GOOGLE_CLIENT_SECRET }}
         run: |
           cmake `
             -B build `

@@ -4,6 +4,57 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+A planner in place of the calendar, timers, Markdown in text notes, a text-size
+setting and a panel that can be used without the mouse.
+
+### Added
+
+- **Planner.** The calendar button now opens day, week and month views with
+  events and tasks of their own: a start and an end, a category, an optional
+  daily, weekly or monthly repeat, and an alert ten minutes before. Tasks are
+  ticked per day, so a repeating one is not marked done all at once. Reminders
+  and birthdays are drawn on the same grid and can be hidden by category. The
+  panel widens while the planner is open and goes back to its size afterwards.
+  Events live in `events.json`, backed up together with the notes.
+- **Timers.** A page of their own from the stopwatch button: create one with a
+  name and a duration (or 1/5/10/25 minutes), pause, reset or delete it. A
+  timer stores when it ends, so time keeps running with the app closed. The
+  running one counts down in the footer; when it finishes the alarm plays and a
+  red strip offers *+1 min* or *Stop*.
+- **Markdown in text notes** (and in reminder details): headings, bold,
+  italic, code, lists, checkboxes, quotes and links are shown formatted and turn
+  back into plain text while you edit. Single line breaks are kept, so existing
+  notes look the same.
+- **Text size**, in four steps with a live sample, from settings. It scales
+  what you write and leaves the chrome alone.
+- **Keyboard navigation.** Tab reaches everything clickable — menu rows,
+  settings rows, switches, swatches, link rows, the date chip, timers and each
+  block of the planner — Enter or Space activates it, arrows move through menus
+  and the month, and the focus ring only appears when the focus came from the
+  keyboard.
+
+- **Sync between computers through Google Drive.** Connect the same Google
+  account on several computers and they share notes, planner events and tasks,
+  birthdays, timers, voice notes and images through a `Tagoror` folder in your
+  Drive. Changes are merged element by element — the newer version of each note
+  or event wins, what exists on only one side is added, deletions propagate —
+  so nothing is overwritten wholesale. It asks for the narrowest permission
+  (`drive.file`). Builds need an OAuth client ID (see the README); without one
+  the option is shown disabled.
+
+### Fixed
+
+- **Deleting a reminder while it was ringing left the alarm playing**, with
+  nothing left on screen to stop it. Deleting a ringing timer or event, or
+  reloading the notes from a backup or another folder, now stops it too.
+
+### Changed
+
+- The day list under the month grid is gone with the old calendar: picking a
+  day opens it in the day view instead.
+
 ## [2.0.0] — 2026-09-18
 
 Two new pages and a settings screen that is no longer a dropdown. The version

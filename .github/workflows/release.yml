@@ -123,6 +123,10 @@ jobs:
           cache: true
 
       - name: AppImage
+        # Ver windows.yml: sin los secretos, el AppImage sale sin Drive.
+        env:
+          TAGOROR_GOOGLE_CLIENT_ID: ${{ secrets.TAGOROR_GOOGLE_CLIENT_ID }}
+          TAGOROR_GOOGLE_CLIENT_SECRET: ${{ secrets.TAGOROR_GOOGLE_CLIENT_SECRET }}
         run: sh packaging/appimage/build-appimage.sh "${{ needs.check.outputs.version }}"
 
       # Se le pasa el AppImage ya hecho como segundo argumento: si no, el script
@@ -147,6 +151,9 @@ jobs:
     needs: check
     if: needs.check.outputs.should_release == 'true'
     uses: ./.github/workflows/windows.yml
+    # Sin esto un workflow llamado no ve los secretos del repositorio, y el
+    # instalador de Windows saldría sin la copia en Drive.
+    secrets: inherit
     with:
       version: ${{ needs.check.outputs.version }}
     permissions:

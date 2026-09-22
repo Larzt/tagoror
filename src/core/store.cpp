@@ -24,6 +24,8 @@ constexpr auto kBackupPrefix = "notes-";
 // pueda arrastrar la otra. Sin esto, separar el fichero habría dejado la
 // agenda entera fuera de la historia.
 constexpr auto kBirthdayBackupPrefix = "birthdays-";
+// Y el planificador, igual: tercera mitad de la misma foto.
+constexpr auto kEventBackupPrefix = "events-";
 
 // Nombres con los que se guardaron los datos en marcas anteriores, del más
 // reciente al más antiguo. Renombrar la aplicación nunca debe dejar a nadie sin
@@ -62,6 +64,47 @@ QString trimmedDir(const QString &in) {
     return out;
 }
 
+// Las lápidas se guardan medio año: de sobra para que todos los equipos se
+// hayan conectado alguna vez, y sin que el fichero crezca para siempre.
+constexpr qint64 kTombstoneMs = 180LL * 24 * 3600 * 1000;
+
+// La clave de un elemento en las fotos y en las lápidas: el tipo delante del
+// id. Los id son UUID y no deberían repetirse, pero un fichero viejo o tocado a
+// mano puede tener una nota y un cumpleaños con el mismo, y entonces cada uno
+// pisaba la foto del otro y los dos parecían cambiados en cada guardado.
+inline QString keyOf(const Note *n) { return "n:" + n->id; }
+inline QString keyOf(const Birthday *b) { return "b:" + b->id; }
+inline QString keyOf(const Event *e) { return "e:" + e->id; }
+inline QString keyOf(const Timer *t) { return "t:" + t->id; }
+
+// Lo que dice un elemento, sin la fecha de cambio: si esto no cambia, el
+// elemento no ha cambiado.
+template <typename T>
+QByteArray snapshotOf(const T *item) {
+    QJsonObject o = item->toJson();
+    o.remove("updated");
+    return QJsonDocument(o).toJson(QJsonDocument::Compact);
+}
+
+// Al quedarse con la versión de fuera se conserva lo que solo vive en memoria:
+// que algo esté sonando es de este equipo, no del otro.
+void adopt(Note *local, const Note *remote) {
+    const bool ringing = local->ringing;
+    *local = *remote;
+    local->ringing = ringing;
+}
+void adopt(Birthday *local, const Birthday *remote) {
+    const bool ringing = local->ringing;
+    *local = *remote;
+    local->ringing = ringing;
+}
+void adopt(Event *local, const Event *remote) {
+    const qint64 ringing = local->ringingMs;
+    *local = *remote;
+    local->ringingMs = ringing;
+}
+void adopt(Timer *local, const Timer *remote) { *local = *remote; }
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -79,6 +122,8 @@ Store::~Store() {
     save();
     qDeleteAll(m_notes);
     qDeleteAll(m_birthdays);
+    qDeleteAll(m_timers);
+    qDeleteAll(m_events);
 }
 
 void Store::resolveDataDir() {
@@ -131,6 +176,32 @@ void Store::setOrder(const QList<Note *> &order) {
     scheduleSave();
 }
 
+// --- temporizadores ----------------------------------------------------------
+
+void Store::addTimer(Timer *t) {
+    m_timers.prepend(t);
+    save();
+}
+
+void Store::removeTimer(Timer *t) {
+    m_timers.removeOne(t);
+    delete t;
+    save();
+}
+
+// --- planificador -------------------------------------------------------------
+
+void Store::addEvent(Event *e) {
+    m_events.append(e);
+    save();
+}
+
+void Store::removeEvent(Event *e) {
+    m_events.removeOne(e);
+    delete e;
+    save();
+}
+
 // --- cumpleaños --------------------------------------------------------------
 
 // El orden en que se guardan da igual: la página los ordena por lo que falta
@@ -156,6 +227,7 @@ QString Store::path() const { return appDataDir() + "/notes.json"; }
 // del de las notas y dentro de la misma carpeta de datos, así que siguen
 // mudándose con ellas y entrando en las copias de seguridad.
 QString Store::birthdaysPath() const { return appDataDir() + "/birthdays.json"; }
+QString Store::eventsPath() const { return appDataDir() + "/events.json"; }
 
 void Store::scheduleSave() { m_saveTimer->start(); }
 
@@ -167,6 +239,7 @@ void Store::save() {
     if (!m_available) return;
 
     if (beforeSave) beforeSave();
+    stampChanges();
 
     // Antes de armar el JSON: si toca copia, se hace del fichero que todavía
     // está en disco —lo de antes de esta escritura— y la fecha que apunta
@@ -190,6 +263,17 @@ void Store::save() {
     root["onTop"] = m_prefs.onTop;
     root["lang"] = Lang::toString(m_prefs.lang);
     root["birthdaysByMonth"] = m_prefs.birthdaysByMonth;
+    root["textScale"] = m_prefs.textScale;
+    root["plannerView"] = m_prefs.plannerView;
+    root["plannerHidden"] = QJsonArray::fromStringList(m_prefs.plannerHidden);
+    QJsonArray timers;
+    for (Timer *t : m_timers) timers.append(t->toJson());
+    root["timers"] = timers;
+    root["orderUpdated"] = double(m_orderUpdatedMs);
+    QJsonObject deleted;
+    for (auto it = m_deleted.cbegin(); it != m_deleted.cend(); ++it)
+        deleted[it.key()] = double(it.value());
+    root["deleted"] = deleted;
     root["updateCheck"] = m_prefs.updateCheck;
     root["lastUpdate"] = m_prefs.lastUpdateMs;
     root["latestSeen"] = m_prefs.latestSeen;
@@ -199,6 +283,42 @@ void Store::save() {
 
     writeAtomic(path(), QJsonDocument(root).toJson(QJsonDocument::Indented));
     saveBirthdays();
+    saveEvents();
+    emit saved();
+}
+
+void Store::saveEvents() {
+    if (!m_available || !m_eventsReadable) return;
+
+    QJsonArray arr;
+    for (Event *e : m_events) arr.append(e->toJson());
+
+    QJsonObject root;
+    root["events"] = arr;
+    writeAtomic(eventsPath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+// Mismo trato que birthdays.json, sin la herencia: los eventos nunca vivieron
+// dentro de notes.json, así que un fichero ausente es solo "todavía ninguno".
+void Store::loadEvents() {
+    m_eventsReadable = true;
+    if (!m_available) return;
+
+    QFile f(eventsPath());
+    if (!f.exists()) return;
+    if (!f.open(QIODevice::ReadOnly)) {
+        m_eventsReadable = false;
+        return;
+    }
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    if (!root.contains("events")) {
+        m_eventsReadable = false;   // no se pisa lo que no se ha podido leer
+        return;
+    }
+    qDeleteAll(m_events);
+    m_events.clear();
+    for (const QJsonValue v : root["events"].toArray())
+        m_events.append(Event::fromJson(v.toObject()));
 }
 
 // Aparte de save() para poder no escribirlo: un birthdays.json ilegible no se
@@ -274,9 +394,11 @@ bool Store::copyToBackup(const QString &name) {
     // La otra mitad, con el mismo nombre y otro prefijo. Puede no existir
     // todavía (nadie ha apuntado ningún cumpleaños) y eso no invalida la copia:
     // lo que manda es la de las notas.
-    QString mate = name;
-    mate.replace(0, int(qstrlen(kBackupPrefix)), kBirthdayBackupPrefix);
-    if (QFile::exists(birthdaysPath())) QFile::copy(birthdaysPath(), dir + "/" + mate);
+    const QString stamp = name.mid(int(qstrlen(kBackupPrefix)));
+    if (QFile::exists(birthdaysPath()))
+        QFile::copy(birthdaysPath(), dir + "/" + kBirthdayBackupPrefix + stamp);
+    if (QFile::exists(eventsPath()))
+        QFile::copy(eventsPath(), dir + "/" + kEventBackupPrefix + stamp);
 
     pruneBackups();
     return true;
@@ -350,7 +472,7 @@ void Store::pruneBackups() {
     // por antigüedad y no hace falta preguntarle al sistema de ficheros. Las
     // dos mitades se podan por separado y con el mismo tope: comparten marca
     // de tiempo, así que caen a la vez.
-    for (const char *prefix : {kBackupPrefix, kBirthdayBackupPrefix}) {
+    for (const char *prefix : {kBackupPrefix, kBirthdayBackupPrefix, kEventBackupPrefix}) {
         QStringList files = QDir(dir).entryList({QString(prefix) + "*.json"}, QDir::Files);
         files.sort();
         while (files.size() > Store::kBackupsKept) QFile::remove(dir + "/" + files.takeFirst());
@@ -407,6 +529,8 @@ bool Store::restoreBackup(const QString &file) {
 
     qDeleteAll(m_notes);
     m_notes.clear();
+    qDeleteAll(m_timers);
+    m_timers.clear();
     m_prefs = Prefs{};
     readObject(root);
 
@@ -414,18 +538,31 @@ bool Store::restoreBackup(const QString &file) {
     // copia de antes de que existieran— los de ahora se quedan como están: no
     // es lo mismo "esa copia no tenía ninguno" que "esa copia no sabía de
     // esto", y vaciar la agenda por lo segundo sería perderla entera.
-    QString mate = QFileInfo(file).fileName();
-    if (mate.startsWith(kBackupPrefix)) {
-        mate.replace(0, int(qstrlen(kBackupPrefix)), kBirthdayBackupPrefix);
-        const QString matePath = QFileInfo(file).path() + "/" + mate;
-        if (QFile mf(matePath); mf.exists() && mf.open(QIODevice::ReadOnly)) {
-            const QJsonObject broot = QJsonDocument::fromJson(mf.readAll()).object();
-            if (broot.contains("birthdays")) {
-                qDeleteAll(m_birthdays);
-                m_birthdays.clear();
-                for (const QJsonValue v : broot["birthdays"].toArray())
-                    m_birthdays.append(Birthday::fromJson(v.toObject()));
-            }
+    //
+    // El planificador sigue la misma regla, por la misma razón.
+    const QString fileName = QFileInfo(file).fileName();
+    if (fileName.startsWith(kBackupPrefix)) {
+        const QString stamp = fileName.mid(int(qstrlen(kBackupPrefix)));
+        // Devuelve false si esa mitad no está o no trae su clave: entonces lo
+        // de ahora se queda como está.
+        auto readMate = [&](const char *prefix, const char *key, QJsonArray *out) {
+            QFile mf(QFileInfo(file).path() + "/" + prefix + stamp);
+            if (!mf.exists() || !mf.open(QIODevice::ReadOnly)) return false;
+            const QJsonObject mroot = QJsonDocument::fromJson(mf.readAll()).object();
+            if (!mroot.contains(key)) return false;
+            *out = mroot[key].toArray();
+            return true;
+        };
+        QJsonArray arr;
+        if (readMate(kBirthdayBackupPrefix, "birthdays", &arr)) {
+            qDeleteAll(m_birthdays);
+            m_birthdays.clear();
+            for (const QJsonValue v : arr) m_birthdays.append(Birthday::fromJson(v.toObject()));
+        }
+        if (readMate(kEventBackupPrefix, "events", &arr)) {
+            qDeleteAll(m_events);
+            m_events.clear();
+            for (const QJsonValue v : arr) m_events.append(Event::fromJson(v.toObject()));
         }
     }
     // readObject trae el "última copia" que llevaba dentro la copia, que es
@@ -435,6 +572,7 @@ bool Store::restoreBackup(const QString &file) {
     // Restaurar es justamente decir "quiero esto encima de lo que haya", así
     // que el candado de un birthdays.json ilegible se levanta aquí.
     m_birthdaysReadable = true;
+    m_eventsReadable = true;
     save();
     emit reloaded();
     return true;
@@ -469,6 +607,8 @@ void Store::load() {
         // Puede haber cumpleaños sin notas: quien borró todas las notas, o
         // quien llegó aquí con un birthdays.json copiado a mano.
         loadBirthdays();
+        loadEvents();
+        resetSnapshots();
         return;
     }
 
@@ -477,6 +617,8 @@ void Store::load() {
         // (la versión anterior), ahí es donde acaban de leerse, y esto decide
         // si el fichero propio los sustituye.
         loadBirthdays();
+        loadEvents();
+        resetSnapshots();   // lo leído no es un cambio
         // Aquí y no solo tras copiar: un día que ya tiene su copia sale antes
         // de podar, así que colgada únicamente de eso la carpeta podía crecer
         // sin límite. Una vez por lanzamiento acota el número sin tener que
@@ -523,6 +665,10 @@ bool Store::readObject(const QJsonObject &root) {
     m_prefs.lang = Lang::fromString(root["lang"].toString(), Lang::Es);
     Lang::setCurrent(m_prefs.lang);
     m_prefs.birthdaysByMonth = root["birthdaysByMonth"].toBool();
+    if (root.contains("textScale")) m_prefs.textScale = qBound(80, root["textScale"].toInt(100), 150);
+    if (root.contains("plannerView")) m_prefs.plannerView = qBound(0, root["plannerView"].toInt(2), 2);
+    for (const QJsonValue v : root["plannerHidden"].toArray())
+        m_prefs.plannerHidden << v.toString();
     // Un fichero de antes de que existiera esto no trae la clave, y entonces
     // toBool() daría false: se respeta el valor por defecto en su lugar.
     if (root.contains("updateCheck")) m_prefs.updateCheck = root["updateCheck"].toBool();
@@ -548,6 +694,14 @@ bool Store::readObject(const QJsonObject &root) {
     // entonces toArray() devuelve una lista vacía: no hace falta guarda.
     for (const QJsonValue v : root["birthdays"].toArray())
         m_birthdays.append(Birthday::fromJson(v.toObject()));
+    for (const QJsonValue v : root["timers"].toArray())
+        m_timers.append(Timer::fromJson(v.toObject()));
+    m_orderUpdatedMs = qint64(root["orderUpdated"].toDouble());
+    // Se suman y no se sustituyen: restaurar una copia vieja no puede olvidar
+    // lo que se ha borrado desde entonces.
+    const QJsonObject deleted = root["deleted"].toObject();
+    for (auto it = deleted.begin(); it != deleted.end(); ++it)
+        m_deleted[it.key()] = qMax(m_deleted.value(it.key()), qint64(it.value().toDouble()));
     return true;
 }
 
@@ -560,14 +714,21 @@ bool Store::retryLoad() {
         // no puede costarle una nota a nadie.
         const QList<Note *> pending = m_notes;
         const QList<Birthday *> pendingBdays = m_birthdays;
+        const QList<Timer *> pendingTimers = m_timers;
+        const QList<Event *> pendingEvents = m_events;
         m_notes.clear();
         m_birthdays.clear();
+        m_timers.clear();
+        m_events.clear();
         if (!readFile()) {
             m_notes = pending;
             m_birthdays = pendingBdays;
+            m_timers = pendingTimers;
+            m_events = pendingEvents;
             return false;
         }
         for (int i = int(pending.size()) - 1; i >= 0; --i) m_notes.prepend(pending[i]);
+        for (int i = int(pendingTimers.size()) - 1; i >= 0; --i) m_timers.prepend(pendingTimers[i]);
 
         // loadBirthdays mira si hay fichero propio y, de haberlo, se queda con
         // lo que diga; por eso lo que se escribió mientras la carpeta no estaba
@@ -576,6 +737,15 @@ bool Store::retryLoad() {
         m_available = true;      // lo que consulta loadBirthdays
         loadBirthdays();
         m_birthdays += pendingBdays;
+        loadEvents();
+        m_events += pendingEvents;
+        // Lo leído es el punto de partida; lo escrito mientras la carpeta no
+        // estaba sí es un cambio, y se queda sin foto para que se marque.
+        resetSnapshots();
+        for (Note *n : pending) m_snap.remove(keyOf(n));
+        for (Birthday *b : pendingBdays) m_snap.remove(keyOf(b));
+        for (Timer *t : pendingTimers) m_snap.remove(keyOf(t));
+        for (Event *e : pendingEvents) m_snap.remove(keyOf(e));
     }
     // Si la carpeta apareció sin fichero, se queda lo que hubiera en memoria:
     // sembrar los ejemplos ahora sería ponerlos encima de lo que el usuario
@@ -609,7 +779,7 @@ void Store::changeDataDir(const QString &raw) {
     // La historia se muda con las notas: son unos pocos KB y sin ella el
     // primer día en la carpeta nueva es un día sin nada a lo que volver.
     QDir().mkpath(to + "/backups");
-    for (const char *prefix : {kBackupPrefix, kBirthdayBackupPrefix})
+    for (const char *prefix : {kBackupPrefix, kBirthdayBackupPrefix, kEventBackupPrefix})
         for (const QString &name : QDir(from + "/backups")
                                        .entryList({QString(prefix) + "*.json"}, QDir::Files))
             QFile::copy(from + "/backups/" + name, to + "/backups/" + name);
@@ -623,6 +793,7 @@ void Store::changeDataDir(const QString &raw) {
     // el destino, así que ninguno de los dos hay que copiarlo a mano.
     m_available = true;
     m_birthdaysReadable = true;
+    m_eventsReadable = true;
     save();
 }
 
@@ -639,10 +810,266 @@ void Store::adoptDataDir(const QString &raw) {
     m_notes.clear();
     qDeleteAll(m_birthdays);
     m_birthdays.clear();
+    qDeleteAll(m_timers);
+    m_timers.clear();
+    qDeleteAll(m_events);
+    m_events.clear();
     m_prefs = Prefs{};
+    // Otras notas, otra historia: las lápidas de aquí no son de allí.
+    m_deleted.clear();
+    m_orderUpdatedMs = 0;
 
     dataDirOverride() = to;
     QSettings().setValue("dataDir", to);
     load();
     emit reloaded();
+}
+
+// --- sincronización -------------------------------------------------------------
+
+void Store::resetSnapshots() {
+    m_snap.clear();
+    for (Note *n : m_notes) m_snap[keyOf(n)] = snapshotOf(n);
+    for (Birthday *b : m_birthdays) m_snap[keyOf(b)] = snapshotOf(b);
+    for (Event *e : m_events) m_snap[keyOf(e)] = snapshotOf(e);
+    for (Timer *t : m_timers) m_snap[keyOf(t)] = snapshotOf(t);
+    m_orderSnap.clear();
+    for (Note *n : m_notes) m_orderSnap << n->id;
+}
+
+void Store::stampChanges() {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    QSet<QString> alive;
+    auto stamp = [&](auto *item) {
+        const QString key = keyOf(item);
+        alive.insert(key);
+        const QByteArray snap = snapshotOf(item);
+        auto it = m_snap.find(key);
+        if (it != m_snap.end() && *it == snap) return;
+        item->updatedMs = now;
+        m_snap[key] = snap;
+        m_deleted.remove(key);   // vuelve a existir: la lápida sobra
+    };
+    for (Note *n : m_notes) stamp(n);
+    // Si un fichero no se pudo leer, lo que falta de él no se ha borrado: no
+    // se ha llegado a cargar. Sin esta guarda se repartiría su borrado.
+    if (m_birthdaysReadable)
+        for (Birthday *b : m_birthdays) stamp(b);
+    if (m_eventsReadable)
+        for (Event *e : m_events) stamp(e);
+    for (Timer *t : m_timers) stamp(t);
+
+    for (auto it = m_snap.begin(); it != m_snap.end();) {
+        if (alive.contains(it.key())) {
+            ++it;
+            continue;
+        }
+        m_deleted[it.key()] = now;
+        it = m_snap.erase(it);
+    }
+
+    QStringList order;
+    for (Note *n : m_notes) order << n->id;
+    if (order != m_orderSnap) {
+        m_orderSnap = order;
+        m_orderUpdatedMs = now;
+    }
+
+    for (auto it = m_deleted.begin(); it != m_deleted.end();) {
+        if (now - it.value() > kTombstoneMs) it = m_deleted.erase(it);
+        else ++it;
+    }
+}
+
+namespace {
+
+// Mezcla una lista con su gemela de fuera. Devuelve si ha cambiado algo aquí
+// y avisa de cada elemento cuya versión buena ha venido de fuera.
+template <typename T>
+bool mergeList(QList<T *> &local, const QJsonArray &remote, QHash<QString, qint64> &deleted,
+               bool prependNew, const std::function<void(T *)> &remoteWon) {
+    bool changed = false;
+    QHash<QString, T *> byId;
+    for (T *item : local) byId.insert(item->id, item);
+
+    QList<T *> added;
+    for (const QJsonValue v : remote) {
+        T *r = T::fromJson(v.toObject());
+        // Borrado en algún sitio después de su última edición: no vuelve.
+        if (deleted.contains(keyOf(r)) && deleted.value(keyOf(r)) >= r->updatedMs) {
+            delete r;
+            continue;
+        }
+        T *l = byId.value(r->id);
+        if (!l) {
+            added.append(r);
+            byId.insert(r->id, r);
+            remoteWon(r);
+            changed = true;
+        } else if (r->updatedMs > l->updatedMs) {
+            adopt(l, r);
+            delete r;
+            remoteWon(l);
+            changed = true;
+        } else {
+            delete r;
+        }
+    }
+    // Lo nuevo de fuera, arriba, como cualquier nota recién creada.
+    if (prependNew)
+        for (int i = int(added.size()) - 1; i >= 0; --i) local.prepend(added.at(i));
+    else
+        local += added;
+    return changed;
+}
+
+// Borra aquí lo que otro equipo borró después de la última edición de aquí.
+template <typename T>
+bool applyTombstones(QList<T *> &local, QHash<QString, qint64> &deleted,
+                     const std::function<void(T *)> &beforeDelete = nullptr) {
+    bool changed = false;
+    for (int i = int(local.size()) - 1; i >= 0; --i) {
+        T *item = local.at(i);
+        const QString key = keyOf(item);
+        if (!deleted.contains(key)) continue;
+        if (deleted.value(key) < item->updatedMs) {
+            // Editado aquí después del borrado de allí: gana la edición, y la
+            // lápida se retira para no seguir repartiéndola.
+            deleted.remove(key);
+            continue;
+        }
+        if (beforeDelete) beforeDelete(item);
+        local.removeAt(i);
+        delete item;
+        changed = true;
+    }
+    return changed;
+}
+
+}  // namespace
+
+Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
+                                      const QJsonObject &birthdaysRoot,
+                                      const QJsonObject &eventsRoot) {
+    MergeResult result;
+    if (!m_available) return result;   // nunca se mezcla sobre lo que no se leyó
+
+    // Lo de aquí, con sus fechas al día antes de compararlo con nada.
+    stampChanges();
+
+    if (notesRoot.contains("deleted")) {
+        const QJsonObject deleted = notesRoot["deleted"].toObject();
+        for (auto it = deleted.begin(); it != deleted.end(); ++it)
+            m_deleted[it.key()] = qMax(m_deleted.value(it.key()), qint64(it.value().toDouble()));
+    }
+
+    auto pullNote = [&result](Note *n) {
+        if (!n->audio.isEmpty()) result.pull.insert("audio/" + n->audio);
+        for (const QString &image : n->images) result.pull.insert("images/" + image);
+    };
+    auto nothing = [](auto *) {};
+
+    if (notesRoot.contains("notes")) {
+        const QJsonArray remoteNotes = notesRoot["notes"].toArray();
+        result.changed |= mergeList<Note>(m_notes, remoteNotes, m_deleted, true, pullNote);
+        result.changed |= mergeList<Timer>(m_timers, notesRoot["timers"].toArray(), m_deleted,
+                                           true, nothing);
+
+        // El orden: el de quien lo cambió más tarde. Lo que ese orden no
+        // conoce (lo recién creado aquí) va arriba, en el orden de aquí.
+        const qint64 remoteOrder = qint64(notesRoot["orderUpdated"].toDouble());
+        if (remoteOrder > m_orderUpdatedMs) {
+            QStringList ids;
+            for (const QJsonValue v : remoteNotes) ids << v.toObject()["id"].toString();
+            QList<Note *> ordered, fresh;
+            QHash<QString, Note *> byId;
+            for (Note *n : m_notes) {
+                byId.insert(n->id, n);
+                if (!ids.contains(n->id)) fresh.append(n);
+            }
+            ordered = fresh;
+            for (const QString &id : ids)
+                if (Note *n = byId.value(id)) ordered.append(n);
+            if (ordered != m_notes) result.changed = true;
+            m_notes = ordered;
+            m_orderUpdatedMs = remoteOrder;
+        }
+    }
+    if (m_birthdaysReadable && birthdaysRoot.contains("birthdays"))
+        result.changed |= mergeList<Birthday>(m_birthdays, birthdaysRoot["birthdays"].toArray(),
+                                              m_deleted, false, nothing);
+    if (m_eventsReadable && eventsRoot.contains("events"))
+        result.changed |= mergeList<Event>(m_events, eventsRoot["events"].toArray(), m_deleted,
+                                           false, nothing);
+
+    // Lo borrado en el otro equipo, también aquí. Las notas se llevan sus
+    // adjuntos, igual que al borrarlas a mano.
+    result.changed |= applyTombstones<Note>(m_notes, m_deleted, [](Note *n) {
+        if (!n->audio.isEmpty()) QFile::remove(n->audioPath());
+        for (const QString &image : n->images) QFile::remove(Note::imagePath(image));
+    });
+    result.changed |= applyTombstones<Timer>(m_timers, m_deleted);
+    if (m_birthdaysReadable) result.changed |= applyTombstones<Birthday>(m_birthdays, m_deleted);
+    if (m_eventsReadable) result.changed |= applyTombstones<Event>(m_events, m_deleted);
+
+    // Lo que acaba de llegar no es un cambio de este equipo: si se marcara,
+    // se llevaría la fecha de ahora y ganaría a la de verdad en el siguiente.
+    resetSnapshots();
+    save();
+    if (result.changed) emit merged();
+    return result;
+}
+
+QStringList Store::attachments() const {
+    QStringList out;
+    for (const Note *n : m_notes) {
+        if (!n->audio.isEmpty()) out << "audio/" + n->audio;
+        for (const QString &image : n->images) out << "images/" + image;
+    }
+    return out;
+}
+
+namespace {
+
+// Ordenados por id: el orden de estas listas no significa nada, y dos equipos
+// con lo mismo tienen que producir exactamente los mismos bytes.
+template <typename T>
+QJsonArray sortedById(const QList<T *> &items) {
+    QList<const T *> sorted(items.begin(), items.end());
+    std::sort(sorted.begin(), sorted.end(),
+              [](const T *a, const T *b) { return a->id < b->id; });
+    QJsonArray out;
+    for (const T *item : sorted) out.append(item->toJson());
+    return out;
+}
+
+}  // namespace
+
+QByteArray Store::syncPayload(const QString &name) const {
+    QJsonObject root;
+    if (name == "notes.json") {
+        QJsonArray notes;   // este sí en su orden: el orden de las notas se comparte
+        for (const Note *n : m_notes) notes.append(n->toJson());
+        root["notes"] = notes;
+        root["timers"] = sortedById(m_timers);
+        root["orderUpdated"] = double(m_orderUpdatedMs);
+        QJsonObject deleted;
+        for (auto it = m_deleted.cbegin(); it != m_deleted.cend(); ++it)
+            deleted[it.key()] = double(it.value());
+        root["deleted"] = deleted;
+    } else if (name == "birthdays.json") {
+        root["birthdays"] = sortedById(m_birthdays);
+    } else if (name == "events.json") {
+        root["events"] = sortedById(m_events);
+    } else {
+        return {};
+    }
+    return QJsonDocument(root).toJson(QJsonDocument::Indented);
+}
+
+QStringList Store::syncableFiles() const {
+    QStringList out{"notes.json"};
+    if (m_birthdaysReadable) out << "birthdays.json";
+    if (m_eventsReadable) out << "events.json";
+    return out;
 }

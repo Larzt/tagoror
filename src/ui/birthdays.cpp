@@ -9,6 +9,8 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPushButton>
+
+#include "ui/keynav.hpp"
 #include <QScrollArea>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -88,6 +90,7 @@ public:
         setAttribute(Qt::WA_StyledBackground, true);
         setAttribute(Qt::WA_Hover, true);
         setCursor(Qt::PointingHandCursor);
+        keynav::activatable(this, [this] { if (click) click(); });
     }
 
     // Se asigna después de construir: el popup se ancla a la propia fila, que
@@ -374,6 +377,7 @@ QWidget *BirthdayView::buildHighlightCard(Birthday *b) {
     // deja al usuario sin la única acción que quiere en ese momento.
     if (b->ringing) {
         auto *stop = new QPushButton(L("Detener aviso"));
+        stop->setFocusPolicy(Qt::TabFocus);
         stop->setObjectName("bdayStop");   // el rojo vive en la hoja, no aquí
         stop->setCursor(Qt::PointingHandCursor);
         connect(stop, &QPushButton::clicked, this, [this, b] { emit dismissRequested(b); });
@@ -383,6 +387,7 @@ QWidget *BirthdayView::buildHighlightCard(Birthday *b) {
         // no quiere decir nada, y la marca se guarda por año.
         auto *greet = new QPushButton(b->greeted() ? L("Sin felicitar") : L("Felicitar"));
         greet->setCursor(Qt::PointingHandCursor);
+        greet->setFocusPolicy(Qt::TabFocus);
         greet->setToolTip(L("Marca que ya le has felicitado este año"));
         connect(greet, &QPushButton::clicked, this, [this, b] { emit greetToggled(b); });
         actions->addWidget(greet);

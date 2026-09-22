@@ -17,6 +17,11 @@ public:
         setAttribute(Qt::WA_Hover);
     }
 
+    void setColor(const QColor &color) {
+        m_color = color;
+        update();
+    }
+
     // Subraya al pasar por encima; para lo que se puede pulsar.
     void setUnderlineOnHover(bool on) { m_underline = on; }
 

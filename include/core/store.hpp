@@ -3,16 +3,21 @@
 #include <QByteArray>
 #include <QColor>
 #include <QDateTime>
+#include <QHash>
+#include <QSet>
 #include <QList>
 #include <QObject>
 #include <QPoint>
 #include <QSize>
 #include <QString>
+#include <QStringList>
 #include <functional>
 
 #include "core/birthday.hpp"
+#include "core/event.hpp"
 #include "core/lang.hpp"
 #include "core/note.hpp"
+#include "core/timer.hpp"
 
 class QJsonObject;
 class QTimer;
@@ -44,6 +49,18 @@ public:
         // de la misma familia que el idioma, no un dato de la agenda.
         bool birthdaysByMonth = false;
 
+        // Tamaño del texto de las notas, en tanto por ciento del de serie. Solo
+        // escala el contenido (títulos, cuerpos, elementos, eventos); el resto
+        // de la interfaz se queda como está, porque crecer las etiquetas de
+        // anchura fija es lo que recorta la lista entera (ver *Card widths*).
+        int textScale = 100;
+
+        // Cómo se dejó el planificador: vista (0 día, 1 semana, 2 mes) y qué
+        // categorías están escondidas. Son de la interfaz, como el orden de
+        // los cumpleaños, y viajan con las notas.
+        int plannerView = 2;
+        QStringList plannerHidden;
+
         // Buscar si hay versión nueva una vez al día. Es lo único de la
         // aplicación que sale a la red, así que va como un ajuste a la vista y
         // no escondido; 'latestSeen' guarda la última versión que contestó el
@@ -73,6 +90,21 @@ public:
     // pantalla en vez de calcular índices por su cuenta.
     void setOrder(const QList<Note *> &order);
 
+    // --- temporizadores -----------------------------------------------------
+    // Van dentro de notes.json: son pocos, cambian de estado a cada rato y no
+    // son una agenda que haya que poder restaurar por separado.
+    const QList<Timer *> &timers() const { return m_timers; }
+    void addTimer(Timer *t);           // el más reciente, arriba
+    void removeTimer(Timer *t);
+
+    // --- planificador ---------------------------------------------------------
+    // Como los cumpleaños: su propio fichero (events.json), sus propias copias
+    // de seguridad con la misma marca de tiempo, y el mismo candado si el
+    // fichero está pero no se deja leer.
+    const QList<Event *> &events() const { return m_events; }
+    void addEvent(Event *e);
+    void removeEvent(Event *e);
+
     // --- cumpleaños (mismo dueño y mismo fichero que las notas) ------------
     // Viven aquí y no en la lista de notas porque son otra cosa (ver
     // birthday.hpp), pero se guardan en el mismo notes.json: así viajan con
@@ -101,6 +133,7 @@ public:
     // --- persistencia -------------------------------------------------------
     QString path() const;              // notes.json
     QString birthdaysPath() const;     // birthdays.json, al lado del anterior
+    QString eventsPath() const;        // events.json, lo mismo
     void load();                       // siembra dos notas si no hay fichero
     void save();
 
@@ -145,10 +178,48 @@ public:
     // tiene que poder decir cuál de las dos cosas quiere.
     void adoptDataDir(const QString &to);
 
+    // --- sincronización con Drive -------------------------------------------
+    //
+    // Mezcla elemento a elemento lo que viene de otro equipo con lo de aquí:
+    // de cada nota, cumpleaños, evento o temporizador se queda la versión más
+    // reciente (updatedMs), lo que solo está en un lado se añade, y lo borrado
+    // en cualquiera de los dos se borra si el borrado es posterior a la última
+    // edición. Nunca se sustituye un fichero entero por otro: eso es lo que
+    // haría que un equipo pisara lo que el otro escribió.
+    //
+    // Un objeto vacío para una de las tres partes quiere decir "de eso no hay
+    // nada nuevo" y esa parte no se toca. Guarda al terminar y emite merged()
+    // si ha cambiado algo de aquí.
+    struct MergeResult {
+        bool changed = false;
+        // Adjuntos ("audio/x.wav", "images/y.png") de notas cuya versión buena
+        // vino de fuera: esos se bajan aunque aquí exista uno con ese nombre.
+        QSet<QString> pull;
+    };
+    MergeResult mergeRemote(const QJsonObject &notesRoot, const QJsonObject &birthdaysRoot,
+                            const QJsonObject &eventsRoot);
+    // Los adjuntos que usan las notas, como "audio/<nombre>" o "images/<nombre>".
+    QStringList attachments() const;
+    // Los JSON que se pueden subir. Uno que estaba pero no se dejó leer no: en
+    // memoria no está lo que tiene, y subirlo sería repartir el destrozo.
+    QStringList syncableFiles() const;
+    // Lo que se sube con ese nombre: solo lo compartido (elementos, lápidas y
+    // orden), sin las preferencias de este equipo, y siempre escrito igual.
+    // Subir el notes.json local haría que dos equipos sin cambios se pisaran
+    // sin fin, porque cada uno guarda su tamaño y su posición de ventana.
+    QByteArray syncPayload(const QString &name) const;
+
 signals:
     // La lista y las preferencias son otras: quien las muestre tiene que
     // rehacerse entero (lo emiten retryLoad y adoptDataDir).
     void reloaded();
+    // mergeRemote() ha traído cambios de otro equipo: la lista es otra, pero
+    // los objetos que ya existían siguen siendo los mismos (se actualizan en
+    // su sitio), así que los punteros que tengan las vistas siguen valiendo.
+    void merged();
+    // Acaba de escribirse notes.json (y sus hermanos). La copia en Drive se
+    // cuelga de aquí para subir lo que ha cambiado.
+    void saved();
 
 private:
     // Resuelve la carpeta antes de tocar disco: la override manda sobre la
@@ -165,7 +236,17 @@ private:
     // la escritura -- ver m_birthdaysReadable.
     void loadBirthdays();
     void saveBirthdays();
+    // Lo mismo para el planificador, con su propio candado.
+    void loadEvents();
+    void saveEvents();
     void seedDemoNotes();
+
+    // Pone la fecha de cambio a lo que ha cambiado desde la última vez y apunta
+    // como borrado lo que ya no está. Corre al principio de cada save(): así
+    // ninguna tarjeta tiene que acordarse de marcar nada al editar.
+    void stampChanges();
+    // Toma lo que hay ahora como punto de partida, sin marcar nada.
+    void resetSnapshots();
 
     // Escribe el fichero entero o no lo toca. QSaveFile escribe a un temporal
     // y renombra encima, que es atómico: sin esto, retirar el pendrive a
@@ -181,6 +262,8 @@ private:
 
     QList<Note *> m_notes;
     QList<Birthday *> m_birthdays;
+    QList<Timer *> m_timers;
+    QList<Event *> m_events;
     Prefs m_prefs;
     QTimer *m_saveTimer = nullptr;
     bool m_available = true;
@@ -188,4 +271,14 @@ private:
     // por la misma razón que con las notas -- lo que hay en memoria no son los
     // cumpleaños de su dueño, son los que no se pudieron cargar.
     bool m_birthdaysReadable = true;
+    bool m_eventsReadable = true;
+
+    // Cómo era cada elemento la última vez que se miró (su JSON sin la fecha
+    // de cambio), para saber qué ha cambiado sin que nadie lo avise.
+    QHash<QString, QByteArray> m_snap;
+    QStringList m_orderSnap;
+    qint64 m_orderUpdatedMs = 0;   // el orden de las notas también se sincroniza
+    // Lápidas: "<tipo>:<id>" de lo borrado -> cuándo. Sin ellas, lo borrado aquí volvería
+    // desde el otro equipo, que todavía lo tiene. Viven en notes.json.
+    QHash<QString, qint64> m_deleted;
 };

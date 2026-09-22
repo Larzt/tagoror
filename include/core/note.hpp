@@ -56,6 +56,11 @@ struct Note {
     Repeat repeat = Once;     // solo Reminder, y solo con dueAtMs
     bool fired = false;       // ya avisó (y se descartó): no vuelve a sonar
     bool ringing = false;     // solo en memoria: está sonando ahora mismo
+    // Cuándo cambió por última vez, para la sincronización con Drive: entre
+    // dos equipos gana la versión más reciente de cada elemento. No lo pone
+    // quien edita sino Store al guardar (ver Store::stampChanges), así que
+    // ninguna tarjeta tiene que acordarse de tocarlo.
+    qint64 updatedMs = 0;
 
     // Un pico por debajo del 2% del fondo de escala es inaudible: casi siempre
     // es micrófono mudo o entrada equivocada.
@@ -191,6 +196,7 @@ struct Note {
         o["repeat"] = repeatToString(repeat);
         o["fired"] = fired;
         o["imagesHidden"] = imagesHidden;
+        o["updated"] = double(updatedMs);
 
         QJsonArray imgArr;
         for (const QString &name : images) imgArr.append(name);
@@ -226,6 +232,7 @@ struct Note {
         n->repeat = repeatFromString(o["repeat"].toString());
         n->fired = o["fired"].toBool();
         n->imagesHidden = o["imagesHidden"].toBool();
+        n->updatedMs = qint64(o["updated"].toDouble());
         for (const QJsonValue v : o["images"].toArray())
             n->images.append(v.toString());
         for (const QJsonValue v : o["peaks"].toArray())

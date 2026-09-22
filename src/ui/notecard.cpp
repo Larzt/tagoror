@@ -2,6 +2,7 @@
 #include "core/lang.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/imagethumb.hpp"
+#include "ui/keynav.hpp"
 #include "ui/popup.hpp"
 #include "audio/recorder.hpp"
 #include "ui/theme.hpp"
@@ -22,6 +23,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontInfo>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
@@ -30,6 +32,8 @@
 #include <QMouseEvent>
 #include <QProgressBar>
 #include <QRegularExpression>
+#include <QTextBlock>
+#include <QTextCursor>
 #include <QTextDocument>
 #include <QTextEdit>
 #include <QTimer>
@@ -74,13 +78,14 @@ QDateTime parseDue(const QString &text) {
 
 // Editor de cuerpo que crece con su contenido: sin barras de scroll propias,
 // la altura sigue al documento entre un mínimo y un máximo.
-QTextEdit *autoGrowEditor(const QString &text, const QString &placeholder) {
-    auto *e = new QTextEdit;
+void autoGrow(QTextEdit *e, const QString &placeholder) {
     // Sin el menú nativo de cortar/pegar: el clic derecho es para el menú de
     // la nota. Los atajos de teclado siguen funcionando igual.
     e->setContextMenuPolicy(Qt::NoContextMenu);
-    e->setPlainText(text);
     e->setPlaceholderText(placeholder);
+    // Tab sale del editor en vez de escribir un tabulador: si no, navegar con
+    // el teclado se quedaba atrapado en la primera nota de texto.
+    e->setTabChangesFocus(true);
     e->setAcceptRichText(false);
     e->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     e->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -96,8 +101,226 @@ QTextEdit *autoGrowEditor(const QString &text, const QString &placeholder) {
                      [e](const QSizeF &s) {
                          e->setFixedHeight(qBound(46, int(s.height()) + 14, 170));
                      });
-    return e;
 }
+
+// --- Markdown ---------------------------------------------------------------
+//
+// En CommonMark un salto de línea suelto no parte el párrafo: "leche\npan" se
+// lee "leche pan". Para Markdown escrito como documento es lo correcto, pero en
+// una nota rápida cada línea es una línea, y así las venía viendo todo el que
+// ya tenía notas. Se marcan como saltos duros (dos espacios al final) salvo
+// cuando la línea siguiente ya empieza un bloque propio, o dentro de un bloque
+// de código, donde las líneas se respetan solas.
+QString hardBreaks(const QString &source) {
+    static const QRegularExpression blockStart(
+        R"(^\s*([-*+]\s|\d+[.)]\s|#{1,6}\s|>|```|~~~))");
+    const QStringList lines = source.split('\n');
+    QStringList out;
+    bool fenced = false;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &line = lines.at(i);
+        const QString trimmed = line.trimmed();
+        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) fenced = !fenced;
+        const bool hasNext = i + 1 < lines.size();
+        const bool breakHere = !fenced && hasNext && !trimmed.isEmpty() &&
+                               !lines.at(i + 1).trimmed().isEmpty() &&
+                               !blockStart.match(lines.at(i + 1)).hasMatch();
+        out << (breakHere ? line + "  " : line);
+    }
+    return out.join('\n');
+}
+
+// Cuerpo de una nota con Markdown. En reposo enseña el texto ya formateado;
+// al entrar (con el ratón o con Tab) pasa al texto tal cual para editarlo, y al
+// salir vuelve a formatearse. Es un solo editor y no dos widgets que se
+// turnan, así el alto, el foco y el orden de tabulación no cambian de dueño.
+//
+// Lo que se guarda es siempre el texto fuente: 'm_source' manda, y lo que haya
+// en el documento mientras se ve formateado no se escribe nunca en la nota.
+class MarkdownEdit : public QTextEdit {
+public:
+    std::function<void(const QString &)> edited;   // el texto fuente cambió
+
+    MarkdownEdit(const QString &source, const QColor &accent) : m_source(source) {
+        // Los enlaces en el acento, como los adjuntos de la tarjeta. La hoja de
+        // estilos no toca este rol, así que la paleta del propio widget manda.
+        QPalette pal = palette();
+        pal.setColor(QPalette::Link, accent);
+        setPalette(pal);
+        setAcceptRichText(false);
+        viewport()->setMouseTracking(true);
+
+        connect(this, &QTextEdit::textChanged, this, [this] {
+            if (m_internal || !m_editing) return;
+            m_source = toPlainText();
+            if (edited) edited(m_source);
+        });
+        render();
+    }
+
+    const QString &source() const { return m_source; }
+    bool editing() const { return m_editing; }
+
+    void beginEdit() {
+        if (m_editing) return;
+        m_editing = true;
+        m_internal = true;
+        setPlainText(m_source);
+        m_internal = false;
+        moveCursor(QTextCursor::End);
+    }
+
+    void endEdit() {
+        if (!m_editing) return;
+        m_editing = false;
+        render();
+    }
+
+protected:
+    // Los títulos se calculan sobre la letra del editor, y esa letra la pone la
+    // hoja de estilos al pulir el widget -- después del constructor -- y otra
+    // vez al cambiar el tamaño de texto en ajustes. Se reformatea entonces.
+    void changeEvent(QEvent *e) override {
+        QTextEdit::changeEvent(e);
+        if (e->type() == QEvent::FontChange && !m_editing) render();
+    }
+
+    void focusInEvent(QFocusEvent *e) override {
+        QTextEdit::focusInEvent(e);
+        // Con el ratón se espera a soltar: el clic puede ser sobre un enlace, y
+        // entonces lo que se quiere es abrirlo, no editar la nota.
+        if (e->reason() == Qt::MouseFocusReason && !m_editing) m_clickPending = true;
+        else beginEdit();
+    }
+
+    void focusOutEvent(QFocusEvent *e) override {
+        QTextEdit::focusOutEvent(e);
+        m_clickPending = false;
+        // Cambiar de ventana o abrir un menú no es terminar de escribir.
+        if (e->reason() == Qt::ActiveWindowFocusReason || e->reason() == Qt::PopupFocusReason)
+            return;
+        endEdit();
+    }
+
+    void keyPressEvent(QKeyEvent *e) override {
+        if (e->key() == Qt::Key_Escape && m_editing) {
+            clearFocus();   // focusOut formatea
+            return;
+        }
+        if (!m_editing) beginEdit();   // llegó sin foco de ratón ni de Tab
+        QTextEdit::keyPressEvent(e);
+    }
+
+    void mouseMoveEvent(QMouseEvent *e) override {
+        if (!m_editing)
+            viewport()->setCursor(anchorAt(e->position().toPoint()).isEmpty()
+                                      ? Qt::IBeamCursor : Qt::PointingHandCursor);
+        QTextEdit::mouseMoveEvent(e);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (m_clickPending && e->button() == Qt::LeftButton) {
+            m_clickPending = false;
+            const QPoint at = e->position().toPoint();
+            const QString href = anchorAt(at);
+            if (!href.isEmpty()) {
+                QDesktopServices::openUrl(QUrl(href));
+                clearFocus();
+                return;
+            }
+            // El sitio del clic en el texto formateado no es el mismo en el
+            // fuente, pero cae cerca: mejor que mandar el cursor al final.
+            beginEdit();
+            setTextCursor(cursorForPosition(at));
+            viewport()->setCursor(Qt::IBeamCursor);
+            return;
+        }
+        QTextEdit::mouseReleaseEvent(e);
+    }
+
+private:
+    void render() {
+        m_internal = true;
+        if (m_source.trimmed().isEmpty()) {
+            clear();   // así se ve el texto de ayuda
+        } else {
+            setMarkdown(hardBreaks(m_source));
+            tidy();
+        }
+        m_internal = false;
+    }
+
+    // El importador formatea para un documento, no para una tarjeta de 300 px:
+    // un # salía al doble del texto, una lista sangraba 40 px y los enlaces
+    // iban en el azul de la paleta de la aplicación en vez del acento.
+    void tidy() {
+        QTextDocument *doc = document();
+        doc->setIndentWidth(14);
+        const int base = QFontInfo(font()).pixelSize();
+        const QColor accent = palette().color(QPalette::Link);
+        QColor tint = accent;
+        tint.setAlphaF(0.16);
+
+        QTextCursor c(doc);
+        for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
+            QTextBlockFormat f = b.blockFormat();
+            const int level = f.headingLevel();
+            // 12 px entre cada línea hacían de una lista de la compra una
+            // columna el doble de alta que en texto plano.
+            f.setTopMargin(level > 0 && b != doc->begin() ? 6 : 0);
+            f.setBottomMargin(level > 0 ? 2 : 1);
+            // Una cita sangraba 40 px por cada lado; en una tarjeta estrecha eso
+            // es media línea.
+            const bool quote = f.hasProperty(QTextFormat::BlockQuoteLevel);
+            if (quote) {
+                f.setLeftMargin(10);
+                f.setRightMargin(0);
+            }
+            c.setPosition(b.position());
+            c.setBlockFormat(f);
+
+            for (auto it = b.begin(); !it.atEnd(); ++it) {
+                const QTextFragment frag = it.fragment();
+                QTextCharFormat cf = frag.charFormat();
+                bool touched = false;
+                if (level > 0) {
+                    // El ajuste relativo del importador hay que quitarlo, no
+                    // ponerlo a cero: mientras la propiedad exista, manda sobre
+                    // el tamaño en píxeles y el título sale del tamaño del texto.
+                    cf.clearProperty(QTextFormat::FontSizeAdjustment);
+                    cf.clearProperty(QTextFormat::FontPointSize);
+                    cf.setProperty(QTextFormat::FontPixelSize,
+                                   qRound(base * (level == 1 ? 1.3 : level == 2 ? 1.15 : 1.05)));
+                    cf.setFontWeight(QFont::Bold);
+                    touched = true;
+                }
+                if (quote) {
+                    cf.setFontItalic(true);
+                    cf.setForeground(QColor(Theme::muted()));
+                    touched = true;
+                }
+                if (cf.isAnchor()) {
+                    cf.setForeground(accent);
+                    touched = true;
+                }
+                if (cf.fontFixedPitch()) {
+                    cf.setForeground(accent);
+                    cf.setBackground(tint);
+                    touched = true;
+                }
+                if (!touched) continue;
+                c.setPosition(frag.position());
+                c.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
+                c.setCharFormat(cf);
+            }
+        }
+    }
+
+    QString m_source;
+    bool m_editing = false;
+    bool m_internal = false;       // cambios del propio editor, no del usuario
+    bool m_clickPending = false;
+};
 
 // El chip de fecha es pulsable: cambiar el recordatorio no debería obligar a
 // buscar la opción en el menú contextual.
@@ -106,6 +329,14 @@ public:
     ClickableLabel(const QString &text, std::function<void(const QPoint &)> onClick)
         : QLabel(text), m_click(std::move(onClick)) {
         setCursor(Qt::PointingHandCursor);
+    }
+
+    // Con el teclado el menú sale pegado a la propia etiqueta, que es donde
+    // habría caído el clic.
+    void makeKeyboardReachable() {
+        keynav::activatable(this, [this] {
+            if (m_click) m_click(mapToGlobal(QPoint(0, height())));
+        });
     }
 
 protected:
@@ -135,6 +366,7 @@ public:
         setAttribute(Qt::WA_StyledBackground, true);
         setAttribute(Qt::WA_Hover, true);
         setCursor(Qt::PointingHandCursor);
+        keynav::activatable(this, [this] { if (activate) activate(); });
     }
 
     std::function<void()> activate;
@@ -321,6 +553,10 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
     // de estirar un borde y prometía cambiar el alto de la tarjeta.
     handle->setCursor(Qt::OpenHandCursor);
     handle->setToolTip(L("Arrastra para reordenar"));
+    // Fuera del orden de tabulación: con el teclado se reordena desde el menú
+    // de la tarjeta (Subir / Bajar), y pasar por un asidero en cada nota solo
+    // alarga el camino.
+    handle->setFocusPolicy(Qt::NoFocus);
     handle->start = [this] { emit dragStarted(); };
     handle->moved = [this](const QPoint &at) { emit dragMoved(at); };
     handle->finished = [this] { emit dragFinished(); };
@@ -330,11 +566,12 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
 }
 
 void NoteCard::buildText(QVBoxLayout *l) {
-    QTextEdit *body = autoGrowEditor(m_note->body, L("Escribe…"));
-    connect(body, &QTextEdit::textChanged, this, [this, body] {
-        m_note->body = body->toPlainText();
+    auto *body = new MarkdownEdit(m_note->body, m_theme.accent);
+    autoGrow(body, L("Escribe… admite Markdown"));
+    body->edited = [this](const QString &text) {
+        m_note->body = text;
         emit dirty();
-    });
+    };
     l->addWidget(body);
 
     m_meta = new QLabel(L("TEXTO"));
@@ -357,6 +594,7 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
                                 [this](const QPoint &p) { openDuePopup(p); });
     m_chip->setObjectName("chip");
     m_chip->setToolTip(L("Clic para cambiar la fecha"));
+    static_cast<ClickableLabel *>(m_chip)->makeKeyboardReachable();
     row->addWidget(m_chip);
 
     // Marca de repetición al lado de la fecha. Es un icono y no un chip con el
@@ -417,6 +655,7 @@ void NoteCard::showDetailsGhost() {
                                      [this](const QPoint &) { showDetailsEditor(true); });
     ghost->setObjectName("addDetails");
     ghost->setContextMenuPolicy(Qt::NoContextMenu);
+    ghost->makeKeyboardReachable();
     ghost->setToolTip(L("Escribir detalles del recordatorio"));
     m_detailLayout->addWidget(ghost);
 }
@@ -431,15 +670,16 @@ void NoteCard::showDetailsEditor(bool focus) {
         delete it;
     }
 
-    QTextEdit *body = autoGrowEditor(m_note->body, L("Detalles…"));
-    connect(body, &QTextEdit::textChanged, this, [this, body] {
-        m_note->body = body->toPlainText();
+    auto *body = new MarkdownEdit(m_note->body, m_theme.accent);
+    autoGrow(body, L("Detalles…"));
+    body->edited = [this](const QString &text) {
+        m_note->body = text;
         emit dirty();
-    });
+    };
     body->installEventFilter(this);
     m_detailBody = body;
     m_detailLayout->addWidget(body);
-    if (focus) body->setFocus();
+    if (focus) body->setFocus(Qt::OtherFocusReason);
 }
 
 // Un editor de detalles abierto y vacío no tenía puerta de salida: ocupaba su
@@ -463,11 +703,13 @@ bool NoteCard::eventFilter(QObject *watched, QEvent *event) {
         const bool leaving = event->type() == QEvent::FocusOut;
         const bool escape = event->type() == QEvent::KeyPress &&
                             static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape;
-        if ((leaving || escape) && m_detailBody->toPlainText().trimmed().isEmpty()) {
+        // El cuerpo de la nota y no toPlainText(): formateado, el documento no
+        // es el texto que se guarda.
+        if ((leaving || escape) && m_note->body.trimmed().isEmpty()) {
             if (escape) m_detailBody->clearFocus();
             QTimer::singleShot(0, this, [this] {
                 if (m_detailBody && !m_detailBody->hasFocus() &&
-                    m_detailBody->toPlainText().trimmed().isEmpty())
+                    m_note->body.trimmed().isEmpty())
                     showDetailsGhost();
             });
         }
@@ -568,6 +810,9 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     // derecha. Con la etiqueta suelta y wordWrap, se parten en varias líneas.
     auto *box = new QCheckBox;
     box->setContextMenuPolicy(Qt::NoContextMenu);
+    // Solo por Tab: con el foco por clic, marcar con el ratón dejaba el anillo
+    // del teclado puesto en la casilla.
+    box->setFocusPolicy(Qt::TabFocus);
     box->setChecked(item.done);
     box->setCursor(Qt::PointingHandCursor);
     rl->addWidget(box, 0, Qt::AlignTop);

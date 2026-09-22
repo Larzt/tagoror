@@ -47,3 +47,10 @@ packaging/arch/*.tar.gz
 # Datos de la app (notas, adjuntos de audio, tono de alarma)
 notes.json
 *.wav
+
+# Cliente OAuth de Google (copia en Drive): nunca al repositorio público.
+# Se pasa con google-oauth.mk (ver google-oauth.mk.example), -D o la CI.
+google-oauth.mk
+*.env
+.env*
+client_secret*.json

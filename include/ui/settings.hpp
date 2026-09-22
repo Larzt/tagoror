@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QWidget>
 
+#include "core/drivesync.hpp"
 #include "core/lang.hpp"
 #include "core/store.hpp"
 #include "ui/theme.hpp"
@@ -43,11 +44,19 @@ public:
     // llevaría por delante el deslizador que se estuviera arrastrando.
     void setUpdateState(bool busy, const QString &error);
 
+    // La copia en Drive cambia de estado sola (una subida que termina, un
+    // token que caduca): como con las actualizaciones, se reescribe la tarjeta
+    // en su sitio. Solo si pasa de conectada a no conectada, o al revés, se
+    // rehace la página, porque entonces cambia lo que hay debajo.
+    void setDrive(const DriveSync *drive);
+    void refreshDrive();
+
 signals:
     void accentPicked(const QColor &c);
     void accentEditorRequested(QWidget *anchor);
     void opacityChanged(int value);          // en vivo, mientras se arrastra
     void languagePicked(Lang::Code code);
+    void textScalePicked(int percent);
     void onTopToggled(bool on);
     void x11Toggled(bool on);
     void dataFolderRequested();
@@ -57,16 +66,22 @@ signals:
     void checkUpdatesRequested();
     void openLatestRequested();
     void quitRequested();
+    void driveConnectRequested();
+    void driveCancelRequested();
+    void driveSyncRequested();
+    void driveDisconnectRequested();
 
 private:
     void addSection(const QString &title);
     void addAccent();
     void addOpacity();
     void addLanguage();
+    void addTextScale();
     void addWindow();
     void addData();
     void addInputs();
     void addUpdates();
+    void addDrive();
     void addQuit();
     // Lo que dice la tarjeta de actualizaciones ahora mismo.
     QString updateSubtitle(bool busy, const QString &error) const;
@@ -88,4 +103,9 @@ private:
     class QToolButton *m_updateBtn = nullptr;
     bool m_updateBusy = false;
     QString m_updateError;
+
+    const DriveSync *m_drive = nullptr;
+    class ElidedLabel *m_driveSub = nullptr;
+    class QToolButton *m_driveBtn = nullptr;
+    bool m_driveBuiltConnected = false;
 };

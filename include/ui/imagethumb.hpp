@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/keynav.hpp"
+
 #include <QContextMenuEvent>
 #include <QMouseEvent>
 #include <QPainter>
@@ -33,9 +35,10 @@ public:
         m_pixmap.load(path);
         setCursor(Qt::PointingHandCursor);
         setToolTip(path);
+        keynav::activatable(this, [this] { if (activate) activate(); });
         // Fijar el tamaño no cambia la política, y una política Expanding se
         // propaga hacia arriba: la tarjeta pediría alto de más y lo repartiría
-        // en el hijo flexible de abajo (ver autoGrowEditor en notecard.cpp).
+        // en el hijo flexible de abajo (ver autoGrow en notecard.cpp).
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         setFixedSize(previewSize());
     }

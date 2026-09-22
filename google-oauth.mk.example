@@ -1,0 +1,5 @@
+# Cliente OAuth de Google para la copia en Drive (ver README, "Setting it up").
+# Copia este fichero como google-oauth.mk y rellénalo. google-oauth.mk está en
+# .gitignore: el repositorio es público y estos valores no se suben nunca.
+TAGOROR_GOOGLE_CLIENT_ID     := 1234567890-xxxxxxxx.apps.googleusercontent.com
+TAGOROR_GOOGLE_CLIENT_SECRET := GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx

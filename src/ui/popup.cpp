@@ -6,6 +6,7 @@
 #include <QFrame>
 #include <QGraphicsDropShadowEffect>
 #include <QGridLayout>
+#include <QKeyEvent>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -15,6 +16,8 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+#include "ui/keynav.hpp"
 
 namespace {
 
@@ -32,6 +35,7 @@ public:
         setCursor(Qt::PointingHandCursor);
         setAttribute(Qt::WA_Hover);
         setMouseTracking(true);
+        keynav::activatable(this, [this] { if (m_click) m_click(); });
     }
 
     QSize sizeHint() const override {
@@ -51,10 +55,12 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        if (m_hover) {
-            p.setPen(Qt::NoPen);
+        // El foco del teclado se ve como el paso del ratón, más un borde: así
+        // las flechas se siguen con la vista sin que haya dos realces distintos.
+        if (m_hover || keynav::showsFocus(this)) {
+            p.setPen(keynav::showsFocus(this) ? QPen(QColor(255, 255, 255, 70), 1) : QPen(Qt::NoPen));
             p.setBrush(QColor(255, 255, 255, 20));
-            p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 8, 8);
+            p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8);
         }
 
         const int iconX = 9;
@@ -251,6 +257,26 @@ void Popup::addSeparator() {
 }
 
 // ---------------------------------------------------------------------------
+
+void Popup::keyPressEvent(QKeyEvent *e) {
+    if (e->key() == Qt::Key_Down || e->key() == Qt::Key_Up) {
+        focusNextPrevChild(e->key() == Qt::Key_Down);
+        return;
+    }
+    QWidget::keyPressEvent(e);   // Escape cierra: lo hace QWidget con los Qt::Popup
+}
+
+// El popup se queda el foco al abrirse (si no lo ha pedido ya un campo), para
+// que las flechas y Tab funcionen desde el primer momento. No se enciende la
+// primera fila: abierto con el ratón, un realce que nadie ha pedido parece un
+// fallo; la primera pulsación de flecha ya lo lleva a ella.
+void Popup::showEvent(QShowEvent *e) {
+    QWidget::showEvent(e);
+    setFocusPolicy(Qt::StrongFocus);
+    QTimer::singleShot(0, this, [this] {
+        if (!focusWidget() || focusWidget() == this) setFocus(Qt::PopupFocusReason);
+    });
+}
 
 void Popup::run(const std::function<void()> &action) {
     close();   // WA_DeleteOnClose: este objeto muere en cuanto vuelva al bucle

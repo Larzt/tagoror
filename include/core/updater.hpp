@@ -14,8 +14,9 @@ class QNetworkReply;
 // descargar un ejecutable y lanzarlo es otra cosa, y sin binarios firmados no
 // toca hacerla.
 //
-// Vive en core porque no sabe nada de widgets; es lo único de la aplicación que
-// habla por red, y solo cuando su dueño se lo pide.
+// Vive en core porque no sabe nada de widgets. Con la copia en Drive
+// (DriveSync) es lo único de la aplicación que habla por red, y solo cuando su
+// dueño se lo pide.
 class Updater : public QObject {
     Q_OBJECT
 

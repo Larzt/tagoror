@@ -6,11 +6,19 @@
 #include <QPainterPath>
 #include <QPolygonF>
 #include <QPixmap>
+#include <QRegularExpression>
 #include <QString>
 
 struct Theme {
     QColor accent{"#7c9cff"};
     int opacity = 96;   // 40..100
+    // Tamaño del texto del contenido en tanto por ciento (ajustes → Tamaño de
+    // texto). Solo lo que escribe el usuario: en la hoja va marcado como
+    // {fs:12} y sheet() lo convierte; el resto de la interfaz no cambia.
+    int textScale = 100;
+
+    // Un tamaño del contenido ya escalado, para lo que se pinta a mano.
+    qreal fs(qreal px) const { return px * textScale / 100.0; }
 
     // Color base de las superficies. Se expone también como QColor para que
     // los popups (que se pintan a mano) usen exactamente la misma opacidad
@@ -104,6 +112,14 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.setPen(Qt::NoPen);
         p.setBrush(color);
         p.drawEllipse(QPointF(c, c - 4.6), 1.2, 1.5);
+    } else if (kind == "timer") {
+        // Cronómetro: la esfera, el botón de arriba y una aguja. Distinto del
+        // reloj de los recordatorios, que es una hora; esto es una cuenta.
+        p.drawEllipse(QPointF(c, c + 1.0), 5.0, 5.0);
+        p.drawLine(QPointF(c - 1.6, c - 5.8), QPointF(c + 1.6, c - 5.8));
+        p.drawLine(QPointF(c, c - 5.8), QPointF(c, c - 4.0));
+        p.drawLine(QPointF(c + 3.8, c - 3.4), QPointF(c + 4.8, c - 4.4));
+        p.drawLine(QPointF(c, c + 1.0), QPointF(c + 2.2, c - 1.4));
     } else if (kind == "chevronLeft") {
         p.drawPolyline(QPolygonF({QPointF(c + 2.0, c - 4.4), QPointF(c - 2.4, c),
                                   QPointF(c + 2.0, c + 4.4)}));
@@ -247,7 +263,7 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
 inline QString Theme::sheet() const {
     const QString acc = accent.name();
 
-    return QString(R"(
+    QString out = QString(R"(
 QFrame#shell {
     background: %1;
     border: 1px solid %2;
@@ -258,8 +274,8 @@ QFrame#footer { border: none; border-top: 1px solid %2; background: %6; }
 
 QLabel          { color: %3; font-size: 12px; }
 QLabel#title    { font-size: 12.5px; font-weight: 600; }
-QLabel#cardTitle{ font-size: 12px;   font-weight: 600; }
-QLabel#body     { color: %4; font-size: 11.5px; }
+QLabel#cardTitle{ font-size: {fs:12}px;   font-weight: 600; }
+QLabel#body     { color: %4; font-size: {fs:11.5}px; }
 QLabel#meta     { color: %4; font-size: 9.5px; font-family: "IBM Plex Mono", monospace; }
 QLabel#chip {
     color: #f2b757; font-size: 10.5px; font-weight: 600;
@@ -325,32 +341,32 @@ QLineEdit {
 QLineEdit:focus { border: 1px solid %5; }
 QLineEdit#cardTitleEdit {
     background: transparent; border: none; padding: 0;
-    font-size: 12px; font-weight: 600; color: %3;
+    font-size: {fs:12}px; font-weight: 600; color: %3;
 }
 /* Fila "añadir elemento": sin caja, para que se lea como una tarea más. */
 QLineEdit#newItemEdit {
     background: transparent; border: none; padding: 0;
-    font-size: 11.5px; color: %3;
+    font-size: {fs:11.5}px; color: %3;
 }
 QLineEdit#newItemEdit:focus { border: none; }
 /* Renombrar un elemento: el mismo campo sin caja, con el tamaño del texto al
    que sustituye para que la fila no dé un salto al entrar en edición. */
 QLineEdit#checkTextEdit {
     background: transparent; border: none; padding: 0;
-    font-size: 11.5px; color: %3;
+    font-size: {fs:11.5}px; color: %3;
 }
 QLineEdit#checkTextEdit:focus { border: none; }
 QTextEdit {
     color: %3; background: %6;
     border: 1px solid %2; border-radius: 8px;
-    padding: 6px; font-size: 11.5px;
+    padding: 6px; font-size: {fs:11.5}px;
     selection-background-color: %5;
 }
 
-QCheckBox { color: %3; font-size: 11.5px; spacing: 8px; }
+QCheckBox { color: %3; font-size: {fs:11.5}px; spacing: 8px; }
 /* El texto de un elemento vive en su propia etiqueta para poder partirse en
    varias líneas; ver addCheckRow(). */
-QLabel#checkText { color: %3; font-size: 11.5px; }
+QLabel#checkText { color: %3; font-size: {fs:11.5}px; }
 QCheckBox::indicator {
     width: 13px; height: 13px; border-radius: 4px;
     border: 1.4px solid %4; background: transparent;
@@ -388,7 +404,7 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 /* Igual que las filas del calendario, necesita WA_StyledBackground. */
 QWidget#linkRow { background: transparent; border-radius: 7px; }
 QWidget#linkRow:hover { background: %7; }
-QLabel#linkText { font-size: 11.5px; }
+QLabel#linkText { font-size: {fs:11.5}px; }
 
 /* --- calendario ---------------------------------------------------------- */
 QWidget#calendar { background: transparent; }
@@ -447,7 +463,7 @@ QToolButton#listDone:hover { background: rgba(255,122,107,0.14); }
 
 /* "Añadir detalles": un recordatorio sin cuerpo no enseña editor ninguno, así
    que esta es la única puerta de entrada y tiene que parecer pulsable. */
-QLabel#addDetails { color: %4; font-size: 10.5px; }
+QLabel#addDetails { color: %4; font-size: {fs:10.5}px; }
 QLabel#addDetails:hover { color: %5; }
 
 /* --- imágenes adjuntas ---------------------------------------------------- */
@@ -471,7 +487,7 @@ QFrame#bdayToday {
     border: 1px solid %9;
     border-radius: 11px;
 }
-QLabel#bdayName { color: %3; font-size: 13px; font-weight: 700; }
+QLabel#bdayName { color: %3; font-size: {fs:13}px; font-weight: 700; }
 QLabel#bdayTodayChip {
     color: %5; font-size: 8.5px; font-weight: 700;
     font-family: "IBM Plex Mono", monospace;
@@ -526,7 +542,7 @@ QFrame#bdayMonthRule { background: %2; border: none; }
 /* Filas: QWidget lisos, así que necesitan WA_StyledBackground (birthdays.cpp). */
 QWidget#bdayRow { background: transparent; border-radius: 9px; }
 QWidget#bdayRow:hover { background: %7; }
-QLabel#bdayRowName { color: %3; font-size: 12px; font-weight: 600; }
+QLabel#bdayRowName { color: %3; font-size: {fs:12}px; font-weight: 600; }
 QLabel#bdayDate {
     color: %4; font-size: 10px;
     font-family: "IBM Plex Mono", monospace;
@@ -544,6 +560,56 @@ QWidget#updateBanner {
 }
 QWidget#updateBanner:hover { background: %10; }
 QLabel#updateBannerText { color: %5; font-size: 10.5px; font-weight: 600; }
+
+/* --- temporizadores ------------------------------------------------------- */
+QWidget#timers { background: transparent; }
+/* Filas: QWidget lisos, así que necesitan WA_StyledBackground (timers.cpp). */
+QWidget#timerRow {
+    background: %6; border: 1px solid %2; border-radius: 10px;
+}
+QWidget#timerRow:hover { background: %7; }
+QWidget#timerRow[chosen="true"] { border: 1px solid %9; }
+QWidget#timerRow[done="true"] { border: 1px solid rgba(255,122,107,0.55); }
+QLabel#timerName { color: %3; font-size: {fs:12}px; font-weight: 600; }
+QLabel#timerTime, QLabel#timerTimeLive {
+    color: %3; font-size: {fs:13}px;
+    font-family: "IBM Plex Mono", monospace;
+}
+QLabel#timerTimeLive { color: %5; }
+QLabel#timerFocusName { color: %3; font-size: {fs:12.5}px; font-weight: 600; }
+QLineEdit#timerField {
+    font-size: 14px; font-family: "IBM Plex Mono", monospace;
+    padding: 6px 2px;
+}
+/* Cuenta atrás en el pie: la del temporizador en marcha. */
+QToolButton#footerTimer {
+    color: %5; background: %8; border: 1px solid %9; border-radius: 7px;
+    padding: 1px 7px; font-size: 10px; font-family: "IBM Plex Mono", monospace;
+}
+
+/* Tiempo cumplido / evento que empieza: el rojo de lo vencido, con sus botones. */
+QWidget#alarmBar {
+    background: rgba(255,122,107,0.14);
+    border-bottom: 1px solid rgba(255,122,107,0.35);
+}
+QLabel#alarmBarText { color: #ff7a6b; font-size: 11px; font-weight: 600; }
+QToolButton#alarmBtn {
+    color: #ff7a6b; background: transparent;
+    border: 1px solid rgba(255,122,107,0.45); border-radius: 7px;
+    padding: 3px 8px; font-size: 10.5px; font-weight: 600;
+}
+QToolButton#alarmBtn:hover { background: rgba(255,122,107,0.18); }
+
+/* --- planificador ---------------------------------------------------------- */
+QWidget#planner { background: transparent; }
+QWidget#plannerSide { background: rgba(255,255,255,0.015); }
+QLabel#plannerSideText { font-size: {fs:11.5}px; }
+QCheckBox#plannerCat { color: %3; font-size: 11.5px; }
+QLineEdit#plannerTitleEdit {
+    font-size: {fs:13.5}px; font-weight: 600; padding: 8px 10px;
+}
+QLineEdit#plannerField { font-family: "IBM Plex Mono", monospace; }
+QLabel#plannerError { color: #ff7a6b; font-size: 10.5px; }
 
 /* --- página de ajustes ---------------------------------------------------- */
 QWidget#settings { background: transparent; }
@@ -620,6 +686,43 @@ QToolButton#popupChip[past="true"] { color: %4; }
 QToolButton#popupChip[chosen="true"] {
     color: %5; background: %8; border: 1px solid %9;
 }
+/* --- foco del teclado ------------------------------------------------------
+   Lo que se alcanza con Tab lleva un borde cuando tiene el foco y le llegó
+   con el teclado ([kbfocus], lo apunta ui/keynav.hpp): es el :focus-visible
+   de la web. Sin esa condición el anillo salía también cuando Qt movía el foco
+   por su cuenta al esconder una página. Va al final de la hoja para ganar a
+   las reglas de cada objeto, que también fijan su borde. */
+QToolButton[kbfocus="true"]:focus,
+QToolButton#segButton[kbfocus="true"]:focus, QToolButton#popupChip[kbfocus="true"]:focus,
+QToolButton#calNav[kbfocus="true"]:focus, QToolButton#todayBtn[kbfocus="true"]:focus,
+QToolButton#bdayTab[kbfocus="true"]:focus, QToolButton#bdayGhost[kbfocus="true"]:focus,
+QToolButton#listDone[kbfocus="true"]:focus, QToolButton#quitBtn[kbfocus="true"]:focus,
+QToolButton#alarmBtn[kbfocus="true"]:focus, QToolButton#footerTimer[kbfocus="true"]:focus,
+QToolButton#dragHandle[kbfocus="true"]:focus {
+    border: 1px solid %5;
+}
+/* Los que ya van en el acento cuando están elegidos necesitan otro color para
+   que el foco se distinga: el del texto. */
+QToolButton#segButton[chosen="true"][kbfocus="true"]:focus,
+QToolButton#popupChip[chosen="true"][kbfocus="true"]:focus,
+QToolButton#bdayTab[chosen="true"][kbfocus="true"]:focus,
+QToolButton[active="true"][kbfocus="true"]:focus {
+    border: 1px solid %3;
+}
+QPushButton[kbfocus="true"]:focus { border: 2px solid %3; padding: 4px 10px; }
+QCheckBox[kbfocus="true"]::indicator:focus { border: 2px solid %3; }
+QTextEdit:focus { border: 1px solid %5; }
+QLineEdit#cardTitleEdit:focus, QLineEdit#newItemEdit:focus, QLineEdit#checkTextEdit:focus {
+    border: none; border-bottom: 1px solid %5;
+}
+QSlider[kbfocus="true"]:focus { border: 1px solid %9; border-radius: 6px; }
+QWidget#setRow[kbfocus="true"]:focus, QWidget#linkRow[kbfocus="true"]:focus,
+QWidget#imgHeader[kbfocus="true"]:focus, QWidget#bdayRow[kbfocus="true"]:focus,
+#bdayToday[kbfocus="true"]:focus, QWidget#timerRow[kbfocus="true"]:focus,
+QWidget#updateBanner[kbfocus="true"]:focus, QLabel#addDetails[kbfocus="true"]:focus {
+    border: 1px solid %5;
+}
+QLabel#chip[kbfocus="true"]:focus { border: 1px solid %3; }
 )")
         .arg(card())      // %1
         .arg(line())      // %2
@@ -631,4 +734,14 @@ QToolButton#popupChip[chosen="true"] {
         .arg(accentRgba(0.14))    // %8  relleno teñido
         .arg(accentRgba(0.38))    // %9  borde teñido
         .arg(accentRgba(0.24));   // %10 relleno al pasar por encima
+
+    // Los tamaños del contenido van marcados y se escalan aquí, de atrás
+    // adelante para que cada sustitución no desplace las que faltan.
+    static const QRegularExpression mark(R"(\{fs:([\d.]+)\})");
+    QList<QRegularExpressionMatch> found;
+    for (auto it = mark.globalMatch(out); it.hasNext();) found.append(it.next());
+    for (auto it = found.crbegin(); it != found.crend(); ++it)
+        out.replace(it->capturedStart(), it->capturedLength(),
+                    QString::number(fs(it->captured(1).toDouble()), 'f', 1));
+    return out;
 }

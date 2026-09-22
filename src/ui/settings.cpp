@@ -4,6 +4,7 @@
 #include "core/lang.hpp"
 #include "core/updater.hpp"
 #include "ui/elidedlabel.hpp"
+#include "ui/keynav.hpp"
 
 #include <QApplication>
 #include <QAudioDevice>
@@ -50,6 +51,7 @@ public:
         setCursor(Qt::PointingHandCursor);
         setAttribute(Qt::WA_Hover);
         setToolTip(color.name());
+        keynav::activatable(this, [this] { if (m_click) m_click(); });
     }
 
 protected:
@@ -66,7 +68,13 @@ protected:
         const QPointF c(width() / 2.0, height() / 2.0);
         const bool current = m_theme && m_theme->accent.rgb() == m_color.rgb();
 
-        if (current || m_hover) {
+        // Con el foco del teclado, el anillo en el color del texto: el del
+        // propio color ya dice "es el elegido" y no puede decir las dos cosas.
+        if (keynav::showsFocus(this)) {
+            p.setPen(QPen(QColor(Theme::fg()), 1.6));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(c, 12.2, 12.2);
+        } else if (current || m_hover) {
             p.setPen(QPen(current ? m_color : QColor(255, 255, 255, 60), 1.6));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(c, 11.4, 11.4);
@@ -94,11 +102,16 @@ public:
         : QWidget(parent), m_on(on), m_theme(theme), m_changed(std::move(changed)) {
         setFixedSize(38, 21);
         setCursor(Qt::PointingHandCursor);
+        keynav::activatable(this, [this] { flip(); });
     }
 
 protected:
     void mouseReleaseEvent(QMouseEvent *e) override {
         if (e->button() != Qt::LeftButton || !rect().contains(e->position().toPoint())) return;
+        flip();
+    }
+
+    void flip() {
         m_on = !m_on;
         update();
         if (m_changed) m_changed(m_on);
@@ -109,9 +122,11 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
 
         const QColor accent = m_theme ? m_theme->accent : QColor("#7c9cff");
-        p.setPen(Qt::NoPen);
+        p.setPen(keynav::showsFocus(this) ? QPen(QColor(Theme::fg()), 1.5) : QPen(Qt::NoPen));
         p.setBrush(m_on ? accent : QColor(255, 255, 255, 28));
-        p.drawRoundedRect(rect(), height() / 2.0, height() / 2.0);
+        const QRectF track = QRectF(rect()).adjusted(0.75, 0.75, -0.75, -0.75);
+        p.drawRoundedRect(track, track.height() / 2.0, track.height() / 2.0);
+        p.setPen(Qt::NoPen);
 
         const qreal r = height() / 2.0 - 3.0;
         const qreal x = m_on ? width() - height() / 2.0 : height() / 2.0;
@@ -132,6 +147,13 @@ public:
         setObjectName("setRow");
         setAttribute(Qt::WA_StyledBackground, true);
         setAttribute(Qt::WA_Hover, true);
+    }
+
+    // Solo las filas que hacen algo al pulsarlas (los micrófonos); las de los
+    // interruptores dejan el foco al propio interruptor.
+    void setClick(std::function<void()> f) {
+        click = std::move(f);
+        keynav::activatable(this, [this] { if (click) click(); });
     }
 
     std::function<void()> click;
@@ -192,6 +214,8 @@ void SettingsView::setTheme(const Theme &theme) {
 void SettingsView::refresh() {
     m_updateSub = nullptr;   // lo que hubiera muere en este mismo barrido
     m_updateBtn = nullptr;
+    m_driveSub = nullptr;
+    m_driveBtn = nullptr;
     while (m_layout->count() > 1) {
         QLayoutItem *item = m_layout->takeAt(0);
         if (QWidget *w = item->widget()) {
@@ -204,9 +228,11 @@ void SettingsView::refresh() {
 
     addAccent();
     addOpacity();
+    addTextScale();
     addLanguage();
     addWindow();
     addData();
+    addDrive();
     addInputs();
     addUpdates();
     addQuit();
@@ -269,6 +295,59 @@ void SettingsView::addOpacity() {
     m_layout->insertWidget(m_layout->count() - 1, slider);
 }
 
+// Cuatro tamaños y no un deslizador: entre 88 y 130 no hay nada que afinar, y
+// un botón por tamaño dice de un vistazo cuál está puesto. Cada uno enseña su
+// "Aa" al tamaño que da, así la fila se explica sola en los dos idiomas y no
+// necesita cuatro palabras que no caben (ver *Card widths*).
+void SettingsView::addTextScale() {
+    addSection(L("TAMAÑO DE TEXTO"));
+
+    struct Level { int percent; const char *name; };
+    static const Level levels[] = {{88, "Pequeño"}, {100, "Normal"},
+                                   {114, "Grande"}, {130, "Muy grande"}};
+    const int current = m_store->prefs().textScale;
+
+    auto *host = new QWidget;
+    auto *l = new QHBoxLayout(host);
+    l->setContentsMargins(0, 0, 0, 2);
+    l->setSpacing(4);
+    for (const Level &lv : levels) {
+        auto *b = new QToolButton;
+        b->setObjectName("segButton");
+        b->setText("Aa");
+        b->setToolTip(L(lv.name));
+        b->setAccessibleName(L(lv.name));
+        b->setProperty("chosen", lv.percent == current);
+        b->setCursor(Qt::PointingHandCursor);
+        // Con selector: una regla suelta bajaría a todo lo que cuelgue del botón.
+        b->setStyleSheet(QString("QToolButton#segButton { font-size: %1px; }")
+                             .arg(11.0 * lv.percent / 100.0, 0, 'f', 1));
+        connect(b, &QToolButton::clicked, this,
+                [this, p = lv.percent] { emit textScalePicked(p); });
+        l->addWidget(b, 1);
+    }
+    m_layout->insertWidget(m_layout->count() - 1, host);
+
+    // Una muestra con los mismos nombres de objeto que una tarjeta, así que
+    // crece con la hoja de estilos igual que las notas de verdad.
+    auto *card = new QFrame;
+    card->setObjectName("setCard");
+    auto *cl = new QVBoxLayout(card);
+    cl->setContentsMargins(10, 8, 10, 9);
+    cl->setSpacing(3);
+    auto *title = new QLabel(L("Comprar pan y café"));
+    title->setObjectName("cardTitle");
+    title->setWordWrap(true);
+    title->setMinimumWidth(24);   // ver *Card widths*
+    auto *body = new QLabel(L("Así se verán las notas, las listas y el planificador."));
+    body->setObjectName("body");
+    body->setWordWrap(true);
+    body->setMinimumWidth(24);
+    cl->addWidget(title);
+    cl->addWidget(body);
+    m_layout->insertWidget(m_layout->count() - 1, card);
+}
+
 void SettingsView::addLanguage() {
     addSection(L("IDIOMA"));
     // Los nombres van cada uno en su propio idioma, no traducidos: quien abre
@@ -317,6 +396,125 @@ void SettingsView::addData() {
             [this](QWidget *anchor) { emit backupsRequested(anchor); });
 }
 
+void SettingsView::setDrive(const DriveSync *drive) {
+    m_drive = drive;
+    refresh();
+}
+
+void SettingsView::addDrive() {
+    if (!m_drive) return;
+    addSection(L("GOOGLE DRIVE"));
+
+    auto *card = new QFrame;
+    card->setObjectName("setCard");
+    auto *l = new QHBoxLayout(card);
+    l->setContentsMargins(9, 7, 7, 7);
+    l->setSpacing(8);
+
+    auto *texts = new QVBoxLayout;
+    texts->setContentsMargins(0, 0, 0, 0);
+    texts->setSpacing(1);
+    auto *name = new ElidedLabel(L("Sincronizar con Google Drive"), QColor(Theme::fg()));
+    name->setObjectName("setRowText");
+    texts->addWidget(name);
+    // Recortada, con el texto entero en la ayuda: un error de Google puede ser
+    // largo, y aquí no puede ensanchar la página (ver *Card widths*).
+    m_driveSub = new ElidedLabel(QString(), QColor(Theme::muted()));
+    m_driveSub->setObjectName("meta");
+    texts->addWidget(m_driveSub);
+    l->addLayout(texts, 1);
+
+    m_driveBtn = new QToolButton;
+    m_driveBtn->setObjectName("segButton");
+    m_driveBtn->setCursor(Qt::PointingHandCursor);
+    connect(m_driveBtn, &QToolButton::clicked, this, [this] {
+        switch (m_drive->state()) {
+            case DriveSync::Disconnected: emit driveConnectRequested(); break;
+            case DriveSync::Authorizing:  emit driveCancelRequested(); break;
+            case DriveSync::Idle:
+            case DriveSync::Failed:       emit driveSyncRequested(); break;
+            default: break;
+        }
+    });
+    l->addWidget(m_driveBtn, 0, Qt::AlignVCenter);
+    m_layout->insertWidget(m_layout->count() - 1, card);
+
+    m_driveBuiltConnected = m_drive->connected();
+    if (m_driveBuiltConnected) {
+        // Qué hace y cómo se deja de hacer, debajo de la tarjeta.
+        auto *row = new QWidget;
+        auto *rl = new QHBoxLayout(row);
+        rl->setContentsMargins(4, 2, 0, 2);
+        rl->setSpacing(8);
+        auto *what = new QLabel(L("Tus equipos conectados a esta cuenta comparten notas, tareas, cumpleaños y temporizadores a través de la carpeta Tagoror de tu Drive."));
+        what->setObjectName("meta");
+        what->setWordWrap(true);
+        what->setMinimumWidth(24);   // ver *Card widths*
+        rl->addWidget(what, 1);
+        auto *off = new QToolButton;
+        off->setObjectName("segButton");
+        off->setText(L("Desconectar"));
+        off->setCursor(Qt::PointingHandCursor);
+        connect(off, &QToolButton::clicked, this, [this] { emit driveDisconnectRequested(); });
+        rl->addWidget(off, 0, Qt::AlignVCenter);
+        m_layout->insertWidget(m_layout->count() - 1, row);
+    }
+    refreshDrive();
+}
+
+void SettingsView::refreshDrive() {
+    if (!m_drive || !m_driveSub || !m_driveBtn) return;
+    if (m_drive->connected() != m_driveBuiltConnected) {
+        refresh();
+        return;
+    }
+
+    const QString error = m_drive->lastError();
+    const QString account = m_drive->account().isEmpty() ? L("Conectado") : m_drive->account();
+    QString sub, button;
+    bool enabled = true, bad = false;
+    switch (m_drive->state()) {
+        case DriveSync::Unavailable:
+            sub = L("No incluida en esta compilación");
+            button = L("Conectar");
+            enabled = false;
+            break;
+        case DriveSync::Disconnected:
+            bad = !error.isEmpty();
+            sub = bad ? error : L("Sin conectar · las notas se quedan en este equipo");
+            button = L("Conectar");
+            break;
+        case DriveSync::Authorizing:
+            sub = L("Autoriza el acceso en el navegador…");
+            button = L("Cancelar");
+            break;
+        case DriveSync::Syncing:
+            sub = account + " · " + L("sincronizando…");
+            button = L("Sincronizar");
+            enabled = false;
+            break;
+        case DriveSync::Failed:
+            bad = true;
+            sub = error;
+            button = L("Reintentar");
+            break;
+        case DriveSync::Idle: {
+            const QDateTime last = m_drive->lastSync();
+            sub = account + " · " +
+                  (last.isValid()
+                       ? L("sincronizado %1").arg(Lang::locale().toString(last, "d MMM · HH:mm"))
+                       : L("sin sincronizar todavía"));
+            button = L("Sincronizar");
+            break;
+        }
+    }
+    m_driveSub->setText(sub);
+    m_driveSub->setToolTip(sub);
+    m_driveSub->setColor(bad ? QColor("#ff7a6b") : QColor(Theme::muted()));
+    m_driveBtn->setText(button);
+    m_driveBtn->setEnabled(enabled);
+}
+
 void SettingsView::addInputs() {
     addSection(L("MICRÓFONO"));
 
@@ -338,7 +536,7 @@ void SettingsView::addInputs() {
 
         auto *row = new SettingRow;
         row->setCursor(Qt::PointingHandCursor);
-        row->click = [this, id = dev.id()] { emit inputPicked(id); };
+        row->setClick([this, id = dev.id()] { emit inputPicked(id); });
 
         auto *l = new QHBoxLayout(row);
         l->setContentsMargins(7, 5, 7, 5);

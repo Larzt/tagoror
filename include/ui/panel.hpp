@@ -22,17 +22,19 @@ class QTimer;
 class QToolButton;
 class QVBoxLayout;
 class Alarm;
+class DriveSync;
 class Updater;
 class BirthdayView;
-class CalendarView;
 class NoteCard;
+class PlannerView;
 class SettingsView;
+class TimerView;
 
 // Ventana única del widget: dibuja su propio chrome (sin decoración del WM) y
 // presenta lo que guarda el Store, que es quien sabe de disco. El
 // QStackedWidget exterior alterna entre el panel expandido y el icono plegado;
-// dentro, otro alterna entre la lista de notas, el calendario, los cumpleaños y
-// los ajustes.
+// dentro, otro alterna entre la lista de notas, el planificador, los
+// temporizadores, los cumpleaños y los ajustes.
 class Panel : public QWidget {
     Q_OBJECT
 
@@ -94,23 +96,48 @@ private:
     void commitOrder();
 
     // --- páginas del cuerpo ---
-    void toggleCalendar();
-    void toggleBirthdays();
-    void toggleSettings();
+    // Cada página con su botón de la cabecera y su nombre: abrir, cerrar,
+    // encender el botón y poner el título salen de esta lista y no de una
+    // función por página.
+    struct Page {
+        QWidget *page;
+        QToolButton *button;
+        const char *name;    // en español; se traduce al usarlo
+    };
+    QList<Page> pages() const;
+    void togglePage(QWidget *page);
     // Enciende o apaga el botón de una página. El icono no cambia -- dice
     // adónde lleva --, lo que cambia es el realce, que dice dónde estás.
     void setPageActive(QToolButton *button, bool on,
                        const QString &tipOn, const QString &tipOff);
-    void setCalendarActive(bool on);
-    void setBirthdaysActive(bool on);
-    void setSettingsActive(bool on);
+    void refreshPageButtons();
     // El rótulo de la cabecera dice en qué página estás, como en el diseño.
     void refreshTitle();
     void showNotes();
-    void askReminderTime(const QDate &day, QWidget *anchor);
-    void createReminder(const QDateTime &when);
-    void revealNote(Note *n);       // del calendario a su tarjeta en la lista
-    void refreshCalendar();
+    void createReminder(const QString &title, const QDateTime &when);
+    void revealNote(Note *n);       // del planificador a su tarjeta en la lista
+    void refreshPlanner();
+
+    // El planificador necesita ancho: la ventana se ensancha al abrirlo y
+    // vuelve a lo que medía al salir, si el usuario no la ha tocado entre
+    // medias (la misma regla que m_grownFrom con el alto).
+    void enterWide();
+    void leaveWide();
+
+    // --- temporizadores ---
+    void createTimer(const QString &name, qint64 ms);
+    void toggleTimer(Timer *t);
+    void resetTimer(Timer *t);
+    void removeTimer(Timer *t);
+    void onTimersChanged();         // repinta todo lo que enseña temporizadores
+    void tickTimers();              // cada medio segundo mientras algo cuenta
+    void refreshFooterTimer();
+    // La tira roja de "tiempo cumplido" / "empieza ya": los temporizadores y
+    // los eventos no tienen tarjeta en la lista con un botón de parar, así que
+    // su aviso vive aquí. Detener calla todo lo que enseña.
+    void refreshAlarmBar();
+    void stopBarAlarms();
+    void silenceEvent(Event *e);
 
     // --- cumpleaños ---
     void refreshBirthdays();
@@ -165,6 +192,12 @@ private:
     void pollDataDir();
     // La lista y las preferencias son otras tras recuperar la carpeta.
     void onStoreReloaded();
+    // Han llegado cambios de otro equipo (Drive). Los objetos que ya existían
+    // son los mismos, actualizados en su sitio; lo que cambia es la lista.
+    void onStoreMerged();
+    // ¿Se puede rehacer la lista ahora? No mientras el usuario escribe en un
+    // campo del panel: se quedaría sin cursor a media frase.
+    bool userIdle() const;
     // Enseña u oculta el cartel de "no se está guardando".
     void refreshDataWarning();
 
@@ -227,11 +260,17 @@ private:
     QWidget *m_updateBar = nullptr;
     QLabel *m_updateText = nullptr;
 
-    QStackedWidget *m_body = nullptr;    // lista de notas / calendario
+    // Aviso de temporizador o evento sonando (ver refreshAlarmBar).
+    QWidget *m_alarmBar = nullptr;
+    QLabel *m_alarmText = nullptr;
+    QToolButton *m_alarmPlus = nullptr;
+
+    QStackedWidget *m_body = nullptr;    // lista de notas / páginas
     QScrollArea *m_scroll = nullptr;
     QWidget *m_listHost = nullptr;
     QVBoxLayout *m_listLayout = nullptr;   // tarjetas + stretch final
-    CalendarView *m_calendar = nullptr;
+    PlannerView *m_planner = nullptr;
+    TimerView *m_timerView = nullptr;
     BirthdayView *m_birthdays = nullptr;
     SettingsView *m_settings = nullptr;
 
@@ -244,6 +283,8 @@ private:
     QLineEdit *m_search = nullptr;
     QLabel *m_footerText = nullptr;
     QToolButton *m_calendarBtn = nullptr;
+    QToolButton *m_timersBtn = nullptr;
+    QToolButton *m_footerTimer = nullptr;   // cuenta atrás en el pie
     QToolButton *m_birthdayBtn = nullptr;
     QToolButton *m_settingsBtn = nullptr;
     QList<QToolButton *> m_headerButtons;
@@ -253,8 +294,16 @@ private:
 
     NoteCard *m_dragCard = nullptr;        // tarjeta que se está arrastrando
     QTimer *m_dueTimer = nullptr;          // vigilancia de recordatorios
+    QTimer *m_tick = nullptr;              // temporizadores en marcha
     Alarm *m_alarm = nullptr;
     Updater *m_updater = nullptr;
+    // Copia en Google Drive. Sube un rato después de cada guardado, para que
+    // una ráfaga de tecleo sea una subida y no cincuenta.
+    DriveSync *m_drive = nullptr;
+    QTimer *m_driveTimer = nullptr;
+    // Cada cuánto se mira si otro equipo ha cambiado algo. Mirar es listar una
+    // carpeta; bajar solo se baja lo que ha cambiado.
+    QTimer *m_drivePoll = nullptr;
     QString m_latestUrl;              // la página de la última publicada
     Theme m_theme;
     QSize m_expandedSize;                  // se restaura al desplegar (y se guarda)
@@ -266,4 +315,7 @@ private:
     // ha tocado la ventana desde entonces, el tamaño es suyo y no se toca.
     QRect m_grownFrom;
     QRect m_grownTo;
+    // Lo mismo con el ancho del planificador (ver enterWide).
+    QRect m_narrowGeom;
+    QRect m_wideGeom;
 };

@@ -7,6 +7,13 @@ BIN     := $(BUILD)/tagoror
 PREFIX  ?= $(HOME)/.local
 AUTOSTART := $(HOME)/.config/autostart/tagoror.desktop
 
+# El cliente OAuth de Google para la copia en Drive vive en google-oauth.mk,
+# que git ignora: el repositorio es público y eso no se sube nunca. Se copia
+# google-oauth.mk.example y se rellena. Sin él se compila igual, sin Drive.
+-include google-oauth.mk
+OAUTH := $(if $(TAGOROR_GOOGLE_CLIENT_ID),-DTAGOROR_GOOGLE_CLIENT_ID=$(TAGOROR_GOOGLE_CLIENT_ID) \
+                                          -DTAGOROR_GOOGLE_CLIENT_SECRET=$(TAGOROR_GOOGLE_CLIENT_SECRET))
+
 .PHONY: all run clean configure install uninstall autostart autostart-off \
         appimage archpkg flatpak
 
@@ -14,7 +21,7 @@ all: configure
 	cmake --build $(BUILD)
 
 configure:
-	@cmake -B $(BUILD) -G Ninja -DCMAKE_BUILD_TYPE=Debug
+	@cmake -B $(BUILD) -G Ninja -DCMAKE_BUILD_TYPE=Debug $(OAUTH)
 
 run: all
 	./$(BIN)
@@ -24,7 +31,7 @@ clean:
 
 # Compilación optimizada aparte, para no reconfigurar la de desarrollo.
 install:
-	cmake -B $(RELEASE) -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX)
+	@cmake -B $(RELEASE) -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$(PREFIX) $(OAUTH)
 	cmake --build $(RELEASE)
 	cmake --install $(RELEASE)
 	@update-desktop-database $(PREFIX)/share/applications 2>/dev/null || true
@@ -55,6 +62,8 @@ autostart-off:
 # de esta máquina, y el paquete de Arch se baja el tarball de la etiqueta, que
 # tiene que estar publicada.
 appimage:
+	TAGOROR_GOOGLE_CLIENT_ID=$(TAGOROR_GOOGLE_CLIENT_ID) \
+	TAGOROR_GOOGLE_CLIENT_SECRET=$(TAGOROR_GOOGLE_CLIENT_SECRET) \
 	sh packaging/appimage/build-appimage.sh
 
 archpkg:

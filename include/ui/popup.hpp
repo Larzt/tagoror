@@ -57,6 +57,12 @@ public:
     void showBelow(QWidget *anchor);
     void showAt(const QPoint &globalPos);
 
+protected:
+    // Flechas arriba y abajo recorren las filas, como en cualquier menú; Tab
+    // también, porque las filas se alcanzan igual que cualquier otro control.
+    void keyPressEvent(QKeyEvent *e) override;
+    void showEvent(QShowEvent *e) override;
+
 private:
     // La acción se ejecuta tras cerrar: elegir "eliminar" destruye la tarjeta
     // que abrió el popup, así que no puede correr con el popup todavía vivo.

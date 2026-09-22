@@ -2,13 +2,17 @@
 #include "audio/alarm.hpp"
 #include "audio/recorder.hpp"
 #include "ui/birthdays.hpp"
-#include "ui/calendar.hpp"
+#include "ui/elidedlabel.hpp"
+#include "ui/planner.hpp"
 #include "ui/settings.hpp"
+#include "ui/timers.hpp"
 #include "ui/dragwidgets.hpp"
+#include "ui/keynav.hpp"
 #include "ui/notecard.hpp"
 #include "ui/popup.hpp"
 #include "ui/workarea.hpp"
 
+#include "core/drivesync.hpp"
 #include "core/lang.hpp"
 #include "core/updater.hpp"
 
@@ -41,6 +45,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QSystemTrayIcon>
+#include <QTextEdit>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -74,6 +79,16 @@ QToolButton *iconButton(const QString &kind, const QString &tip) {
     // retranslate() lo vuelve a traducir sin rehacer la cabecera.
     b->setProperty("tip", tip);
     return b;
+}
+
+// mm:ss (o h:mm:ss) de lo que le queda a un temporizador, redondeado hacia
+// arriba: 00:00 tiene que querer decir que ya ha terminado.
+QString timerClock(qint64 ms) {
+    const qint64 total = (ms + 999) / 1000;
+    const qint64 h = total / 3600, m = (total / 60) % 60, sec = total % 60;
+    if (h > 0)
+        return QString("%1:%2:%3").arg(h).arg(m, 2, 10, QChar('0')).arg(sec, 2, 10, QChar('0'));
+    return QString("%1:%2").arg(m, 2, 10, QChar('0')).arg(sec, 2, 10, QChar('0'));
 }
 
 // Etiqueta que ve el usuario para un instante concreto.
@@ -126,6 +141,7 @@ public:
         setAttribute(Qt::WA_StyledBackground, true);
         setAttribute(Qt::WA_Hover, true);
         setCursor(Qt::PointingHandCursor);
+        keynav::activatable(this, [this] { if (m_click) m_click(); });
     }
 
 protected:
@@ -144,12 +160,15 @@ private:
 
 Panel::Panel() {
     setAttribute(Qt::WA_TranslucentBackground);
+    // Intro pulsa el botón que tenga el foco, no solo la barra espaciadora.
+    keynav::installButtonEnter();
 
     // El Store resuelve la carpeta de datos y las migraciones en su
     // constructor, antes de que nadie toque disco.
     m_store.load();
     m_theme.accent = m_store.prefs().accent;
     m_theme.opacity = m_store.prefs().opacity;
+    m_theme.textScale = m_store.prefs().textScale;
     m_expandedSize = m_store.prefs().windowSize;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
 
@@ -167,8 +186,43 @@ Panel::Panel() {
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollUpdates);
     m_dueTimer->start();
 
+    // Los temporizadores necesitan más que el latido de 5 s: enseñan segundos.
+    // Medio segundo y no uno, para que la cuenta no se salte ninguno por el
+    // desfase entre este reloj y el de la pared. Solo corre si algo cuenta.
+    m_tick = new QTimer(this);
+    m_tick->setInterval(500);
+    connect(m_tick, &QTimer::timeout, this, &Panel::tickTimers);
+
     m_updater = new Updater(this);
     connect(m_updater, &Updater::finished, this, &Panel::onUpdateChecked);
+
+    // Antes de buildShell: la página de ajustes la enseña.
+    m_drive = new DriveSync(&m_store, this);
+    m_drive->canApply = [this] { return userIdle(); };
+    connect(m_drive, &DriveSync::openUrl, this, [](const QUrl &url) { QDesktopServices::openUrl(url); });
+    m_driveTimer = new QTimer(this);
+    m_driveTimer->setSingleShot(true);
+    m_driveTimer->setInterval(20 * 1000);
+    connect(m_driveTimer, &QTimer::timeout, this, [this] {
+        // Nunca con la carpeta ausente: lo que hay en memoria no son las notas.
+        if (m_store.available()) m_drive->syncNow();
+    });
+    connect(&m_store, &Store::saved, this, [this] {
+        if (m_drive->connected() && m_drive->state() != DriveSync::Syncing) m_driveTimer->start();
+    });
+    // Mientras se escribe no se mezcla: se vuelve a intentar al poco.
+    connect(m_drive, &DriveSync::deferred, this, [this] { m_driveTimer->start(); });
+    connect(m_drive, &DriveSync::attachmentsArrived, this, [this] {
+        // Las tarjetas se construyeron sin esas imágenes o esa grabación.
+        if (userIdle()) rebuildList();
+    });
+    connect(&m_store, &Store::merged, this, &Panel::onStoreMerged);
+    m_drivePoll = new QTimer(this);
+    m_drivePoll->setInterval(90 * 1000);
+    connect(m_drivePoll, &QTimer::timeout, this, [this] {
+        if (m_drive->connected() && m_store.available()) m_drive->syncNow();
+    });
+    m_drivePoll->start();
 
     buildShell();
     buildTray();
@@ -177,6 +231,7 @@ Panel::Panel() {
     refreshDataWarning();
     refreshUpdateBanner();   // con lo que se supiera de la última comprobación
     checkReminders();   // puede haber vencido algo con la app cerrada
+    tickTimers();       // y un temporizador puede haber llegado a cero
 
     if (!m_expandedSize.isValid())
         m_expandedSize = QSize(352 + kShadowMargin * 2, 560);
@@ -186,9 +241,16 @@ Panel::Panel() {
     // Después de applyWindowFlags: cambiar de flags destruye la ventana nativa,
     // y colocarla antes de eso es colocar una ventana que se va a rehacer.
     restoreWindowPos();
+
+    // Lo que se cambiara con la app cerrada, o una subida que falló la última
+    // vez: se sube poco después de arrancar.
+    if (m_drive->connected()) m_driveTimer->start();
 }
 
 Panel::~Panel() {
+    // El Store guarda al morir y avisa con saved(), y para entonces esta
+    // parte del panel ya no existe: nadie debe contestar a esa señal.
+    disconnect(&m_store, nullptr, this, nullptr);
     // El Store vuelve a guardar al destruirse, y para entonces este panel ya
     // no existe: se le quita el gancho antes de que pueda llamarlo.
     m_store.beforeSave = nullptr;
@@ -246,6 +308,45 @@ void Panel::buildShell() {
     m_updateBar->hide();
     col->addWidget(m_updateBar);
 
+    // Temporizador cumplido o evento que empieza: rojo como un recordatorio
+    // vencido, con su propio botón de parar porque no tienen tarjeta en la
+    // lista donde ponerlo.
+    m_alarmBar = new QWidget;
+    m_alarmBar->setObjectName("alarmBar");
+    m_alarmBar->setAttribute(Qt::WA_StyledBackground, true);
+    auto *al = new QHBoxLayout(m_alarmBar);
+    al->setContentsMargins(10, 6, 8, 6);
+    al->setSpacing(6);
+    auto *bell = new QLabel;
+    bell->setPixmap(paintIcon("bell", QColor("#ff7a6b"), 14).pixmap(14, 14));
+    al->addWidget(bell);
+    m_alarmText = new QLabel;
+    m_alarmText->setObjectName("alarmBarText");
+    m_alarmText->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
+    m_alarmText->setMinimumWidth(24);
+    al->addWidget(m_alarmText, 1);
+    m_alarmPlus = new QToolButton;
+    m_alarmPlus->setObjectName("alarmBtn");
+    m_alarmPlus->setText(L("+1 min"));
+    m_alarmPlus->setCursor(Qt::PointingHandCursor);
+    connect(m_alarmPlus, &QToolButton::clicked, this, [this] {
+        for (Timer *t : m_store.timers())
+            if (t->ringing()) t->snooze(60 * 1000);
+        onTimersChanged();
+        if (!anyRinging()) m_alarm->stop();
+        save();
+    });
+    al->addWidget(m_alarmPlus);
+    auto *stop = new QToolButton;
+    stop->setObjectName("alarmBtn");
+    stop->setProperty("tip", "Detener");
+    stop->setText(L("Detener"));
+    stop->setCursor(Qt::PointingHandCursor);
+    connect(stop, &QToolButton::clicked, this, &Panel::stopBarAlarms);
+    al->addWidget(stop);
+    m_alarmBar->hide();
+    col->addWidget(m_alarmBar);
+
     // barra de búsqueda (oculta por defecto)
     m_searchBar = new QWidget;
     auto *sl = new QHBoxLayout(m_searchBar);
@@ -277,7 +378,10 @@ QFrame *Panel::buildHeader() {
     l->setContentsMargins(12, 8, 10, 8);
     l->setSpacing(4);
 
-    m_titleLabel = new QLabel(L("Tagoror"));
+    // Recortable: con siete botones en la cabecera, "Temporizadores" ya no
+    // cabe entero en el ancho mínimo, y una etiqueta que pide su ancho
+    // ensancharía la ventana entera (ver *Card widths*).
+    m_titleLabel = new ElidedLabel(L("Tagoror"), QColor(Theme::fg()));
     m_titleLabel->setObjectName("title");
     l->addWidget(m_titleLabel);
     l->addStretch();
@@ -285,17 +389,16 @@ QFrame *Panel::buildHeader() {
     auto *search = iconButton("search", "Buscar");
     auto *add = iconButton("plus", "Nueva nota");
     m_calendarBtn = iconButton("calendar", "Calendario");
+    m_timersBtn = iconButton("timer", "Temporizadores");
     m_birthdayBtn = iconButton("cake", "Cumpleaños");
     m_settingsBtn = iconButton("gear", "Ajustes");
     auto *min = iconButton("minus", "Plegar a icono");
-    m_headerButtons = {m_calendarBtn, m_birthdayBtn, search, add, m_settingsBtn, min};
+    m_headerButtons = {m_calendarBtn, m_timersBtn, m_birthdayBtn, search, add, m_settingsBtn, min};
 
     connect(search, &QToolButton::clicked, this, &Panel::toggleSearch);
     connect(min, &QToolButton::clicked, this, &Panel::collapse);
     connect(add, &QToolButton::clicked, this, [this, add] { openNewNoteMenu(add); });
-    connect(m_settingsBtn, &QToolButton::clicked, this, &Panel::toggleSettings);
-    connect(m_calendarBtn, &QToolButton::clicked, this, &Panel::toggleCalendar);
-    connect(m_birthdayBtn, &QToolButton::clicked, this, &Panel::toggleBirthdays);
+    // Las páginas se conectan en buildBody(), que es donde existen.
 
     for (QToolButton *b : m_headerButtons) l->addWidget(b);
     return header;
@@ -329,6 +432,7 @@ QWidget *Panel::buildBody() {
 
     m_emptyBtn = new QPushButton(L("Crear la primera"));
     m_emptyBtn->setCursor(Qt::PointingHandCursor);
+    m_emptyBtn->setFocusPolicy(Qt::TabFocus);   // el anillo, solo con el teclado
     connect(m_emptyBtn, &QPushButton::clicked, this, [this] { openNewNoteMenu(m_emptyBtn); });
 
     auto *btnRow = new QHBoxLayout;
@@ -350,15 +454,52 @@ QWidget *Panel::buildBody() {
     // y les pisa el fondo (dejaba el botón de "lista vacía" sin relleno).
     m_scroll->viewport()->setObjectName("scrollViewport");
 
-    // ---- calendario -------------------------------------------------------
-    m_calendar = new CalendarView(m_theme);
-    m_calendar->setSource(&m_store.notes());
-    connect(m_calendar, &CalendarView::createRequested, this, &Panel::askReminderTime);
-    connect(m_calendar, &CalendarView::noteActivated, this, &Panel::revealNote);
-    connect(m_calendar, &CalendarView::dismissRequested, this, &Panel::dismissNote);
-    // Plegar o abrir la lista del día cambia lo que necesita la vista: la
-    // ventana rehace su mínimo y crece si hace falta.
-    connect(m_calendar, &CalendarView::roomChanged, this, &Panel::syncShellMinimum);
+    // ---- planificador -----------------------------------------------------
+    m_planner = new PlannerView(m_theme);
+    m_planner->setView(PlannerView::View(m_store.prefs().plannerView));
+    m_planner->setHidden(m_store.prefs().plannerHidden);
+    m_planner->setSources(&m_store.events(), &m_store.notes(), &m_store.birthdays());
+    connect(m_planner, &PlannerView::eventCreated, this, [this](Event *e) {
+        m_store.addEvent(e);   // el Store se queda con él y lo guarda
+        refreshPlanner();
+        refreshFooter();
+        checkReminders();      // uno que empieza ya tiene que sonar ya
+    });
+    connect(m_planner, &PlannerView::eventChanged, this, [this](Event *) {
+        save();
+        checkReminders();
+    });
+    connect(m_planner, &PlannerView::eventDeleted, this, [this](Event *e) {
+        // Igual que una nota: si sonaba y era lo único, el tono se apaga.
+        const bool wasRinging = e->ringingMs != 0;
+        m_store.removeEvent(e);
+        if (wasRinging && !anyRinging()) m_alarm->stop();
+        refreshAlarmBar();
+        applyBadgeAlert();
+        refreshPlanner();
+        refreshFooter();
+    });
+    connect(m_planner, &PlannerView::reminderCreated, this, &Panel::createReminder);
+    connect(m_planner, &PlannerView::noteActivated, this, &Panel::revealNote);
+    connect(m_planner, &PlannerView::birthdayActivated, this, [this](Birthday *) {
+        togglePage(m_birthdays);
+    });
+    connect(m_planner, &PlannerView::viewChanged, this, [this](int v) {
+        m_store.prefs().plannerView = v;
+        scheduleSave();
+    });
+    connect(m_planner, &PlannerView::hiddenChanged, this, [this](const QStringList &cats) {
+        m_store.prefs().plannerHidden = cats;
+        scheduleSave();
+    });
+
+    // ---- temporizadores ---------------------------------------------------
+    m_timerView = new TimerView(m_theme);
+    m_timerView->setSource(&m_store.timers());
+    connect(m_timerView, &TimerView::createRequested, this, &Panel::createTimer);
+    connect(m_timerView, &TimerView::toggleRequested, this, &Panel::toggleTimer);
+    connect(m_timerView, &TimerView::resetRequested, this, &Panel::resetTimer);
+    connect(m_timerView, &TimerView::removeRequested, this, &Panel::removeTimer);
 
     // ---- cumpleaños -------------------------------------------------------
     m_birthdays = new BirthdayView(m_theme);
@@ -393,6 +534,16 @@ QWidget *Panel::buildBody() {
         scheduleSave();
     });
     connect(m_settings, &SettingsView::languagePicked, this, &Panel::setLanguage);
+    connect(m_settings, &SettingsView::textScalePicked, this, [this](int percent) {
+        if (percent == m_theme.textScale) return;
+        m_theme.textScale = percent;
+        m_store.prefs().textScale = percent;
+        // La hoja cambia sola en todo lo que la hereda; lo que se pinta a mano
+        // (el planificador, los temporizadores) lo recoge en setTheme().
+        applyTheme();
+        refreshSettings();   // el botón elegido y la muestra
+        save();
+    });
     connect(m_settings, &SettingsView::onTopToggled, this, [this](bool on) {
         m_store.prefs().onTop = on;
         applyWindowFlags();
@@ -420,12 +571,27 @@ QWidget *Panel::buildBody() {
     connect(m_settings, &SettingsView::checkUpdatesRequested, this, &Panel::checkUpdatesNow);
     connect(m_settings, &SettingsView::openLatestRequested, this, &Panel::openLatestRelease);
     connect(m_settings, &SettingsView::quitRequested, qApp, &QApplication::quit);
+    m_settings->setDrive(m_drive);
+    connect(m_drive, &DriveSync::changed, m_settings, &SettingsView::refreshDrive);
+    connect(m_settings, &SettingsView::driveConnectRequested, m_drive, &DriveSync::connectAccount);
+    connect(m_settings, &SettingsView::driveCancelRequested, m_drive, &DriveSync::cancel);
+    connect(m_settings, &SettingsView::driveDisconnectRequested, m_drive, &DriveSync::disconnectAccount);
+    connect(m_settings, &SettingsView::driveSyncRequested, this, [this] {
+        if (!m_store.available()) return;
+        save();                 // lo último escrito, antes de subir
+        m_driveTimer->stop();   // ya se sube ahora
+        m_drive->syncNow();
+    });
 
     m_body = new QStackedWidget;
     m_body->addWidget(m_scroll);
-    m_body->addWidget(m_calendar);
+    m_body->addWidget(m_planner);
+    m_body->addWidget(m_timerView);
     m_body->addWidget(m_birthdays);
     m_body->addWidget(m_settings);
+
+    for (const Page &p : pages())
+        connect(p.button, &QToolButton::clicked, this, [this, page = p.page] { togglePage(page); });
     // Desde el principio, no solo al cambiar de página: el calendario pide más
     // alto que la lista y, sin esto, se lo impondría a la ventana ya al nacer.
     showBodyPage(m_scroll);
@@ -452,6 +618,25 @@ QFrame *Panel::buildFooter() {
     m_footerHint = new QLabel;
     m_footerHint->setObjectName("meta");
     l->addWidget(m_footerHint);
+
+    // Lo que le queda al temporizador en marcha, a la vista desde cualquier
+    // página. Ocupa el sitio de la pista mientras cuenta: las dos juntas no
+    // caben en el ancho mínimo.
+    m_footerTimer = new QToolButton;
+    m_footerTimer->setObjectName("footerTimer");
+    m_footerTimer->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_footerTimer->setIconSize(QSize(12, 12));
+    m_footerTimer->setCursor(Qt::PointingHandCursor);
+    m_footerTimer->hide();
+    connect(m_footerTimer, &QToolButton::clicked, this, [this] {
+        for (Timer *t : m_store.timers())
+            if (t->state == Timer::Running) {
+                m_timerView->focusTimer(t);
+                break;
+            }
+        if (m_body->currentWidget() != m_timerView) togglePage(m_timerView);
+    });
+    l->addWidget(m_footerTimer);
     l->addWidget(new GripCorner, 0, Qt::AlignBottom);
     return footer;
 }
@@ -503,7 +688,8 @@ void Panel::applyTheme() {
                              b->property("active").toBool() ? m_theme.accent
                                                             : QColor(Theme::muted())));
 
-    if (m_calendar) m_calendar->setTheme(m_theme);
+    if (m_planner) m_planner->setTheme(m_theme);
+    if (m_timerView) m_timerView->setTheme(m_theme);
     if (m_birthdays) m_birthdays->setTheme(m_theme);
     // El de ajustes no se rehace: repinta lo que lleva el acento y deja en pie
     // el deslizador de la opacidad, que es quien acaba de llamar aquí.
@@ -540,16 +726,21 @@ void Panel::retranslate() {
         b->setToolTip(L(b->property("tip").toString()));
     // Los de las páginas además dicen en cuál estás, así que se rehacen por su
     // propio camino.
-    setPageActive(m_calendarBtn, m_calendarBtn->property("active").toBool(),
-                  L("Ver notas"), L("Calendario"));
-    setPageActive(m_birthdayBtn, m_birthdayBtn->property("active").toBool(),
-                  L("Ver notas"), L("Cumpleaños"));
-    setPageActive(m_settingsBtn, m_settingsBtn->property("active").toBool(),
-                  L("Ver notas"), L("Ajustes"));
+    refreshPageButtons();
+    m_alarmPlus->setText(L("+1 min"));
+    for (auto *b : m_alarmBar->findChildren<QToolButton *>())
+        if (!b->property("tip").toString().isEmpty()) b->setText(L(b->property("tip").toString()));
+    refreshAlarmBar();
 
     buildTrayMenu();
     applyBadgeAlert();   // la ayuda del icono de la bandeja lleva texto
-    if (m_calendar) m_calendar->retranslate();
+    if (m_planner) {
+        // Tras recargar el Store la vista y el filtro guardados son otros.
+        m_planner->setView(PlannerView::View(m_store.prefs().plannerView));
+        m_planner->setHidden(m_store.prefs().plannerHidden);
+        m_planner->retranslate();
+    }
+    if (m_timerView) m_timerView->retranslate();
     if (m_birthdays) {
         // Tras recargar el Store las preferencias son otras, y el orden de la
         // lista es una de ellas; retranslate() repinta la página de todas formas.
@@ -582,7 +773,7 @@ void Panel::rebuildList() {
     for (Note *n : m_store.notes()) {
         auto *card = new NoteCard(n, m_theme);
         connect(card, &NoteCard::dirty, this, &Panel::scheduleSave);
-        connect(card, &NoteCard::dirty, this, &Panel::refreshCalendar);
+        connect(card, &NoteCard::dirty, this, &Panel::refreshPlanner);
         connect(card, &NoteCard::deleteRequested, this, &Panel::removeNote);
         connect(card, &NoteCard::dismissRequested, this, &Panel::dismissNote);
         connect(card, &NoteCard::rescheduled, this, &Panel::rescheduleNote);
@@ -597,7 +788,7 @@ void Panel::rebuildList() {
     m_empty->setVisible(m_store.notes().isEmpty());
     m_badgeCount->setText(QString::number(m_store.count()));
     refreshFooter();
-    refreshCalendar();
+    refreshPlanner();
     refreshBirthdays();
     applyBadgeAlert();
     if (m_search && !m_search->text().isEmpty())
@@ -616,11 +807,12 @@ void Panel::refreshFooter() {
     refreshFooterHint();
     if (!m_footerText) return;
 
-    if (m_body && m_body->currentWidget() == m_calendar) {
-        int scheduled = 0;
-        for (Note *n : m_store.notes())
-            if (n->isScheduled()) ++scheduled;
-        m_footerText->setText(L("%1 CON FECHA").arg(scheduled));
+    if (m_body && m_body->currentWidget() == m_planner) {
+        m_footerText->setText(L("%1 EVENTOS").arg(m_store.events().size()));
+        return;
+    }
+    if (m_body && m_body->currentWidget() == m_timerView) {
+        m_footerText->setText(L("%1 TEMPORIZADORES").arg(m_store.timers().size()));
         return;
     }
     if (m_body && m_body->currentWidget() == m_birthdays) {
@@ -654,8 +846,14 @@ void Panel::addNote(Note::Type type) {
 }
 
 void Panel::removeNote(Note *n) {
+    // Igual que con los cumpleaños: si la nota estaba sonando y era la única,
+    // el tono se quedaba puesto sin nada en la lista que lo explicara ni botón
+    // con el que pararlo. Se pregunta antes de borrarla, porque después ya no
+    // hay a quién.
+    const bool wasRinging = n->ringing;
     m_store.remove(n);
-    rebuildList();
+    if (wasRinging && !anyRinging()) m_alarm->stop();
+    rebuildList();   // de paso repinta el dock y la bandeja
 }
 
 // --- reordenar --------------------------------------------------------------
@@ -773,60 +971,44 @@ void Panel::bringToFront() {
     activateWindow();
 }
 
-// --- calendario ------------------------------------------------------------
+// --- páginas -----------------------------------------------------------------
 
-void Panel::toggleCalendar() {
-    if (m_body->currentWidget() == m_calendar) {
-        showNotes();
-        return;
-    }
-    m_searchBar->hide();
-    showBodyPage(m_calendar);
-    m_calendar->refresh();
-    setCalendarActive(true);
-    setBirthdaysActive(false);
-    setSettingsActive(false);
-    refreshFooter();
-    refreshTitle();
+QList<Panel::Page> Panel::pages() const {
+    return {{m_planner, m_calendarBtn, "Calendario"},
+            {m_timerView, m_timersBtn, "Temporizadores"},
+            {m_birthdays, m_birthdayBtn, "Cumpleaños"},
+            {m_settings, m_settingsBtn, "Ajustes"}};
 }
 
-void Panel::toggleBirthdays() {
-    if (m_body->currentWidget() == m_birthdays) {
+// Abre una página, o vuelve a las notas si ya estaba abierta: el mismo botón
+// entra y sale.
+void Panel::togglePage(QWidget *page) {
+    if (m_body->currentWidget() == page) {
         showNotes();
         return;
     }
-    m_searchBar->hide();
-    m_birthdays->refresh();
-    showBodyPage(m_birthdays);
-    setBirthdaysActive(true);
-    setCalendarActive(false);
-    setSettingsActive(false);
-    refreshFooter();
-    refreshTitle();
-}
+    // Primero se devuelve el ancho: si no, la página que viene heredaría la
+    // ventana ensanchada para el planificador.
+    if (m_body->currentWidget() == m_planner) leaveWide();
 
-void Panel::toggleSettings() {
-    if (m_body->currentWidget() == m_settings) {
-        showNotes();
-        return;
-    }
     m_searchBar->hide();
-    m_settings->refresh();
-    showBodyPage(m_settings);
-    setSettingsActive(true);
-    setCalendarActive(false);
-    setBirthdaysActive(false);
+    if (page == m_planner) m_planner->refresh();
+    else if (page == m_timerView) m_timerView->refresh();
+    else if (page == m_birthdays) m_birthdays->refresh();
+    else if (page == m_settings) m_settings->refresh();
+    showBodyPage(page);
+    refreshPageButtons();
     refreshFooter();
     refreshTitle();
+    if (page == m_planner) enterWide();
 }
 
 void Panel::showNotes() {
     if (m_body->currentWidget() == m_scroll) return;
 
+    if (m_body->currentWidget() == m_planner) leaveWide();
     showBodyPage(m_scroll);
-    setCalendarActive(false);
-    setBirthdaysActive(false);
-    setSettingsActive(false);
+    refreshPageButtons();
     refreshFooter();
     refreshTitle();
 }
@@ -844,76 +1026,206 @@ void Panel::setPageActive(QToolButton *button, bool on,
     button->style()->polish(button);
 }
 
-void Panel::setCalendarActive(bool on) {
-    setPageActive(m_calendarBtn, on, L("Ver notas"), L("Calendario"));
-}
-
-void Panel::setBirthdaysActive(bool on) {
-    setPageActive(m_birthdayBtn, on, L("Ver notas"), L("Cumpleaños"));
-}
-
-void Panel::setSettingsActive(bool on) {
-    setPageActive(m_settingsBtn, on, L("Ver notas"), L("Ajustes"));
+void Panel::refreshPageButtons() {
+    QWidget *current = m_body ? m_body->currentWidget() : nullptr;
+    for (const Page &p : pages())
+        setPageActive(p.button, p.page == current, L("Ver notas"), L(p.name));
 }
 
 // El rótulo de la cabecera nombra la página abierta. En la lista vuelve a ser
 // el nombre de la aplicación, que es donde tiene sentido que esté.
 void Panel::refreshTitle() {
     if (!m_titleLabel || !m_body) return;
-    QWidget *page = m_body->currentWidget();
-    m_titleLabel->setText(page == m_calendar    ? L("Calendario")
-                          : page == m_birthdays ? L("Cumpleaños")
-                          : page == m_settings  ? L("Ajustes")
-                                                : L("Tagoror"));
+    QString title = L("Tagoror");
+    for (const Page &p : pages())
+        if (p.page == m_body->currentWidget()) title = L(p.name);
+    m_titleLabel->setText(title);
+    m_titleLabel->update();   // ElidedLabel se pinta a mano
 }
 
-void Panel::refreshCalendar() {
-    // Cada tecleo en una tarjeta pasa por aquí: si el calendario no está a la
-    // vista no hay nada que repintar, y al volver a él ya se refresca.
-    if (m_calendar && m_body->currentWidget() == m_calendar) m_calendar->refresh();
+void Panel::refreshPlanner() {
+    // Cada tecleo en una tarjeta pasa por aquí: si el planificador no está a
+    // la vista no hay nada que repintar, y al volver a él ya se refresca.
+    if (m_planner && m_body->currentWidget() == m_planner) m_planner->refresh();
 }
 
-void Panel::askReminderTime(const QDate &day, QWidget *anchor) {
-    auto *menu = new Popup(m_theme, this);
-    menu->addHeader(Lang::locale().toString(day, "dddd d MMMM"));
-
-    const QDateTime now = QDateTime::currentDateTime();
-    const QList<QTime> hours = {QTime(9, 0), QTime(12, 0), QTime(15, 0),
-                                QTime(18, 0), QTime(21, 0)};
-
-    // Las horas van en chips y no en filas de menú: cinco filas medían más que
-    // el propio calendario, y con el panel bajo el menú acababa por encima de
-    // la rejilla en vez de debajo de la fila que lo abre.
-    QStringList labels;
-    QList<bool> past;
-    for (const QTime &t : hours) {
-        labels << t.toString("HH:mm");
-        past << (QDateTime(day, t) <= now);
-    }
-    menu->addChips(labels, past, L("Ya pasado"), [this, day, hours](int i) {
-        createReminder(QDateTime(day, hours.at(i)));
-    });
-
-    menu->addSeparator();
-    menu->addHeader(L("A mano · HH:mm"));
-    menu->addEditor(L("p. ej. 20:30"), QString(), [this, day](const QString &value) {
-        const QTime t = QTime::fromString(value.trimmed(), "HH:mm");
-        if (t.isValid()) createReminder(QDateTime(day, t));
-    });
-    menu->showBelow(anchor);
-}
-
-void Panel::createReminder(const QDateTime &when) {
+void Panel::createReminder(const QString &title, const QDateTime &when) {
     auto *n = new Note;
     n->type = Note::Reminder;
-    n->title = L("Nuevo recordatorio");
+    n->title = title.isEmpty() ? L("Nuevo recordatorio") : title;
     n->dueAtMs = when.toMSecsSinceEpoch();
     n->due = dueLabel(when);
 
     m_store.add(n);
     rebuildList();
-    // Se queda en el calendario, sobre el día donde acaba de aparecer.
-    m_calendar->goTo(when.date());
+    // Se queda en el planificador, sobre el día donde acaba de aparecer.
+    m_planner->goTo(when.date());
+    checkReminders();
+}
+
+// --- ancho del planificador ---------------------------------------------------
+
+// Se ensancha hacia donde quepa (anchoredTopLeft: hacia la izquierda si está
+// pegada al borde derecho) y se apunta cómo quedó, para poder devolverla.
+void Panel::enterWide() {
+    if (!m_stack || m_stack->currentWidget() != m_shell) return;
+    int target = PlannerView::kPreferredWidth + kShadowMargin * 2;
+    if (const QRect area = placementArea(); area.isValid()) target = qMin(target, area.width());
+    if (width() >= target) return;
+
+    const QRect before = geometry();
+    const QSize size(target, height());
+    setGeometry(QRect(anchoredTopLeft(before, size), size));
+    keepOnScreen();
+    m_narrowGeom = before;
+    m_wideGeom = geometry();
+}
+
+// Solo si la ventana sigue siendo la que dejó enterWide: si el usuario la ha
+// redimensionado entre medias, ese tamaño es suyo y se respeta.
+void Panel::leaveWide() {
+    if (m_narrowGeom.isValid() && geometry() == m_wideGeom) {
+        setGeometry(m_narrowGeom);
+        keepOnScreen();
+    }
+    m_narrowGeom = QRect();
+    m_wideGeom = QRect();
+}
+
+// --- temporizadores -------------------------------------------------------------
+
+void Panel::createTimer(const QString &name, qint64 ms) {
+    auto *t = new Timer;
+    t->name = name.isEmpty() ? L("Temporizador %1").arg(timerClock(ms)) : name;
+    t->totalMs = ms;
+    t->leftMs = ms;
+    t->start();              // crear es lanzarlo: para guardarlo quieto está Reiniciar
+    m_store.addTimer(t);
+    m_timerView->focusTimer(t);
+    onTimersChanged();
+}
+
+void Panel::toggleTimer(Timer *t) {
+    const bool wasRinging = t->ringing();
+    if (t->state == Timer::Running) t->pause();
+    else t->start();
+    if (wasRinging && !anyRinging()) m_alarm->stop();
+    save();
+    onTimersChanged();
+}
+
+void Panel::resetTimer(Timer *t) {
+    const bool wasRinging = t->ringing();
+    t->reset();
+    if (wasRinging && !anyRinging()) m_alarm->stop();
+    save();
+    onTimersChanged();
+}
+
+void Panel::removeTimer(Timer *t) {
+    // Como con las notas: borrar el que suena no puede dejar el tono puesto.
+    const bool wasRinging = t->ringing();
+    m_store.removeTimer(t);
+    if (wasRinging && !anyRinging()) m_alarm->stop();
+    onTimersChanged();
+}
+
+void Panel::onTimersChanged() {
+    m_timerView->refresh();
+    bool running = false;
+    for (Timer *t : m_store.timers()) running |= t->state == Timer::Running;
+    if (running && !m_tick->isActive()) m_tick->start();
+    refreshFooterTimer();
+    refreshAlarmBar();
+    applyBadgeAlert();
+    if (m_body->currentWidget() == m_timerView) refreshFooter();
+}
+
+void Panel::tickTimers() {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    bool fired = false, running = false;
+    for (Timer *t : m_store.timers()) {
+        if (t->expired(now)) {
+            t->state = Timer::Done;
+            fired = true;
+        }
+        running |= t->state == Timer::Running;
+    }
+    if (fired) {
+        m_alarm->start();
+        save();
+        onTimersChanged();
+    } else if (m_body->currentWidget() == m_timerView) {
+        m_timerView->tick();
+    }
+    refreshFooterTimer();
+    if (!running) m_tick->stop();
+    else if (!m_tick->isActive()) m_tick->start();
+}
+
+void Panel::refreshFooterTimer() {
+    if (!m_footerTimer) return;
+    // El que antes acaba es el que interesa.
+    const Timer *next = nullptr;
+    for (const Timer *t : m_store.timers())
+        if (t->state == Timer::Running && (!next || t->endsAtMs < next->endsAtMs)) next = t;
+
+    const bool show = next != nullptr;
+    if (show) {
+        m_footerTimer->setText(timerClock(next->remainingMs()));
+        m_footerTimer->setIcon(paintIcon("timer", m_theme.accent, 12));
+        m_footerTimer->setToolTip(next->name);
+    }
+    if (show == !m_footerTimer->isHidden()) return;
+    m_footerTimer->setVisible(show);
+    m_footerHint->setVisible(!show);
+}
+
+// Lo primero que suena: un temporizador, o si no un evento. Con varios a la
+// vez se dice cuántos, y Detener los calla todos.
+void Panel::refreshAlarmBar() {
+    if (!m_alarmBar) return;
+    QStringList what;
+    bool timers = false;
+    for (Timer *t : m_store.timers())
+        if (t->ringing()) {
+            what << L("%1 · tiempo cumplido").arg(t->name);
+            timers = true;
+        }
+    for (Event *e : m_store.events())
+        if (e->ringingMs)
+            what << L("%1 · empieza a las %2")
+                        .arg(e->title.isEmpty() ? L("Sin título") : e->title,
+                             QDateTime::fromMSecsSinceEpoch(e->ringingMs).toString("HH:mm"));
+
+    const bool show = !what.isEmpty();
+    if (show) {
+        QString text = what.first();
+        if (what.size() > 1) text += " " + L("(y %1 más)").arg(what.size() - 1);
+        m_alarmText->setText(text);
+        m_alarmPlus->setVisible(timers);
+    }
+    if (show == !m_alarmBar->isHidden()) return;
+    m_alarmBar->setVisible(show);
+    syncShellMinimum();   // ocupa alto dentro del shell, como los otros avisos
+}
+
+void Panel::stopBarAlarms() {
+    for (Timer *t : m_store.timers())
+        if (t->ringing()) t->reset();
+    for (Event *e : m_store.events())
+        if (e->ringingMs) silenceEvent(e);
+    if (!anyRinging()) m_alarm->stop();
+    save();
+    onTimersChanged();
+    refreshPlanner();
+}
+
+void Panel::silenceEvent(Event *e) {
+    // Se apunta qué vuelta sonó, no un "ya avisado" a secas: la semana que
+    // viene la clase vuelve a avisar.
+    e->firedMs = e->ringingMs;
+    e->ringingMs = 0;
 }
 
 void Panel::revealNote(Note *n) {
@@ -1083,6 +1395,10 @@ bool Panel::anyRinging() const {
         if (n->ringing) return true;
     for (Birthday *b : m_store.birthdays())
         if (b->ringing) return true;
+    for (Timer *t : m_store.timers())
+        if (t->ringing()) return true;
+    for (Event *e : m_store.events())
+        if (e->ringingMs) return true;
     return false;
 }
 
@@ -1106,12 +1422,22 @@ void Panel::checkReminders() {
             started = true;
         }
     }
+    // Los eventos del planificador con aviso, diez minutos antes. Mismo tono
+    // otra vez: para quien lo oye es un aviso más.
+    for (Event *e : m_store.events()) {
+        const qint64 key = e->alarmDue(nowAt);
+        if (key && e->ringingMs != key) {
+            e->ringingMs = key;
+            started = true;
+        }
+    }
     if (!started) return;
 
     m_alarm->start();
     refreshDueCards();
-    refreshCalendar();
+    refreshPlanner();
     refreshBirthdays();
+    refreshAlarmBar();
     applyBadgeAlert();
 }
 
@@ -1132,7 +1458,7 @@ void Panel::dismissNote(Note *n) {
     silence(n);
     if (!anyRinging()) m_alarm->stop();
     refreshDueCards();
-    refreshCalendar();
+    refreshPlanner();
     applyBadgeAlert();
     save();
 }
@@ -1143,7 +1469,7 @@ void Panel::dismissNote(Note *n) {
 // enseñando el aviso como si sonara, ahora sobre su día nuevo.
 void Panel::rescheduleNote(Note *) {
     if (!anyRinging()) m_alarm->stop();
-    refreshCalendar();
+    refreshPlanner();
     applyBadgeAlert();
 }
 
@@ -1440,6 +1766,7 @@ void Panel::pollDataDir() {
 void Panel::onStoreReloaded() {
     m_theme.accent = m_store.prefs().accent;
     m_theme.opacity = m_store.prefs().opacity;
+    m_theme.textScale = m_store.prefs().textScale;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
     applyTheme();
     // El idioma lo deja puesto Store::load(); retranslate() reescribe la
@@ -1447,7 +1774,45 @@ void Panel::onStoreReloaded() {
     retranslate();
     // El tamaño y la posición no se tocan a propósito: la ventana es donde el
     // usuario la tiene ahora, no donde estaba cuando se guardó ese fichero.
+    // Las notas que sonaban ya no existen -- la lista es otra --, así que el
+    // tono se apaga antes de ver si en la nueva hay algo que deba sonar.
+    if (!anyRinging()) m_alarm->stop();
     checkReminders();
+    tickTimers();
+    onTimersChanged();
+}
+
+bool Panel::userIdle() const {
+    // Con la ventana en segundo plano nadie está escribiendo en ella, aunque
+    // el foco se haya quedado dentro de un campo.
+    // Un menú abierto tampoco: sus acciones llevan dentro punteros a la nota o
+    // al cumpleaños sobre el que se abrió, y la mezcla podría borrarlos.
+    if (QApplication::activePopupWidget()) return false;
+    if (!isActiveWindow()) return true;
+    QWidget *f = QApplication::focusWidget();
+    if (!f || f->window() != this) return true;
+    return !qobject_cast<QLineEdit *>(f) && !qobject_cast<QTextEdit *>(f);
+}
+
+void Panel::onStoreMerged() {
+    // Lo que sonaba aquí puede haberse callado en el otro equipo: la versión
+    // de fuera trae el "ya avisó", y entonces aquí también se calla.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const int year = QDate::currentDate().year();
+    for (Note *n : m_store.notes())
+        if (n->ringing && !n->isDue(now)) n->ringing = false;
+    for (Birthday *b : m_store.birthdays())
+        if (b->ringing && b->firedYear == year) b->ringing = false;
+    for (Event *e : m_store.events())
+        if (e->ringingMs && e->firedMs >= e->ringingMs) e->ringingMs = 0;
+    if (!anyRinging()) m_alarm->stop();
+
+    rebuildList();          // tarjetas, pie, planificador, cumpleaños y dock
+    if (m_birthdays) m_birthdays->refresh();
+    tickTimers();           // uno que llega en marcha tiene que empezar a contar
+    onTimersChanged();
+    refreshAlarmBar();
+    checkReminders();       // y uno que llega vencido, a sonar
 }
 
 void Panel::refreshDataWarning() {
@@ -1684,6 +2049,10 @@ void Panel::syncShellMinimum() {
 }
 
 void Panel::collapse() {
+    // El tamaño que se guarda es el de siempre, no el ensanchado para el
+    // planificador: si no, desplegar el dock abriría la ventana ancha para
+    // cualquier página.
+    if (m_body->currentWidget() == m_planner) leaveWide();
     m_expandedSize = size();
     const QRect panel = geometry();
     // El apunte de la crecida no sobrevive al dock: la geometría con la que se
@@ -1717,10 +2086,15 @@ void Panel::expand() {
             if (n->ringing) silence(n);
         for (Birthday *b : m_store.birthdays())
             if (b->ringing) silenceBirthday(b);
+        for (Timer *t : m_store.timers())
+            if (t->ringing()) t->reset();
+        for (Event *e : m_store.events())
+            if (e->ringingMs) silenceEvent(e);
         m_alarm->stop();
         refreshDueCards();
-        refreshCalendar();
+        refreshPlanner();
         refreshBirthdays();
+        onTimersChanged();
         applyBadgeAlert();
         scheduleSave();
     }
@@ -1749,6 +2123,9 @@ void Panel::expand() {
                           qBound(0, dock.y() - at.y(), qMax(0, target.height() - dock.height())));
 
     keepOnScreen();
+    // Se plegó con el planificador abierto: collapse() le devolvió el ancho
+    // estrecho antes de guardarlo, y aquí se le vuelve a dar el suyo.
+    if (m_body->currentWidget() == m_planner) enterWide();
 }
 
 // Dónde admite el gestor de ventanas que se ponga la ventana: la pantalla
@@ -1827,6 +2204,11 @@ void Panel::restoreWindowPos() {
 // editor de una tarjeta ya usa Escape para cerrarse y se lo queda antes.
 void Panel::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Escape && m_body && m_body->currentWidget() != m_scroll) {
+        // En el planificador, Escape cierra antes el formulario si está abierto.
+        if (m_body->currentWidget() == m_planner && m_planner->closeEditor()) {
+            e->accept();
+            return;
+        }
         showNotes();
         e->accept();
         return;
@@ -1847,7 +2229,10 @@ void Panel::moveEvent(QMoveEvent *e) {
 void Panel::syncPrefs() {
     // Plegado, el tamaño que vale es el que tenía desplegado.
     const bool folded = m_stack && m_stack->currentWidget() == m_badge;
-    m_store.prefs().windowSize = folded ? m_expandedSize : size();
+    // Ensanchada para el planificador, lo que vale es lo que medía antes: al
+    // arrancar se abre la lista, no el planificador.
+    const bool wide = m_narrowGeom.isValid() && geometry() == m_wideGeom;
+    m_store.prefs().windowSize = folded ? m_expandedSize : wide ? m_narrowGeom.size() : size();
 
     // La posición se guarda tal cual esté, plegada o no: al arrancar el panel
     // se abre por esa esquina, que es exactamente lo que hace desplegar el dock.
