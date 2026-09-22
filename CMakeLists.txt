@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 2.0.0 LANGUAGES CXX)
+project(tagoror VERSION 3.0.0 LANGUAGES CXX)
 
 # La versión que enseñan el .exe de Windows y su instalador. La CI la pisa
 # con la de la etiqueta que se está publicando.

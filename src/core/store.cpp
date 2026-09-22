@@ -1,5 +1,7 @@
 #include "core/store.hpp"
 
+#include <algorithm>
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>

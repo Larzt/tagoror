@@ -92,6 +92,21 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.0.0" date="2026-09-22">
+      <description>
+        <p>A planner replaces the calendar: day, week and month views with
+           events and tasks that have a start, an end, a category, an optional
+           repeat and an alert. Reminders and birthdays appear on the same
+           grid.</p>
+        <p>Timers with a dial, pause and reset, that keep counting with the
+           app closed. Text notes understand Markdown. The text size can be
+           changed in settings, and every control can be reached with the
+           keyboard.</p>
+        <p>Optional sync between computers through Google Drive, merging
+           each note, event and timer instead of overwriting whole files. Also
+           fixes an alarm that kept ringing after deleting its reminder.</p>
+      </description>
+    </release>
     <release version="2.0.0" date="2026-09-18">
       <description>
         <p>Birthdays. A page of their own: the next one due is highlighted,

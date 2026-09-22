@@ -4,7 +4,7 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [3.0.0] — 2026-09-22
 
 A planner in place of the calendar, timers, Markdown in text notes, a text-size
 setting and a panel that can be used without the mouse.
