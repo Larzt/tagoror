@@ -34,7 +34,7 @@
 | | |
 |---|---|
 | **Text** | A note whose editor grows with the content, and that understands **Markdown**: headings, `**bold**`, `*italic*`, `` `code` ``, lists, `- [ ]` checkboxes, quotes and `[links](…)` are shown formatted, and turn back into plain text the moment you click in to edit. Single line breaks stay line breaks, so notes written before this look the same. |
-| **Checklist** | Items you can tick off (done ones get struck through) and rename in place, a progress bar, and an add row that reads as a pending task rather than a form. |
+| **Checklist** | Items you can tick off (done ones get struck through), rename in place and drag into a new order, a progress bar, and an add row that reads as a pending task rather than a form. |
 | **Reminder** | A real date, not just a label: when the time comes it rings until you stop it, or for a minute — after that it goes quiet but stays red until you acknowledge it. |
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
 
@@ -48,11 +48,11 @@
   hand, or a day and hour picked in the planner.
 - Click the date chip **or** right-click the note to change it.
 - **They can come back every week or every year** — the bin on Thursdays, a
-  birthday — from the *Repetir* section of the same date menu. A repeating
+  birthday — from the *Repeat* section of the same date menu. A repeating
   reminder shows a small loop next to its date, says how often it returns where
   the type label goes, and jumps to its next turn as soon as you silence it.
 - **A reminder with no details is only its date.** The body editor is not there
-  taking up room until you ask for it, with *+ Añadir detalles* under the date
+  taking up room until you ask for it, with *+ Add details* under the date
   or the entry in the note's menu.
 - Colour tells you the state at a glance: a muted clock while it is still ahead,
   a red bell once the time has passed — whether or not it has already rung.
@@ -162,7 +162,7 @@
   changing the storage folder takes them along.
 - They are scaled to the width of the card — never the other way round — and
   cropped to a sensible height rather than stretched.
-- **The whole strip folds**, per note, from the header above it (`3 IMÁGENES`)
+- **The whole strip folds**, per note, from the header above it (`3 IMAGES`)
   or from the note's menu; a folded note does not even load them.
 - Click one to open it in your image viewer, right-click it to open or remove it.
 
@@ -170,8 +170,10 @@
 
 - Every card has a grip in its top-right corner: drag it and the card moves
   through the list, which scrolls along when you reach its edges.
-- Or move a card one step at a time with *Subir* / *Bajar* in its menu.
+- Or move a card one step at a time with *Move up* / *Move down* in its menu.
 - The order you see is the order that gets saved.
+- Checklist items reorder the same way: drag the grip at the end of an item's
+  row, or press **Alt+↑** / **Alt+↓** on its checkbox.
 
 ### Backups you can set to your own rhythm
 
@@ -514,7 +516,7 @@ What differs on Windows:
   work area there, so `_NET_WORKAREA` is not needed, and `Qt::Tool` already
   keeps the window out of the taskbar (`WS_EX_TOOLWINDOW`) — which is what the
   `_NET_WM_STATE_SKIP_TASKBAR` request does on X11.
-- Settings has no *Compatibilidad X11* row: there is nothing to choose.
+- Settings has no *X11 compatibility* row: there is nothing to choose.
 - With *always on top* off, the panel sits below other windows, but Windows has
   no "on the desktop" layer, so *Show desktop* hides it along with everything
   else.
@@ -567,9 +569,9 @@ with the release notes taken from `CHANGELOG.md`.
 So publishing is: bump the version, write the changelog entry, push.
 
 1. `project(tagoror VERSION x.y.z)` in `CMakeLists.txt` — the only place the
-   version lives in code, and what the workflow reads. A `build/` tree
-   configured earlier keeps the old value cached:
-   `cmake -B build -U TAGOROR_VERSION`.
+   version lives in code, and what the workflow reads. Configured trees pick
+   the new number up on their next build, unless their version was overridden
+   with `-DTAGOROR_VERSION=`.
 2. A `## [x.y.z]` section at the top of [`CHANGELOG.md`](CHANGELOG.md). The
    release **fails on purpose** if it is missing — a release with no notes
    should not go out — and it fails in the first ten seconds, before anything

@@ -20,7 +20,9 @@
 set -eu
 
 cd "$(dirname "$0")/../.."
-VERSION="${1:-1.2}"
+# Sin argumento, la de CMakeLists.txt, como hace make-installer.sh.
+VERSION="${1:-$(sed -n 's/^project(tagoror VERSION \([0-9][0-9.]*\).*/\1/p' CMakeLists.txt)}"
+[ -n "$VERSION" ] || { echo "no encuentro la versión en CMakeLists.txt" >&2; exit 1; }
 
 WORK="build-appimage"
 TOOLS="$WORK/tools"
@@ -41,7 +43,8 @@ fetch linuxdeploy-plugin-qt-x86_64.AppImage "$QTBASE"
 echo "· compilando (Release)"
 cmake -S . -B "$WORK/build" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_INSTALL_PREFIX=/usr >/dev/null
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DTAGOROR_VERSION="$VERSION" >/dev/null
 cmake --build "$WORK/build"
 
 rm -rf "$APPDIR"

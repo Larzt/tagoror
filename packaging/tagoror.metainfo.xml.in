@@ -92,6 +92,13 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.2.0" date="2026-09-27">
+      <description>
+        <p>Checklist items can be reordered by dragging or with Alt+Up and
+           Alt+Down. Also fixes builds reporting an older version, which made
+           the update check announce the version already installed.</p>
+      </description>
+    </release>
     <release version="3.1.1" date="2026-09-27">
       <description>
         <p>The settings page is organised into clear sections, each with its

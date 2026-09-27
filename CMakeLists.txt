@@ -1,9 +1,22 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 3.1.1 LANGUAGES CXX)
+project(tagoror VERSION 3.2.0 LANGUAGES CXX)
 
-# La versión que enseñan el .exe de Windows y su instalador. La CI la pisa
-# con la de la etiqueta que se está publicando.
-set(TAGOROR_VERSION "${PROJECT_VERSION}" CACHE STRING "Versión que se muestra en los paquetes")
+# La versión que llega al binario (la que compara el aviso de actualizaciones)
+# y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de
+# la etiqueta que se está publicando.
+#
+# Es una variable de caché para que ese -DTAGOROR_VERSION= gane, pero una caché
+# sin más se quedaba con la versión del día en que se configuró el árbol: un
+# árbol de hace meses seguía compilando 1.2.0 y la app veía como nueva la
+# versión que ya tenía. Así que sigue a project() mientras nadie la haya
+# pisado: si vale lo mismo que project() la última vez, se actualiza.
+if (NOT DEFINED TAGOROR_VERSION OR
+    (DEFINED TAGOROR_LAST_PROJECT_VERSION AND
+     TAGOROR_VERSION STREQUAL TAGOROR_LAST_PROJECT_VERSION))
+    set(TAGOROR_VERSION "${PROJECT_VERSION}" CACHE STRING
+        "Versión que se muestra en los paquetes" FORCE)
+endif()
+set(TAGOROR_LAST_PROJECT_VERSION "${PROJECT_VERSION}" CACHE INTERNAL "")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

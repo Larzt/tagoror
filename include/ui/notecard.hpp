@@ -71,6 +71,11 @@ private:
     void beginItemEdit(int index);
     void commitItemEdit(int index, const QString &text);
     void cancelItemEdit();
+    // Reordenar elementos: el asidero de cada fila la mueve en caliente dentro
+    // de m_itemsLayout y, al soltar, el orden de las filas pasa a items.
+    void dragItemTo(QWidget *row, const QPoint &globalPos);
+    void endItemDrag();
+    void moveItem(int index, int steps);   // Alt+↑ / Alt+↓ sobre la casilla
 
     void openDuePopup(const QPoint &globalPos);   // chip o menú contextual
     // El único sitio que mueve la fecha de un aviso: instante, etiqueta y
@@ -115,6 +120,7 @@ private:
     QLineEdit *m_newItem = nullptr;
     int m_editingItem = -1;       // elemento que se está renombrando, o -1
     QLineEdit *m_itemEdit = nullptr;   // su campo, mientras dura
+    bool m_itemsMoved = false;    // el arrastre en curso ya cambió el orden
 
     QWidget *m_linksBox = nullptr;       // contenedor de las filas de enlaces
     QVBoxLayout *m_linksLayout = nullptr;

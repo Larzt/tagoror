@@ -4,6 +4,25 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.2.0] — 2026-09-27
+
+Checklist items you can reorder, and a website.
+
+### Added
+
+- **Reorder checklist items.** Drag the grip at the end of an item's row, or
+  press **Alt+↑** / **Alt+↓** on its checkbox; the list scrolls along when a
+  drag reaches its edge, and the focus follows the item so it can keep moving.
+- **A landing page** at <https://larzt.github.io/tagoror/>, in Spanish and
+  English, with downloads for Linux and Windows.
+
+### Fixed
+
+- **Builds made from an older build tree reported an old version**, so the
+  update check saw the release already installed as a new one. The version
+  now follows `CMakeLists.txt` unless it is overridden on purpose, and the
+  AppImage script passes it explicitly.
+
 ## [3.1.1] — 2026-09-27
 
 A tidier settings page, and pages that no longer push each other around.

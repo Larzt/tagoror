@@ -32,6 +32,8 @@
 #include <QMouseEvent>
 #include <QProgressBar>
 #include <QRegularExpression>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -689,6 +691,17 @@ void NoteCard::showDetailsEditor(bool focus) {
 // El cierre va diferido: aquí todavía se está despachando un evento del propio
 // editor, y showDetailsGhost() lo destruye.
 bool NoteCard::eventFilter(QObject *watched, QEvent *event) {
+    // Alt+↑ / Alt+↓ sobre la casilla de un elemento lo sube o lo baja.
+    if (event->type() == QEvent::KeyPress && qobject_cast<QCheckBox *>(watched) &&
+        watched->property("itemIndex").isValid()) {
+        auto *k = static_cast<QKeyEvent *>(event);
+        if (k->modifiers() == Qt::AltModifier &&
+            (k->key() == Qt::Key_Up || k->key() == Qt::Key_Down)) {
+            moveItem(watched->property("itemIndex").toInt(),
+                     k->key() == Qt::Key_Up ? -1 : 1);
+            return true;
+        }
+    }
     // Escape deja el elemento como estaba. Al soltar el foco salta además
     // editingFinished, pero para entonces ya no hay fila en edición y el
     // guardado se descarta solo.
@@ -798,6 +811,10 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     const CheckItem &item = m_note->items.at(index);
 
     auto *row = new QWidget;
+    // Su índice en items, para leer el orden de las filas al soltar un
+    // arrastre: durante él las filas cambian de sitio y el índice que
+    // capturaron las lambdas deja de ser su posición.
+    row->setProperty("itemIndex", index);
     auto *rl = new QHBoxLayout(row);
     rl->setContentsMargins(0, 0, 0, 0);
     rl->setSpacing(6);
@@ -815,6 +832,8 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     box->setFocusPolicy(Qt::TabFocus);
     box->setChecked(item.done);
     box->setCursor(Qt::PointingHandCursor);
+    box->setProperty("itemIndex", index);
+    box->installEventFilter(this);   // Alt+↑ / Alt+↓ lo mueven; ver eventFilter
     rl->addWidget(box, 0, Qt::AlignTop);
 
     // En edición la fila enseña un campo en lugar de la etiqueta. Es un
@@ -897,7 +916,109 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     });
     rl->addWidget(del, 0, Qt::AlignTop);   // a la altura de la primera línea
 
+    // El mismo asidero que el de la tarjeta, al final de la fila como aquel lo
+    // está del título. A la izquierda descuadraba la casilla con la punteada
+    // de la fila de añadir.
+    auto *handle = new DragHandle;
+    handle->setObjectName("dragHandle");
+    handle->setIcon(paintIcon("grip", QColor(Theme::muted()), 11));
+    handle->setIconSize(QSize(11, 11));
+    handle->setFixedSize(14, 18);
+    handle->setCursor(Qt::OpenHandCursor);
+    handle->setToolTip(L("Arrastra para reordenar"));
+    // Con el teclado se mueve con Alt+↑ / Alt+↓ desde la casilla.
+    handle->setFocusPolicy(Qt::NoFocus);
+    handle->start = [this] { m_itemsMoved = false; };
+    handle->moved = [this, row](const QPoint &at) { dragItemTo(row, at); };
+    handle->finished = [this] { endItemDrag(); };
+    rl->addWidget(handle, 0, Qt::AlignTop);
+
     l->addWidget(row);
+}
+
+// Como Panel::dragCardTo, pero dentro de la tarjeta: la fila cambia de sitio
+// en cuanto cruza el centro de otra, para que se vea dónde va a caer. items no
+// se toca hasta soltar; entretanto manda el orden del layout.
+void NoteCard::dragItemTo(QWidget *row, const QPoint &globalPos) {
+    if (!row || !m_itemsLayout) return;
+
+    // Una lista larga puede salirse de lo visible: la lista de notas acompaña
+    // cerca de sus bordes, igual que al arrastrar tarjetas.
+    for (QWidget *w = parentWidget(); w; w = w->parentWidget()) {
+        if (auto *area = qobject_cast<QScrollArea *>(w)) {
+            const int y = area->viewport()->mapFromGlobal(globalPos).y();
+            const int edge = 26;
+            QScrollBar *bar = area->verticalScrollBar();
+            if (y < edge) bar->setValue(bar->value() - 12);
+            else if (y > area->viewport()->height() - edge) bar->setValue(bar->value() + 12);
+            break;
+        }
+    }
+
+    QList<QWidget *> rows;
+    for (int i = 0; i < m_itemsLayout->count(); ++i)
+        if (QWidget *w = m_itemsLayout->itemAt(i)->widget()) rows.append(w);
+
+    const int from = int(rows.indexOf(row));
+    if (from < 0) return;
+
+    const int y = row->parentWidget()->mapFromGlobal(globalPos).y();
+    int to = from;
+    for (int i = 0; i < rows.size(); ++i) {
+        if (i == from) continue;
+        const int center = rows.at(i)->geometry().center().y();
+        if (i < from && y < center) { to = i; break; }
+        if (i > from && y > center) to = i;
+    }
+    if (to == from) return;
+
+    m_itemsLayout->removeWidget(row);
+    m_itemsLayout->insertWidget(to, row);
+    m_itemsMoved = true;
+}
+
+// Al soltar, el orden de las filas pasa a items y las filas se rehacen, porque
+// sus lambdas capturaron el índice de antes.
+void NoteCard::endItemDrag() {
+    if (!m_itemsMoved || !m_itemsLayout) return;
+    m_itemsMoved = false;
+
+    QList<CheckItem> order;
+    int editing = -1;
+    for (int i = 0; i < m_itemsLayout->count(); ++i) {
+        QWidget *w = m_itemsLayout->itemAt(i)->widget();
+        if (!w) continue;
+        const int was = w->property("itemIndex").toInt();
+        if (was < 0 || was >= m_note->items.size()) return;   // filas viejas: no fiarse
+        if (was == m_editingItem) editing = int(order.size());
+        order.append(m_note->items.at(was));
+    }
+    if (order.size() != m_note->items.size()) return;
+
+    m_note->items = order;
+    m_editingItem = editing;
+    // Diferido: quien llama es el asidero de una de las filas que se destruyen.
+    QTimer::singleShot(0, this, [this] { rebuildItems(); });
+    emit dirty();
+}
+
+// Un paso arriba o abajo desde el teclado. El foco vuelve a la casilla del
+// elemento en su nuevo sitio, para poder seguir moviéndolo.
+void NoteCard::moveItem(int index, int steps) {
+    const int to = index + steps;
+    if (index < 0 || index >= m_note->items.size() || to < 0 || to >= m_note->items.size())
+        return;
+    m_note->items.move(index, to);
+    if (m_editingItem == index) m_editingItem = to;
+    else if (m_editingItem == to) m_editingItem = index;
+    emit dirty();
+    QTimer::singleShot(0, this, [this, to] {
+        rebuildItems();
+        QLayoutItem *it = m_itemsLayout->itemAt(to);
+        if (QWidget *row = it ? it->widget() : nullptr)
+            if (auto *box = row->findChild<QCheckBox *>())
+                box->setFocus(Qt::TabFocusReason);   // con anillo: se llegó por teclado
+    });
 }
 
 // El campo de edición se cierra solo al perder el foco, así que basta con
