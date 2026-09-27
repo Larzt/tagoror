@@ -1079,13 +1079,30 @@ bool Panel::applyPageSize(QWidget *page) {
         // nunca más de lo que cabe: un tamaño apuntado en otro monitor.
         target = target.expandedTo(minimumSize());
         if (const QRect area = placementArea(); area.isValid()) target = target.boundedTo(area.size());
-        if (target != size()) {
-            setGeometry(QRect(anchoredTopLeft(geometry(), target), target));
+        // Desde la lista, no desde la página anterior: ver m_pageHome.
+        const QRect from = m_pageHome.isValid() ? m_pageHome : geometry();
+        const QRect want(anchoredTopLeft(from, target), target);
+        if (want != geometry()) {
+            setGeometry(want);
             keepOnScreen();
         }
     }
     m_grownFrom = m_grownTo = QRect();
+    m_pagePlaced = geometry();
     return stored.isValid();
+}
+
+void Panel::syncPageHome(QWidget *from) {
+    if (from == m_scroll || !m_pageHome.isValid() || !m_pagePlaced.isValid()) {
+        // Desde la lista, la lista es lo que hay. Sin apunte previo (recién
+        // encendido el modo), lo más parecido: la esquina de ahora.
+        const QSize list = from != m_scroll && m_listSize.isValid() ? m_listSize : size();
+        m_pageHome = QRect(pos(), list);
+        return;
+    }
+    // Lo que el usuario haya arrastrado la página se lo lleva también la
+    // lista; si no la ha tocado, el desplazamiento es cero.
+    m_pageHome.translate(pos() - m_pagePlaced.topLeft());
 }
 
 void Panel::switchBodyPage(QWidget *page) {
@@ -1094,6 +1111,7 @@ void Panel::switchBodyPage(QWidget *page) {
     if (perPage) {
         // Cómo se deja esta página es su tamaño; los apuntes de ensanche y
         // estirón son del modo de un solo tamaño y aquí no se devuelven.
+        syncPageHome(from);
         rememberPageSize(from);
         m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
     } else if (from == m_planner) {
@@ -1108,6 +1126,7 @@ void Panel::switchBodyPage(QWidget *page) {
         if (!applyPageSize(page) && page == m_planner) {
             enterWide();
             m_narrowGeom = m_wideGeom = QRect();
+            m_pagePlaced = geometry();
         }
     } else if (page == m_planner) {
         enterWide();
@@ -2176,10 +2195,19 @@ void Panel::collapse() {
     // El tamaño que se guarda es el de siempre, no el ensanchado para el
     // planificador: si no, desplegar el dock abriría la ventana ancha para
     // cualquier página.
-    if (sizePerPage()) rememberPageSize(m_body->currentWidget());
-    else if (m_body->currentWidget() == m_planner) leaveWide();
+    // Con tamaño por página el dock sale de la lista, no de la página abierta:
+    // si esa se abrió hacia la izquierda o hacia arriba, su esquina no es la
+    // del panel y el dock acabaría lejos de donde se dejó.
+    QRect panel = geometry();
+    if (sizePerPage()) {
+        syncPageHome(m_body->currentWidget());
+        rememberPageSize(m_body->currentWidget());
+        panel = m_pageHome;
+    } else if (m_body->currentWidget() == m_planner) {
+        leaveWide();
+        panel = geometry();
+    }
     m_expandedSize = size();
-    const QRect panel = geometry();
     // El apunte de la crecida no sobrevive al dock: la geometría con la que se
     // comparaba es la del panel abierto, que a partir de aquí ya no existe.
     m_grownFrom = QRect();
@@ -2250,20 +2278,35 @@ void Panel::expand() {
     // la derecha, que es donde estaba antes de plegarse; solo cuando por ahí no
     // cabe (el dock arrastrado contra el borde derecho o el inferior) se abre
     // hacia el otro lado.
-    const QPoint at = anchoredTopLeft(dock, target);
+    //
+    // Con tamaño por página, primero se decide dónde saldría la lista y la
+    // página abierta se coloca desde ahí, como al cambiar de página (ver
+    // m_pageHome): si no, cada página sacaría su propia esquina del dock.
+    QRect from = QRect(anchoredTopLeft(dock, target), target);
+    if (sizePerPage()) {
+        QSize list = m_listSize.isValid() ? m_listSize : target;
+        if (const QRect area = placementArea(); area.isValid()) list = list.boundedTo(area.size());
+        m_pageHome = QRect(anchoredTopLeft(dock, list), list);
+        from = m_pageHome;
+    }
+    const QPoint at = anchoredTopLeft(from, target);
     setGeometry(QRect(at, target));
 
     // De qué punto del panel ha salido el dock, para meterlo por ahí al
     // plegar. Es lo que hace que un dock abajo a la izquierda siga abajo a la
     // izquierda después de abrir y cerrar el panel.
-    m_dockOffset = QPoint(qBound(0, dock.x() - at.x(), qMax(0, target.width() - dock.width())),
-                          qBound(0, dock.y() - at.y(), qMax(0, target.height() - dock.height())));
+    m_dockOffset = QPoint(qBound(0, dock.x() - from.x(), qMax(0, from.width() - dock.width())),
+                          qBound(0, dock.y() - from.y(), qMax(0, from.height() - dock.height())));
 
     keepOnScreen();
     // Se plegó con el planificador abierto: collapse() le devolvió el ancho
     // estrecho antes de guardarlo, y aquí se le vuelve a dar el suyo.
     if (m_body->currentWidget() == m_planner && !hadPageSize) enterWide();
-    if (sizePerPage()) m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
+    if (sizePerPage()) {
+        m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
+        if (m_body->currentWidget() == m_scroll) m_pageHome = geometry();
+        m_pagePlaced = geometry();
+    }
 }
 
 // Dónde admite el gestor de ventanas que se ponga la ventana: la pantalla

@@ -235,6 +235,38 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawPath(arc);
         p.drawLine(QPointF(c, c - 6), QPointF(c, c - 1.4));
 
+    // --- secciones de los ajustes -------------------------------------------
+    } else if (kind == "globe") {
+        p.drawEllipse(QPointF(c, c), 5.4, 5.4);
+        p.drawEllipse(QRectF(c - 2.4, c - 5.4, 4.8, 10.8));
+        p.drawLine(QPointF(c - 5.4, c), QPointF(c + 5.4, c));
+    } else if (kind == "window") {
+        p.drawRoundedRect(QRectF(c - 5.8, c - 4.8, 11.6, 9.6), 2.2, 2.2);
+        p.drawLine(QPointF(c - 5.8, c - 1.8), QPointF(c + 5.8, c - 1.8));
+    } else if (kind == "folder") {
+        QPainterPath f;
+        f.moveTo(c - 5.8, c + 4.4);
+        f.lineTo(c - 5.8, c - 4.4);
+        f.lineTo(c - 1.8, c - 4.4);
+        f.lineTo(c - 0.4, c - 2.8);
+        f.lineTo(c + 5.8, c - 2.8);
+        f.lineTo(c + 5.8, c + 4.4);
+        f.closeSubpath();
+        p.drawPath(f);
+    } else if (kind == "cloud") {
+        QPainterPath cl;
+        cl.moveTo(c - 3.4, c + 3.6);
+        cl.arcTo(QRectF(c - 6.2, c - 1.6, 5.6, 5.2), 270, -180);
+        cl.arcTo(QRectF(c - 3.6, c - 5.2, 7.4, 7.4), 160, -150);
+        cl.arcTo(QRectF(c + 1.0, c - 1.4, 5.0, 5.0), 90, -180);
+        cl.closeSubpath();
+        p.drawPath(cl);
+    } else if (kind == "download") {
+        p.drawLine(QPointF(c, c - 5.6), QPointF(c, c + 1.8));
+        p.drawPolyline(QPolygonF({QPointF(c - 3.2, c - 1.2), QPointF(c, c + 2.0),
+                                  QPointF(c + 3.2, c - 1.2)}));
+        p.drawLine(QPointF(c - 5.2, c + 5.0), QPointF(c + 5.2, c + 5.0));
+
     // --- adornos ------------------------------------------------------------
     } else if (kind == "checkdots") {
         // Igual que QCheckBox::indicator pero con el borde punteado: marca la
@@ -405,7 +437,7 @@ QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 QWidget#linkRow { background: transparent; border-radius: 7px; }
 QWidget#linkRow:hover { background: %7; }
 QLabel#linkText { font-size: {fs:11.5}px; }
-
+)" R"(
 /* --- calendario ---------------------------------------------------------- */
 QWidget#calendar { background: transparent; }
 QFrame#calSeparator { background: %2; border: none; }
@@ -560,7 +592,7 @@ QWidget#updateBanner {
 }
 QWidget#updateBanner:hover { background: %10; }
 QLabel#updateBannerText { color: %5; font-size: 10.5px; font-weight: 600; }
-
+)" R"(
 /* --- temporizadores ------------------------------------------------------- */
 QWidget#timers { background: transparent; }
 /* Filas: QWidget lisos, así que necesitan WA_StyledBackground (timers.cpp). */
@@ -621,9 +653,35 @@ QLabel#setSection {
 QLabel#setValue {
     color: %3; font-size: 10px; font-weight: 700;
     font-family: "IBM Plex Mono", monospace;
-    padding-top: 6px;
 }
 QLabel#setRowText { color: %3; font-size: 11.5px; }
+/* Cabecera de cada sección: el nombre en claro, con el icono en el acento
+   delante. La de antes (gris, 9 px) no separaba una sección de la siguiente. */
+QLabel#setHead {
+    color: %3; font-size: 10px; font-weight: 700; letter-spacing: 0.6px;
+}
+/* El grupo reúne las filas de una sección; las separa una línea fina. */
+QFrame#setGroup {
+    background: %6;
+    border: 1px solid %2;
+    border-radius: 11px;
+}
+QFrame#setDivider { background: %2; border: none; }
+/* Control segmentado: una pista hundida y la opción elegida en el acento. */
+QFrame#segTrack {
+    background: rgba(0,0,0,0.22);
+    border: 1px solid %2;
+    border-radius: 9px;
+}
+QToolButton#segOption {
+    color: %4; background: transparent;
+    border: 1px solid transparent; border-radius: 7px;
+    padding: 5px 6px; font-size: 11px; font-weight: 600;
+}
+QToolButton#segOption:hover { color: %3; background: %7; }
+QToolButton#segOption[chosen="true"] {
+    color: %5; background: %8; border: 1px solid %9;
+}
 /* Filas: QWidget lisos, así que necesitan WA_StyledBackground (settings.cpp). */
 QWidget#setRow { background: transparent; border-radius: 8px; }
 QWidget#setRow:hover { background: %7; }
@@ -693,7 +751,8 @@ QToolButton#popupChip[chosen="true"] {
    por su cuenta al esconder una página. Va al final de la hoja para ganar a
    las reglas de cada objeto, que también fijan su borde. */
 QToolButton[kbfocus="true"]:focus,
-QToolButton#segButton[kbfocus="true"]:focus, QToolButton#popupChip[kbfocus="true"]:focus,
+QToolButton#segButton[kbfocus="true"]:focus, QToolButton#segOption[kbfocus="true"]:focus,
+QToolButton#popupChip[kbfocus="true"]:focus,
 QToolButton#calNav[kbfocus="true"]:focus, QToolButton#todayBtn[kbfocus="true"]:focus,
 QToolButton#bdayTab[kbfocus="true"]:focus, QToolButton#bdayGhost[kbfocus="true"]:focus,
 QToolButton#listDone[kbfocus="true"]:focus, QToolButton#quitBtn[kbfocus="true"]:focus,
@@ -704,6 +763,7 @@ QToolButton#dragHandle[kbfocus="true"]:focus {
 /* Los que ya van en el acento cuando están elegidos necesitan otro color para
    que el foco se distinga: el del texto. */
 QToolButton#segButton[chosen="true"][kbfocus="true"]:focus,
+QToolButton#segOption[chosen="true"][kbfocus="true"]:focus,
 QToolButton#popupChip[chosen="true"][kbfocus="true"]:focus,
 QToolButton#bdayTab[chosen="true"][kbfocus="true"]:focus,
 QToolButton[active="true"][kbfocus="true"]:focus {

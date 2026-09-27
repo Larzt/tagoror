@@ -4,6 +4,26 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.1] — 2026-09-27
+
+A tidier settings page, and pages that no longer push each other around.
+
+### Changed
+
+- **The settings page is organised into sections.** Each one has a header
+  with its icon and keeps its options together in one group, separated by
+  thin lines; accent, opacity and text size are gathered under *Appearance*,
+  and the language and text-size choices are a single segmented control with
+  equal widths instead of loose buttons.
+
+### Fixed
+
+- **One page's size moved the others.** With *Size per page* on, a large page
+  that opened leftwards or upwards near the screen edge dragged the window's
+  corner along, and every page after it opened from there. All pages are now
+  placed from the note list's position, so each one always opens in the same
+  place, and folding to the dock and back no longer shifts anything.
+
 ## [3.1.0] — 2026-09-27
 
 Categories of your own in the planner, a choice of how early an event alerts,

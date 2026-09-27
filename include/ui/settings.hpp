@@ -9,6 +9,9 @@
 #include "core/store.hpp"
 #include "ui/theme.hpp"
 
+class ElidedLabel;
+class QFrame;
+class QToolButton;
 class QVBoxLayout;
 
 // Página de ajustes: la cuarta de m_body, hermana del calendario y de los
@@ -73,11 +76,14 @@ signals:
     void driveDisconnectRequested();
 
 private:
-    void addSection(const QString &title);
-    void addAccent();
-    void addOpacity();
+    // Abre una sección: cabecera con icono y un grupo donde van sus filas.
+    void beginGroup(const QString &title, const QString &icon);
+    // Añade una fila al grupo abierto, con una línea encima si no es la primera.
+    void addToGroup(QWidget *row);
+    // Fila del grupo apilada en vertical, para los ajustes con mandos propios.
+    QVBoxLayout *addBlock();
+    void addAppearance();
     void addLanguage();
-    void addTextScale();
     void addWindow();
     void addData();
     void addInputs();
@@ -89,18 +95,24 @@ private:
     // Fila con interruptor: rótulo a la izquierda, el mando a la derecha.
     void addToggle(const QString &label, const QString &hint, bool on,
                    std::function<void(bool)> changed);
-    // Grupo de botones de los que solo uno está elegido.
-    void addSegments(const QStringList &labels, int chosen, std::function<void(int)> picked);
-    // Tarjeta con un texto y un botón: la carpeta de datos y las copias.
-    void addCard(const QString &title, const QString &subtitle, const QString &action,
-                 bool enabled, std::function<void(QWidget *)> clicked);
+    // Control segmentado: de sus opciones solo una está elegida.
+    QWidget *segments(const QStringList &labels, int chosen, std::function<void(int)> picked,
+                      QList<QToolButton *> *out = nullptr);
+    // Fila con un texto y un botón: la carpeta de datos, las copias, Drive y
+    // la versión. Devuelve el botón, y en subOut el subtítulo si se pide.
+    QToolButton *addAction(const QString &title, const QString &subtitle,
+                                 const QString &action, bool enabled,
+                                 std::function<void(QWidget *)> clicked,
+                                 ElidedLabel **subOut = nullptr);
 
     Theme m_theme;
     const Store *m_store = nullptr;
     QVBoxLayout *m_layout = nullptr;   // contenido + stretch final
+    class QFrame *m_group = nullptr;   // el grupo de la sección que se está montando
+    QVBoxLayout *m_groupLayout = nullptr;
 
     // De la tarjeta de actualizaciones, para reescribirla sin rehacer nada.
-    class QLabel *m_updateSub = nullptr;
+    class ElidedLabel *m_updateSub = nullptr;
     class QToolButton *m_updateBtn = nullptr;
     bool m_updateBusy = false;
     QString m_updateError;

@@ -92,6 +92,13 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.1.1" date="2026-09-27">
+      <description>
+        <p>The settings page is organised into clear sections, each with its
+           options grouped together. Also fixes one page's window size moving
+           the other pages when size per page is on.</p>
+      </description>
+    </release>
     <release version="3.1.0" date="2026-09-27">
       <description>
         <p>The planner lets you create your own categories, each with a name

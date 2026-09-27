@@ -140,7 +140,7 @@ private:
     std::function<void(bool)> m_changed;
 };
 
-// Fila pulsable con fondo propio, como las del calendario y los cumpleaños.
+// Fila de un grupo, con fondo propio al pasar por encima.
 class SettingRow : public QWidget {
 public:
     explicit SettingRow(QWidget *parent = nullptr) : QWidget(parent) {
@@ -165,6 +165,55 @@ protected:
     }
 };
 
+// Icono pintado en el acento. No es un QLabel con un pixmap porque el acento
+// cambia sin rehacer la página (ver setTheme): así basta con repintarlo.
+class AccentIcon : public QWidget {
+public:
+    AccentIcon(const QString &kind, const Theme *theme, int px, QWidget *parent = nullptr)
+        : QWidget(parent), m_kind(kind), m_theme(theme), m_px(px) {
+        setFixedSize(px, px);
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        if (m_kind.isEmpty() || !m_theme) return;
+        QPainter p(this);
+        p.drawPixmap(0, 0, paintIcon(m_kind, m_theme->accent, m_px).pixmap(m_px, m_px));
+    }
+
+private:
+    QString m_kind;
+    const Theme *m_theme;
+    int m_px;
+};
+
+// Título y subtítulo apilados, recortados los dos: ver *Card widths*.
+QVBoxLayout *textColumn(const QString &title, const QString &hint, ElidedLabel **subOut = nullptr) {
+    auto *texts = new QVBoxLayout;
+    texts->setContentsMargins(0, 0, 0, 0);
+    texts->setSpacing(1);
+    auto *name = new ElidedLabel(title, QColor(Theme::fg()));
+    name->setObjectName("setRowText");
+    texts->addWidget(name);
+    if (!hint.isEmpty() || subOut) {
+        auto *sub = new ElidedLabel(hint, QColor(Theme::muted()));
+        sub->setObjectName("meta");
+        sub->setToolTip(hint);
+        texts->addWidget(sub);
+        if (subOut) *subOut = sub;
+    }
+    return texts;
+}
+
+QToolButton *actionButton(const QString &text) {
+    auto *b = new QToolButton;
+    b->setObjectName("segButton");
+    b->setText(text);
+    b->setCursor(Qt::PointingHandCursor);
+    return b;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -174,14 +223,14 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
     setObjectName("settings");
 
     auto *col = new QVBoxLayout(this);
-    col->setContentsMargins(9, 8, 9, 8);
+    col->setContentsMargins(9, 4, 9, 8);
     col->setSpacing(0);
 
     auto *host = new QWidget;
     host->setObjectName("listHost");
     m_layout = new QVBoxLayout(host);
     m_layout->setContentsMargins(0, 0, 0, 0);
-    m_layout->setSpacing(4);
+    m_layout->setSpacing(0);
     m_layout->addStretch();
 
     // Todo dentro del desplazamiento, como en los cumpleaños: así el alto
@@ -216,6 +265,7 @@ void SettingsView::refresh() {
     m_updateBtn = nullptr;
     m_driveSub = nullptr;
     m_driveBtn = nullptr;
+    m_group = nullptr;
     while (m_layout->count() > 1) {
         QLayoutItem *item = m_layout->takeAt(0);
         if (QWidget *w = item->widget()) {
@@ -226,9 +276,7 @@ void SettingsView::refresh() {
     }
     if (!m_store) return;
 
-    addAccent();
-    addOpacity();
-    addTextScale();
+    addAppearance();
     addLanguage();
     addWindow();
     addData();
@@ -238,126 +286,168 @@ void SettingsView::refresh() {
     addQuit();
 }
 
-void SettingsView::addSection(const QString &title) {
-    auto *label = new QLabel(title);
-    label->setObjectName("setSection");
-    m_layout->insertWidget(m_layout->count() - 1, label);
-}
-
-void SettingsView::addAccent() {
-    addSection(L("ACENTO"));
-
-    auto *host = new QWidget;
-    auto *l = new QHBoxLayout(host);
-    l->setContentsMargins(0, 0, 0, 2);
-    l->setSpacing(2);
-
-    const QList<QColor> swatches = {QColor("#7c9cff"), QColor("#6fcf97"), QColor("#f2b757"),
-                                    QColor("#ff7a6b"), QColor("#b98cff"), QColor("#4ecdc4")};
-    for (const QColor &c : swatches)
-        l->addWidget(new ColorDot(c, &m_theme, [this, c] { emit accentPicked(c); }));
-    l->addStretch();
-
-    auto *custom = new QToolButton;
-    custom->setObjectName("segButton");
-    custom->setText(L("Otro…"));
-    custom->setCursor(Qt::PointingHandCursor);
-    custom->setToolTip(L("Color personalizado…"));
-    connect(custom, &QToolButton::clicked, this,
-            [this, custom] { emit accentEditorRequested(custom); });
-    l->addWidget(custom);
-
-    m_layout->insertWidget(m_layout->count() - 1, host);
-}
-
-void SettingsView::addOpacity() {
+// Cada sección es una cabecera (icono en el acento + nombre) y un grupo con
+// sus filas separadas por una línea fina. Antes cada ajuste flotaba suelto,
+// unas filas con tarjeta y otras sin ella, y con las cabeceras en gris de 9 px
+// no se veía dónde acababa una sección y empezaba la siguiente.
+void SettingsView::beginGroup(const QString &title, const QString &icon) {
     auto *head = new QWidget;
     auto *hl = new QHBoxLayout(head);
-    hl->setContentsMargins(0, 8, 0, 0);
-    hl->setSpacing(6);
-
-    auto *title = new QLabel(L("OPACIDAD"));
-    title->setObjectName("setSection");
-    auto *readout = new QLabel(QString("%1%").arg(m_theme.opacity));
-    readout->setObjectName("setValue");
-    readout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    hl->addWidget(title, 1);
-    hl->addWidget(readout);
+    hl->setContentsMargins(3, m_layout->count() > 1 ? 16 : 8, 0, 6);
+    hl->setSpacing(7);
+    hl->addWidget(new AccentIcon(icon, &m_theme, 13), 0, Qt::AlignVCenter);
+    auto *label = new QLabel(title);
+    label->setObjectName("setHead");
+    hl->addWidget(label, 1, Qt::AlignVCenter);
     m_layout->insertWidget(m_layout->count() - 1, head);
 
-    auto *slider = new QSlider(Qt::Horizontal);
-    slider->setRange(40, 100);
-    slider->setValue(m_theme.opacity);
-    connect(slider, &QSlider::valueChanged, this, [this, readout](int v) {
-        readout->setText(QString("%1%").arg(v));
-        emit opacityChanged(v);
-    });
-    m_layout->insertWidget(m_layout->count() - 1, slider);
+    m_group = new QFrame;
+    m_group->setObjectName("setGroup");
+    m_groupLayout = new QVBoxLayout(m_group);
+    m_groupLayout->setContentsMargins(3, 3, 3, 3);
+    m_groupLayout->setSpacing(0);
+    m_layout->insertWidget(m_layout->count() - 1, m_group);
 }
 
-// Cuatro tamaños y no un deslizador: entre 88 y 130 no hay nada que afinar, y
-// un botón por tamaño dice de un vistazo cuál está puesto. Cada uno enseña su
-// "Aa" al tamaño que da, así la fila se explica sola en los dos idiomas y no
-// necesita cuatro palabras que no caben (ver *Card widths*).
-void SettingsView::addTextScale() {
-    addSection(L("TAMAÑO DE TEXTO"));
-
-    struct Level { int percent; const char *name; };
-    static const Level levels[] = {{88, "Pequeño"}, {100, "Normal"},
-                                   {114, "Grande"}, {130, "Muy grande"}};
-    const int current = m_store->prefs().textScale;
-
-    auto *host = new QWidget;
-    auto *l = new QHBoxLayout(host);
-    l->setContentsMargins(0, 0, 0, 2);
-    l->setSpacing(4);
-    for (const Level &lv : levels) {
-        auto *b = new QToolButton;
-        b->setObjectName("segButton");
-        b->setText("Aa");
-        b->setToolTip(L(lv.name));
-        b->setAccessibleName(L(lv.name));
-        b->setProperty("chosen", lv.percent == current);
-        b->setCursor(Qt::PointingHandCursor);
-        // Con selector: una regla suelta bajaría a todo lo que cuelgue del botón.
-        b->setStyleSheet(QString("QToolButton#segButton { font-size: %1px; }")
-                             .arg(11.0 * lv.percent / 100.0, 0, 'f', 1));
-        connect(b, &QToolButton::clicked, this,
-                [this, p = lv.percent] { emit textScalePicked(p); });
-        l->addWidget(b, 1);
+void SettingsView::addToGroup(QWidget *row) {
+    if (m_groupLayout->count() > 0) {
+        auto *rule = new QFrame;
+        rule->setObjectName("setDivider");
+        rule->setFixedHeight(1);
+        auto *wrap = new QWidget;
+        auto *wl = new QHBoxLayout(wrap);
+        wl->setContentsMargins(8, 2, 8, 2);
+        wl->addWidget(rule);
+        m_groupLayout->addWidget(wrap);
     }
-    m_layout->insertWidget(m_layout->count() - 1, host);
+    m_groupLayout->addWidget(row);
+}
 
-    // Una muestra con los mismos nombres de objeto que una tarjeta, así que
-    // crece con la hoja de estilos igual que las notas de verdad.
-    auto *card = new QFrame;
-    card->setObjectName("setCard");
-    auto *cl = new QVBoxLayout(card);
-    cl->setContentsMargins(10, 8, 10, 9);
-    cl->setSpacing(3);
-    auto *title = new QLabel(L("Comprar pan y café"));
-    title->setObjectName("cardTitle");
-    title->setWordWrap(true);
-    title->setMinimumWidth(24);   // ver *Card widths*
-    auto *body = new QLabel(L("Así se verán las notas, las listas y el planificador."));
-    body->setObjectName("body");
-    body->setWordWrap(true);
-    body->setMinimumWidth(24);
-    cl->addWidget(title);
-    cl->addWidget(body);
-    m_layout->insertWidget(m_layout->count() - 1, card);
+// Una fila del grupo sin fondo al pasar: las que contienen sus propios mandos
+// (puntos, deslizador, segmentos) no son pulsables en sí.
+QVBoxLayout *SettingsView::addBlock() {
+    auto *block = new QWidget;
+    auto *l = new QVBoxLayout(block);
+    l->setContentsMargins(8, 7, 8, 8);
+    l->setSpacing(7);
+    addToGroup(block);
+    return l;
+}
+
+void SettingsView::addAppearance() {
+    beginGroup(L("APARIENCIA"), "palette");
+
+    // --- acento ---
+    {
+        QVBoxLayout *b = addBlock();
+        b->addLayout(textColumn(L("Color de acento"), QString()));
+
+        auto *l = new QHBoxLayout;
+        l->setContentsMargins(0, 0, 0, 0);
+        l->setSpacing(2);
+        const QList<QColor> swatches = {QColor("#7c9cff"), QColor("#6fcf97"), QColor("#f2b757"),
+                                        QColor("#ff7a6b"), QColor("#b98cff"), QColor("#4ecdc4")};
+        for (const QColor &c : swatches)
+            l->addWidget(new ColorDot(c, &m_theme, [this, c] { emit accentPicked(c); }));
+        l->addStretch();
+
+        auto *custom = actionButton(L("Otro…"));
+        custom->setToolTip(L("Color personalizado…"));
+        connect(custom, &QToolButton::clicked, this,
+                [this, custom] { emit accentEditorRequested(custom); });
+        l->addWidget(custom, 0, Qt::AlignVCenter);
+        b->addLayout(l);
+    }
+
+    // --- opacidad ---
+    {
+        QVBoxLayout *b = addBlock();
+        auto *hl = new QHBoxLayout;
+        hl->setContentsMargins(0, 0, 0, 0);
+        hl->setSpacing(6);
+        hl->addLayout(textColumn(L("Opacidad"), QString()), 1);
+        auto *readout = new QLabel(QString("%1%").arg(m_theme.opacity));
+        readout->setObjectName("setValue");
+        readout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        hl->addWidget(readout);
+        b->addLayout(hl);
+
+        auto *slider = new QSlider(Qt::Horizontal);
+        slider->setRange(40, 100);
+        slider->setValue(m_theme.opacity);
+        connect(slider, &QSlider::valueChanged, this, [this, readout](int v) {
+            readout->setText(QString("%1%").arg(v));
+            emit opacityChanged(v);
+        });
+        b->addWidget(slider);
+    }
+
+    // --- tamaño de texto ---
+    // Cuatro tamaños y no un deslizador: entre 88 y 130 no hay nada que afinar,
+    // y un botón por tamaño dice de un vistazo cuál está puesto. Cada uno
+    // enseña su "Aa" al tamaño que da, así la fila se explica sola en los dos
+    // idiomas y no necesita cuatro palabras que no caben (ver *Card widths*).
+    {
+        QVBoxLayout *b = addBlock();
+        b->addLayout(textColumn(L("Tamaño de texto"), QString()));
+
+        struct Level { int percent; const char *name; };
+        static const Level levels[] = {{88, "Pequeño"}, {100, "Normal"},
+                                       {114, "Grande"}, {130, "Muy grande"}};
+        const int current = m_store->prefs().textScale;
+        QStringList labels;
+        int chosen = 1;
+        for (int i = 0; i < 4; ++i) {
+            labels << "Aa";
+            if (levels[i].percent == current) chosen = i;
+        }
+        QList<QToolButton *> buttons;
+        b->addWidget(segments(labels, chosen, [this](int i) {
+            static const int pct[] = {88, 100, 114, 130};
+            emit textScalePicked(pct[i]);
+        }, &buttons));
+        for (int i = 0; i < buttons.size(); ++i) {
+            buttons[i]->setToolTip(L(levels[i].name));
+            buttons[i]->setAccessibleName(L(levels[i].name));
+            // Con selector: una regla suelta bajaría a todo lo que cuelgue del botón.
+            buttons[i]->setStyleSheet(QString("QToolButton#segOption { font-size: %1px; }")
+                                          .arg(11.0 * levels[i].percent / 100.0, 0, 'f', 1));
+        }
+
+        // Una muestra con los mismos nombres de objeto que una tarjeta, así que
+        // crece con la hoja de estilos igual que las notas de verdad.
+        auto *card = new QFrame;
+        card->setObjectName("setCard");
+        auto *cl = new QVBoxLayout(card);
+        cl->setContentsMargins(10, 8, 10, 9);
+        cl->setSpacing(3);
+        auto *title = new QLabel(L("Comprar pan y café"));
+        title->setObjectName("cardTitle");
+        title->setWordWrap(true);
+        title->setMinimumWidth(24);   // ver *Card widths*
+        auto *body = new QLabel(L("Así se verán las notas, las listas y el planificador."));
+        body->setObjectName("body");
+        body->setWordWrap(true);
+        body->setMinimumWidth(24);
+        cl->addWidget(title);
+        cl->addWidget(body);
+        b->addWidget(card);
+    }
 }
 
 void SettingsView::addLanguage() {
-    addSection(L("IDIOMA"));
+    beginGroup(L("IDIOMA"), "globe");
     // Los nombres van cada uno en su propio idioma, no traducidos: quien abre
     // esto con la interfaz en el que no entiende tiene que reconocer el otro.
-    addSegments({"Español", "English"}, m_store->prefs().lang == Lang::Es ? 0 : 1,
-                [this](int i) { emit languagePicked(i == 0 ? Lang::Es : Lang::En); });
+    addBlock()->addWidget(segments({"Español", "English"},
+                                   m_store->prefs().lang == Lang::Es ? 0 : 1,
+                                   [this](int i) {
+                                       emit languagePicked(i == 0 ? Lang::Es : Lang::En);
+                                   }));
 }
 
 void SettingsView::addWindow() {
-    addSection(L("VENTANA"));
+    beginGroup(L("VENTANA"), "window");
     addToggle(L("Siempre encima"),
               m_store->prefs().onTop ? L("Por encima de todo")
                                      : L("Pegada al escritorio"),
@@ -380,11 +470,11 @@ void SettingsView::addWindow() {
 }
 
 void SettingsView::addData() {
-    addSection(L("DATOS"));
-    addCard(L("Carpeta de guardado"),
-            m_store->available() ? prettyPath(appDataDir())
-                                 : L("No disponible · %1").arg(prettyPath(appDataDir())),
-            L("Cambiar"), true, [this](QWidget *) { emit dataFolderRequested(); });
+    beginGroup(L("DATOS"), "folder");
+    addAction(L("Carpeta de guardado"),
+              m_store->available() ? prettyPath(appDataDir())
+                                   : L("No disponible · %1").arg(prettyPath(appDataDir())),
+              L("Cambiar"), true, [this](QWidget *) { emit dataFolderRequested(); });
 
     const Store::Prefs &prefs = m_store->prefs();
     const int kept = int(m_store->backups().size());
@@ -396,8 +486,8 @@ void SettingsView::addData() {
     if (prefs.backupEveryDays == 30) sub = L("Cada mes");
     sub += kept == 0 ? " · " + L("ninguna guardada") : " · " + L("%1 guardadas").arg(kept);
 
-    addCard(L("Copias de seguridad"), sub, L("Gestionar"), m_store->available(),
-            [this](QWidget *anchor) { emit backupsRequested(anchor); });
+    addAction(L("Copias de seguridad"), sub, L("Gestionar"), m_store->available(),
+              [this](QWidget *anchor) { emit backupsRequested(anchor); });
 }
 
 void SettingsView::setDrive(const DriveSync *drive) {
@@ -407,31 +497,12 @@ void SettingsView::setDrive(const DriveSync *drive) {
 
 void SettingsView::addDrive() {
     if (!m_drive) return;
-    addSection(L("GOOGLE DRIVE"));
+    beginGroup(L("GOOGLE DRIVE"), "cloud");
 
-    auto *card = new QFrame;
-    card->setObjectName("setCard");
-    auto *l = new QHBoxLayout(card);
-    l->setContentsMargins(9, 7, 7, 7);
-    l->setSpacing(8);
-
-    auto *texts = new QVBoxLayout;
-    texts->setContentsMargins(0, 0, 0, 0);
-    texts->setSpacing(1);
-    auto *name = new ElidedLabel(L("Sincronizar con Google Drive"), QColor(Theme::fg()));
-    name->setObjectName("setRowText");
-    texts->addWidget(name);
-    // Recortada, con el texto entero en la ayuda: un error de Google puede ser
+    // Recortado, con el texto entero en la ayuda: un error de Google puede ser
     // largo, y aquí no puede ensanchar la página (ver *Card widths*).
-    m_driveSub = new ElidedLabel(QString(), QColor(Theme::muted()));
-    m_driveSub->setObjectName("meta");
-    texts->addWidget(m_driveSub);
-    l->addLayout(texts, 1);
-
-    m_driveBtn = new QToolButton;
-    m_driveBtn->setObjectName("segButton");
-    m_driveBtn->setCursor(Qt::PointingHandCursor);
-    connect(m_driveBtn, &QToolButton::clicked, this, [this] {
+    m_driveBtn = addAction(L("Sincronizar con Google Drive"), QString(), QString(), true,
+                           [this](QWidget *) {
         switch (m_drive->state()) {
             case DriveSync::Disconnected: emit driveConnectRequested(); break;
             case DriveSync::Authorizing:  emit driveCancelRequested(); break;
@@ -439,29 +510,24 @@ void SettingsView::addDrive() {
             case DriveSync::Failed:       emit driveSyncRequested(); break;
             default: break;
         }
-    });
-    l->addWidget(m_driveBtn, 0, Qt::AlignVCenter);
-    m_layout->insertWidget(m_layout->count() - 1, card);
+    }, &m_driveSub);
 
     m_driveBuiltConnected = m_drive->connected();
     if (m_driveBuiltConnected) {
-        // Qué hace y cómo se deja de hacer, debajo de la tarjeta.
+        // Qué hace y cómo se deja de hacer, dentro del mismo grupo.
         auto *row = new QWidget;
         auto *rl = new QHBoxLayout(row);
-        rl->setContentsMargins(4, 2, 0, 2);
+        rl->setContentsMargins(8, 6, 6, 7);
         rl->setSpacing(8);
         auto *what = new QLabel(L("Tus equipos conectados a esta cuenta comparten notas, tareas, cumpleaños y temporizadores a través de la carpeta Tagoror de tu Drive."));
         what->setObjectName("meta");
         what->setWordWrap(true);
         what->setMinimumWidth(24);   // ver *Card widths*
         rl->addWidget(what, 1);
-        auto *off = new QToolButton;
-        off->setObjectName("segButton");
-        off->setText(L("Desconectar"));
-        off->setCursor(Qt::PointingHandCursor);
+        auto *off = actionButton(L("Desconectar"));
         connect(off, &QToolButton::clicked, this, [this] { emit driveDisconnectRequested(); });
         rl->addWidget(off, 0, Qt::AlignVCenter);
-        m_layout->insertWidget(m_layout->count() - 1, row);
+        addToGroup(row);
     }
     refreshDrive();
 }
@@ -520,7 +586,7 @@ void SettingsView::refreshDrive() {
 }
 
 void SettingsView::addInputs() {
-    addSection(L("MICRÓFONO"));
+    beginGroup(L("MICRÓFONO"), "voice");
 
     const QAudioDevice current = QMediaDevices::defaultAudioInput();
     const QByteArray chosen = m_store->prefs().input;
@@ -530,8 +596,9 @@ void SettingsView::addInputs() {
         auto *none = new QLabel(L("No hay micrófono disponible"));
         none->setObjectName("meta");
         none->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
-        none->setContentsMargins(7, 4, 7, 4);
-        m_layout->insertWidget(m_layout->count() - 1, none);
+        none->setMinimumWidth(24);
+        none->setContentsMargins(8, 7, 8, 7);
+        addToGroup(none);
         return;
     }
 
@@ -543,21 +610,19 @@ void SettingsView::addInputs() {
         row->setClick([this, id = dev.id()] { emit inputPicked(id); });
 
         auto *l = new QHBoxLayout(row);
-        l->setContentsMargins(7, 5, 7, 5);
+        l->setContentsMargins(8, 7, 8, 7);
         l->setSpacing(8);
 
-        auto *tick = new QLabel;
-        tick->setFixedSize(13, 13);
-        if (inUse)
-            tick->setPixmap(paintIcon("check", m_theme.accent, 13).pixmap(13, 13));
-        l->addWidget(tick);
-
-        auto *name = new ElidedLabel(dev.description(), QColor(inUse ? Theme::fg()
-                                                                    : Theme::muted()));
+        auto *name = new ElidedLabel(dev.description().trimmed(),
+                                     QColor(inUse ? Theme::fg() : Theme::muted()));
         name->setObjectName("setRowText");
         name->setToolTip(dev.description());
         l->addWidget(name, 1);
-        m_layout->insertWidget(m_layout->count() - 1, row);
+        // La marca a la derecha, como en los menús del sistema: a la izquierda
+        // dejaba las filas sin elegir sangradas sin motivo aparente.
+        l->addWidget(new AccentIcon(inUse ? "check" : QString(), &m_theme, 13), 0,
+                     Qt::AlignVCenter);
+        addToGroup(row);
     }
 }
 
@@ -577,7 +642,7 @@ QString SettingsView::updateSubtitle(bool busy, const QString &error) const {
 }
 
 void SettingsView::addUpdates() {
-    addSection(L("ACTUALIZACIONES"));
+    beginGroup(L("ACTUALIZACIONES"), "download");
 
     const bool on = m_store->prefs().updateCheck;
     addToggle(L("Buscar automáticamente"),
@@ -589,40 +654,15 @@ void SettingsView::addUpdates() {
     const bool hayNueva = !latest.isEmpty() &&
                           Updater::compare(latest, Updater::current()) > 0;
 
-    auto *card = new QFrame;
-    card->setObjectName("setCard");
-    auto *l = new QHBoxLayout(card);
-    l->setContentsMargins(9, 7, 7, 7);
-    l->setSpacing(8);
-
-    auto *texts = new QVBoxLayout;
-    texts->setContentsMargins(0, 0, 0, 0);
-    texts->setSpacing(1);
-
-    auto *name = new ElidedLabel(QString("Tagoror %1").arg(Updater::current()),
-                                 QColor(Theme::fg()));
-    name->setObjectName("setRowText");
-    texts->addWidget(name);
-
-    m_updateSub = new ElidedLabel(updateSubtitle(m_updateBusy, m_updateError),
-                                  QColor(hayNueva ? m_theme.accent : QColor(Theme::muted())));
-    m_updateSub->setObjectName("meta");
-    texts->addWidget(m_updateSub);
-    l->addLayout(texts, 1);
-
-    m_updateBtn = new QToolButton;
-    m_updateBtn->setObjectName("segButton");
-    m_updateBtn->setProperty("chosen", hayNueva);   // teñido cuando hay novedad
-    m_updateBtn->setText(hayNueva ? L("Ver") : L("Buscar ahora"));
-    m_updateBtn->setEnabled(!m_updateBusy);
-    m_updateBtn->setCursor(Qt::PointingHandCursor);
-    connect(m_updateBtn, &QToolButton::clicked, this, [this, hayNueva] {
+    m_updateBtn = addAction(QString("Tagoror %1").arg(Updater::current()),
+                            updateSubtitle(m_updateBusy, m_updateError),
+                            hayNueva ? L("Ver") : L("Buscar ahora"), !m_updateBusy,
+                            [this, hayNueva](QWidget *) {
         if (hayNueva) emit openLatestRequested();
         else emit checkUpdatesRequested();
-    });
-    l->addWidget(m_updateBtn, 0, Qt::AlignVCenter);
-
-    m_layout->insertWidget(m_layout->count() - 1, card);
+    }, &m_updateSub);
+    m_updateBtn->setProperty("chosen", hayNueva);   // teñido cuando hay novedad
+    if (hayNueva) m_updateSub->setColor(m_theme.accent);
 }
 
 // Solo toca los dos trozos que cambian; ver el comentario de la cabecera.
@@ -631,14 +671,17 @@ void SettingsView::setUpdateState(bool busy, const QString &error) {
     m_updateError = error;
     if (!m_updateSub || !m_updateBtn) return;
 
-    m_updateSub->setText(updateSubtitle(busy, error));
+    const QString sub = updateSubtitle(busy, error);
+    m_updateSub->setText(sub);
+    m_updateSub->setToolTip(sub);
     m_updateBtn->setEnabled(!busy);
 }
 
 void SettingsView::addQuit() {
+    m_group = nullptr;
     auto *host = new QWidget;
     auto *l = new QHBoxLayout(host);
-    l->setContentsMargins(0, 12, 0, 0);
+    l->setContentsMargins(0, 18, 0, 4);
 
     auto *quit = new QToolButton;
     quit->setObjectName("quitBtn");
@@ -649,6 +692,7 @@ void SettingsView::addQuit() {
     quit->setCursor(Qt::PointingHandCursor);
     connect(quit, &QToolButton::clicked, this, [this] { emit quitRequested(); });
 
+    l->addStretch();
     l->addWidget(quit);
     l->addStretch();
     m_layout->insertWidget(m_layout->count() - 1, host);
@@ -658,79 +702,56 @@ void SettingsView::addToggle(const QString &label, const QString &hint, bool on,
                              std::function<void(bool)> changed) {
     auto *row = new SettingRow;
     auto *l = new QHBoxLayout(row);
-    l->setContentsMargins(7, 6, 7, 6);
+    l->setContentsMargins(8, 7, 8, 7);
     l->setSpacing(8);
-
-    auto *texts = new QVBoxLayout;
-    texts->setContentsMargins(0, 0, 0, 0);
-    texts->setSpacing(0);
-
-    auto *title = new ElidedLabel(label, QColor(Theme::fg()));
-    title->setObjectName("setRowText");
-    texts->addWidget(title);
-    if (!hint.isEmpty()) {
-        auto *sub = new ElidedLabel(hint, QColor(Theme::muted()));
-        sub->setObjectName("meta");
-        texts->addWidget(sub);
-    }
-    l->addLayout(texts, 1);
+    l->addLayout(textColumn(label, hint), 1);
     l->addWidget(new Switch(on, &m_theme, std::move(changed)), 0, Qt::AlignVCenter);
-    m_layout->insertWidget(m_layout->count() - 1, row);
+    addToGroup(row);
 }
 
-void SettingsView::addSegments(const QStringList &labels, int chosen,
-                               std::function<void(int)> picked) {
-    auto *host = new QWidget;
-    auto *l = new QHBoxLayout(host);
-    l->setContentsMargins(0, 0, 0, 2);
-    l->setSpacing(4);
+// Control segmentado: una pista con las opciones pegadas, que se reparten el
+// ancho a partes iguales. Los botones sueltos de antes, cada uno de su ancho,
+// quedaban desalineados y no se leían como "uno de estos".
+QWidget *SettingsView::segments(const QStringList &labels, int chosen,
+                                std::function<void(int)> picked,
+                                QList<QToolButton *> *out) {
+    auto *track = new QFrame;
+    track->setObjectName("segTrack");
+    auto *l = new QHBoxLayout(track);
+    l->setContentsMargins(3, 3, 3, 3);
+    l->setSpacing(2);
 
     for (int i = 0; i < labels.size(); ++i) {
         auto *b = new QToolButton;
-        b->setObjectName("segButton");
+        b->setObjectName("segOption");
         b->setText(labels.at(i));
         b->setProperty("chosen", i == chosen);
         b->setCursor(Qt::PointingHandCursor);
+        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         connect(b, &QToolButton::clicked, this, [picked, i] { if (picked) picked(i); });
         l->addWidget(b, 1);
+        if (out) out->append(b);
     }
-    m_layout->insertWidget(m_layout->count() - 1, host);
+    return track;
 }
 
-void SettingsView::addCard(const QString &title, const QString &subtitle,
-                           const QString &action, bool enabled,
-                           std::function<void(QWidget *)> clicked) {
-    auto *card = new QFrame;
-    card->setObjectName("setCard");
-
-    auto *l = new QHBoxLayout(card);
-    l->setContentsMargins(9, 7, 7, 7);
+QToolButton *SettingsView::addAction(const QString &title, const QString &subtitle,
+                                     const QString &action, bool enabled,
+                                     std::function<void(QWidget *)> clicked,
+                                     ElidedLabel **subOut) {
+    auto *row = new QWidget;
+    auto *l = new QHBoxLayout(row);
+    l->setContentsMargins(8, 6, 6, 6);
     l->setSpacing(8);
-
-    auto *texts = new QVBoxLayout;
-    texts->setContentsMargins(0, 0, 0, 0);
-    texts->setSpacing(1);
-
-    auto *name = new ElidedLabel(title, QColor(Theme::fg()));
-    name->setObjectName("setRowText");
-    texts->addWidget(name);
-
-    // La ruta se recorta, no ensancha la tarjeta: es la trampa de *Card widths*
+    // La ruta se recorta, no ensancha la fila: es la trampa de *Card widths*
     // y una ruta larga es justo lo que la dispara.
-    auto *sub = new ElidedLabel(subtitle, QColor(Theme::muted()));
-    sub->setObjectName("meta");
-    sub->setToolTip(subtitle);
-    texts->addWidget(sub);
-    l->addLayout(texts, 1);
+    l->addLayout(textColumn(title, subtitle, subOut), 1);
 
-    auto *btn = new QToolButton;
-    btn->setObjectName("segButton");
-    btn->setText(action);
+    auto *btn = actionButton(action);
     btn->setEnabled(enabled);
-    btn->setCursor(Qt::PointingHandCursor);
     connect(btn, &QToolButton::clicked, this,
             [clicked, btn] { if (clicked) clicked(btn); });
     l->addWidget(btn, 0, Qt::AlignVCenter);
-
-    m_layout->insertWidget(m_layout->count() - 1, card);
+    addToGroup(row);
+    return btn;
 }

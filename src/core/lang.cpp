@@ -48,6 +48,9 @@ const QHash<QString, QString> &table() {
 
         // --- ajustes --------------------------------------------------------
         {"ACENTO", "ACCENT"},
+        {"APARIENCIA", "APPEARANCE"},
+        {"Opacidad", "Opacity"},
+        {"Tamaño de texto", "Text size"},
         {"OPACIDAD", "OPACITY"},
         {"IDIOMA", "LANGUAGE"},
         {"VENTANA", "WINDOW"},

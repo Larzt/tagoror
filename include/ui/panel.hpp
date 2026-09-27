@@ -133,6 +133,9 @@ private:
     void rememberPageSize(QWidget *page);
     // Devuelve false si esa página no tiene tamaño guardado todavía.
     bool applyPageSize(QWidget *page);
+    // Pone al día m_pageHome al salir de una página: si el usuario la ha
+    // movido, la lista se mueve con ella; si no, se queda donde estaba.
+    void syncPageHome(QWidget *from);
     // El cambio de página entero, con o sin tamaño por página.
     void switchBodyPage(QWidget *page);
 
@@ -331,4 +334,12 @@ private:
     // Lo mismo con el ancho del planificador (ver enterWide).
     QRect m_narrowGeom;
     QRect m_wideGeom;
+    // Con tamaño por página, todas las páginas se colocan a partir de la
+    // geometría de la lista (m_pageHome), no de la página de la que se viene:
+    // si no, una página grande que se abre hacia la izquierda o hacia arriba
+    // arrastraba la esquina, y la siguiente página salía desde ahí. Así cada
+    // página cae siempre en el mismo sitio. m_pagePlaced es cómo quedó la
+    // página abierta al colocarla, para saber si el usuario la ha movido.
+    QRect m_pageHome;
+    QRect m_pagePlaced;
 };
