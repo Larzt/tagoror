@@ -4,6 +4,37 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.0] — 2026-09-27
+
+Categories of your own in the planner, a choice of how early an event alerts,
+an alarm that no longer rings forever, and a window size for each page.
+
+### Added
+
+- **Your own planner categories.** Create them with a name and one of ten
+  colours from *New category* in the side panel or *New…* in the event form;
+  the pencil next to each one renames it, recolours it or deletes it (its
+  events move to *Other*). They live in `events.json`, are backed up with the
+  events and sync through Google Drive like everything else.
+- **How early an event alerts**: none, at the start, 5, 10, 15 or 30 minutes,
+  1 or 2 hours, or a day before. Existing events keep their ten minutes.
+- **Size per page.** The planner, timers, birthdays and settings each remember
+  their own window size, so enlarging one no longer enlarges the note list.
+  It can be turned off in settings (*Window → Size per page*).
+
+### Changed
+
+- **The alarm goes quiet after a minute** instead of looping until someone
+  stops it. Whatever rang stays red on its card, in the alarm strip and on the
+  dock and tray icon until it is acknowledged. A new alarm restarts the minute.
+- The alarm strip says the day, not just the time, when an event alerted the
+  day before.
+
+### Fixed
+
+- **Closing a page selected the first note's title**, as if to edit it: the
+  focus now stays on the page's header button.
+
 ## [3.0.0] — 2026-09-22
 
 A planner in place of the calendar, timers, Markdown in text notes, a text-size

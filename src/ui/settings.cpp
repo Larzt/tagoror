@@ -362,6 +362,10 @@ void SettingsView::addWindow() {
               m_store->prefs().onTop ? L("Por encima de todo")
                                      : L("Pegada al escritorio"),
               m_store->prefs().onTop, [this](bool on) { emit onTopToggled(on); });
+    addToggle(L("Tamaño por página"),
+              m_store->prefs().sizePerPage ? L("Cada página recuerda el suyo")
+                                           : L("El mismo para todas"),
+              m_store->prefs().sizePerPage, [this](bool on) { emit sizePerPageToggled(on); });
 
 #ifdef Q_OS_LINUX
     // Ver choosePlatform() en main.cpp: de esto depende que el panel pueda

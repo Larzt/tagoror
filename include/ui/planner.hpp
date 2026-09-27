@@ -55,7 +55,8 @@ public:
     // Todo es de otros (Store): se guardan punteros a las listas y se leen en
     // cada repintado, igual que el calendario de antes.
     void setSources(const QList<Event *> *events, const QList<Note *> *notes,
-                    const QList<Birthday *> *birthdays);
+                    const QList<Birthday *> *birthdays,
+                    const QList<Event::Category *> *categories);
     void setTheme(const Theme &theme);
     void setView(View v);
     View view() const { return m_view; }
@@ -93,6 +94,20 @@ public:
     };
     QList<Item> itemsOn(const QDate &day) const;
 
+    // Las categorías de serie seguidas de las del usuario, ya con su nombre
+    // para enseñar. 'custom' es nulo en las de serie.
+    struct CatInfo {
+        QString id;
+        QString name;
+        QColor color;
+        Event::Category *custom = nullptr;
+    };
+    QList<CatInfo> allCategories() const;
+    QColor categoryColor(const QString &id) const;
+
+    // Colores entre los que se elige al crear una categoría.
+    static const QList<QColor> &categoryPalette();
+
 signals:
     void eventCreated(Event *e);           // la propiedad pasa a quien lo reciba
     void eventChanged(Event *e);
@@ -102,6 +117,11 @@ signals:
     void birthdayActivated(Birthday *b);
     void viewChanged(int view);
     void hiddenChanged(const QStringList &categories);
+    // Las categorías propias. La propiedad de una nueva pasa a quien la
+    // reciba, como con eventCreated; al borrar una, sus eventos pasan a Otros.
+    void categoryCreated(Event::Category *c);
+    void categoryChanged(Event::Category *c);
+    void categoryDeleted(Event::Category *c);
 
 protected:
     void resizeEvent(QResizeEvent *e) override;
@@ -122,11 +142,17 @@ private:
     void saveEditor();
     void setEditorKind(int kind);
     void refreshEditorChoices();
-
+    // Rehace los botones de categoría del formulario si la lista ha cambiado
+    // (una nueva, otro nombre, otro color, una borrada en otro equipo).
+    void rebuildCatButtons();
+    // Crear (c nulo) o editar una categoría propia. Al crearla desde el
+    // formulario queda elegida para el evento que se está escribiendo.
+    void openCategoryEditor(Event::Category *c, QWidget *anchor, bool pickForForm);
     Theme m_theme;
     const QList<Event *> *m_events = nullptr;
     const QList<Note *> *m_notes = nullptr;
     const QList<Birthday *> *m_birthdays = nullptr;
+    const QList<Event::Category *> *m_categories = nullptr;
     View m_view = Month;
     QDate m_cursor = QDate::currentDate();
     QSet<QString> m_hidden;
@@ -166,7 +192,7 @@ private:
     QLineEdit *m_fEnd = nullptr;
     QWidget *m_fEndBox = nullptr;
     QTextEdit *m_fDesc = nullptr;
-    QCheckBox *m_fRemind = nullptr;
+    QList<QToolButton *> m_alertButtons;   // "minutes" = -1 sin aviso
     QLabel *m_fError = nullptr;
     QToolButton *m_fDelete = nullptr;
     QList<QToolButton *> m_kindButtons;
@@ -174,8 +200,10 @@ private:
     QList<QToolButton *> m_catButtons;
     QWidget *m_repeatBox = nullptr;
     QWidget *m_catBox = nullptr;
+    QString m_catSignature;       // de qué lista salen los botones de m_catBox
     Event *m_editing = nullptr;   // nulo = uno nuevo
     int m_fKind = 0;              // 0 evento, 1 tarea, 2 recordatorio
     int m_fRepeat = 0;
     QString m_fCategory = "work";
+    int m_fAlert = -1;            // minutos de antelación, -1 sin aviso
 };

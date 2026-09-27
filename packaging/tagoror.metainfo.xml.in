@@ -92,6 +92,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="3.1.0" date="2026-09-27">
+      <description>
+        <p>The planner lets you create your own categories, each with a name
+           and a colour, and choose how early an event alerts: at the start,
+           minutes or hours before, or the day before.</p>
+        <p>Each page remembers its own window size, so enlarging the planner
+           no longer enlarges the note list; this can be turned off in the
+           settings. The alarm now goes quiet after a minute and what rang stays
+           marked until it is acknowledged. Also fixes the first note being
+           selected after closing a page.</p>
+      </description>
+    </release>
     <release version="3.0.0" date="2026-09-22">
       <description>
         <p>A planner replaces the calendar: day, week and month views with

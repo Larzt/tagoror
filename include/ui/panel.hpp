@@ -124,6 +124,18 @@ private:
     void enterWide();
     void leaveWide();
 
+    // Tamaño por página (Prefs::sizePerPage). Al salir de una página se apunta
+    // cómo era la ventana, y al entrar en otra se le pone el suyo; la lista
+    // tiene el suyo en m_listSize. Con esto encendido, los apuntes de
+    // m_grownFrom y m_narrowGeom sobran: cada página se queda como la dejaron.
+    bool sizePerPage() const;
+    QString pageKey(const QWidget *page) const;   // vacío para la lista
+    void rememberPageSize(QWidget *page);
+    // Devuelve false si esa página no tiene tamaño guardado todavía.
+    bool applyPageSize(QWidget *page);
+    // El cambio de página entero, con o sin tamaño por página.
+    void switchBodyPage(QWidget *page);
+
     // --- temporizadores ---
     void createTimer(const QString &name, qint64 ms);
     void toggleTimer(Timer *t);
@@ -307,6 +319,7 @@ private:
     QString m_latestUrl;              // la página de la última publicada
     Theme m_theme;
     QSize m_expandedSize;                  // se restaura al desplegar (y se guarda)
+    QSize m_listSize;                      // el de la lista, con tamaño por página
     QPoint m_dockOffset;                   // por qué punto del panel entra y sale el dock
     bool m_posRestored = false;            // la posición guardada solo se repone al mapear
     // Lo que la ventana medía antes de estirarse para que cupiera la lista del

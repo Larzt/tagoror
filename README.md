@@ -35,7 +35,7 @@
 |---|---|
 | **Text** | A note whose editor grows with the content, and that understands **Markdown**: headings, `**bold**`, `*italic*`, `` `code` ``, lists, `- [ ]` checkboxes, quotes and `[links](…)` are shown formatted, and turn back into plain text the moment you click in to edit. Single line breaks stay line breaks, so notes written before this look the same. |
 | **Checklist** | Items you can tick off (done ones get struck through) and rename in place, a progress bar, and an add row that reads as a pending task rather than a form. |
-| **Reminder** | A real date, not just a label: when the time comes it rings until you stop it. |
+| **Reminder** | A real date, not just a label: when the time comes it rings until you stop it, or for a minute — after that it goes quiet but stays red until you acknowledge it. |
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
 
 <p align="center">
@@ -74,9 +74,12 @@
   by side when they overlap, with a red line at the current time; month writes
   each day's entries inside its cell, with `+N more` when they do not fit.
 - **Events and tasks** with a start and an end, a category (work, personal,
-  studies, other) and an optional repeat — every day, week or month. A task has
+  studies, other, or **your own**, with a name and a colour — created from the
+  side panel or the form, edited with the pencil next to it; deleting one moves
+  its events to *other*) and an optional repeat — every day, week or month. A task has
   a box to tick, and a repeating task is ticked per day, not all at once.
-- They can **ring ten minutes before** they start, through the same alarm as
+- They can **ring before they start** — at the start, or 5, 10, 15 or 30
+  minutes, 1 or 2 hours, or a day before — through the same alarm as
   everything else; a red strip under the header says what is starting and stops
   it.
 - Your reminders and birthdays appear on the same grid — reminders as a dashed
@@ -215,6 +218,9 @@
   an option, not the default.
 - Drag it by its header, resize it from the bottom-right corner, or fold it into
   a dock you can also drag around.
+- **Each page keeps its own size**: make the planner or the settings bigger and
+  the note list stays as it was. *Size per page* in settings turns it off, back
+  to one size for everything.
 - The panel opens *away* from the nearest screen edge: a dock on the right side
   opens to the left, one near the bottom opens upwards. Folding is the mirror
   image, so the dock appears on the corner the panel will reopen from and

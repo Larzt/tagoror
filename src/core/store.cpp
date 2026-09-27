@@ -78,6 +78,7 @@ inline QString keyOf(const Note *n) { return "n:" + n->id; }
 inline QString keyOf(const Birthday *b) { return "b:" + b->id; }
 inline QString keyOf(const Event *e) { return "e:" + e->id; }
 inline QString keyOf(const Timer *t) { return "t:" + t->id; }
+inline QString keyOf(const Event::Category *c) { return "c:" + c->id; }
 
 // Lo que dice un elemento, sin la fecha de cambio: si esto no cambia, el
 // elemento no ha cambiado.
@@ -106,6 +107,20 @@ void adopt(Event *local, const Event *remote) {
     local->ringingMs = ringing;
 }
 void adopt(Timer *local, const Timer *remote) { *local = *remote; }
+void adopt(Event::Category *local, const Event::Category *remote) { *local = *remote; }
+
+// Las categorías propias de un events.json (o de su copia). Un fichero de antes
+// de que existieran no trae la clave y no hay ninguna.
+QList<Event::Category *> readCategories(const QJsonObject &root) {
+    QList<Event::Category *> out;
+    for (const QJsonValue v : root["categories"].toArray()) {
+        Event::Category *c = Event::Category::fromJson(v.toObject());
+        // Una propia no puede hacerse pasar por una de serie.
+        if (Event::isBuiltinCategory(c->id)) delete c;
+        else out.append(c);
+    }
+    return out;
+}
 
 }  // namespace
 
@@ -126,6 +141,7 @@ Store::~Store() {
     qDeleteAll(m_birthdays);
     qDeleteAll(m_timers);
     qDeleteAll(m_events);
+    qDeleteAll(m_categories);
 }
 
 void Store::resolveDataDir() {
@@ -204,6 +220,19 @@ void Store::removeEvent(Event *e) {
     save();
 }
 
+void Store::addCategory(Event::Category *c) {
+    m_categories.append(c);
+    save();
+}
+
+void Store::removeCategory(Event::Category *c) {
+    for (Event *e : m_events)
+        if (e->category == c->id) e->category = Event::kFallbackCategory;
+    m_categories.removeOne(c);
+    delete c;
+    save();
+}
+
 // --- cumpleaños --------------------------------------------------------------
 
 // El orden en que se guardan da igual: la página los ordena por lo que falta
@@ -263,6 +292,11 @@ void Store::save() {
     }
     root["input"] = QString::fromLatin1(m_prefs.input);
     root["onTop"] = m_prefs.onTop;
+    root["sizePerPage"] = m_prefs.sizePerPage;
+    QJsonObject pageSizes;
+    for (auto it = m_prefs.pageSizes.cbegin(); it != m_prefs.pageSizes.cend(); ++it)
+        pageSizes[it.key()] = QJsonArray{it.value().width(), it.value().height()};
+    root["pageSizes"] = pageSizes;
     root["lang"] = Lang::toString(m_prefs.lang);
     root["birthdaysByMonth"] = m_prefs.birthdaysByMonth;
     root["textScale"] = m_prefs.textScale;
@@ -294,9 +328,12 @@ void Store::saveEvents() {
 
     QJsonArray arr;
     for (Event *e : m_events) arr.append(e->toJson());
+    QJsonArray cats;
+    for (Event::Category *c : m_categories) cats.append(c->toJson());
 
     QJsonObject root;
     root["events"] = arr;
+    root["categories"] = cats;
     writeAtomic(eventsPath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
@@ -321,6 +358,8 @@ void Store::loadEvents() {
     m_events.clear();
     for (const QJsonValue v : root["events"].toArray())
         m_events.append(Event::fromJson(v.toObject()));
+    qDeleteAll(m_categories);
+    m_categories = readCategories(root);
 }
 
 // Aparte de save() para poder no escribirlo: un birthdays.json ilegible no se
@@ -547,24 +586,31 @@ bool Store::restoreBackup(const QString &file) {
         const QString stamp = fileName.mid(int(qstrlen(kBackupPrefix)));
         // Devuelve false si esa mitad no está o no trae su clave: entonces lo
         // de ahora se queda como está.
-        auto readMate = [&](const char *prefix, const char *key, QJsonArray *out) {
+        auto readMate = [&](const char *prefix, const char *key, QJsonObject *out) {
             QFile mf(QFileInfo(file).path() + "/" + prefix + stamp);
             if (!mf.exists() || !mf.open(QIODevice::ReadOnly)) return false;
             const QJsonObject mroot = QJsonDocument::fromJson(mf.readAll()).object();
             if (!mroot.contains(key)) return false;
-            *out = mroot[key].toArray();
+            *out = mroot;
             return true;
         };
-        QJsonArray arr;
-        if (readMate(kBirthdayBackupPrefix, "birthdays", &arr)) {
+        QJsonObject mate;
+        if (readMate(kBirthdayBackupPrefix, "birthdays", &mate)) {
             qDeleteAll(m_birthdays);
             m_birthdays.clear();
-            for (const QJsonValue v : arr) m_birthdays.append(Birthday::fromJson(v.toObject()));
+            for (const QJsonValue v : mate["birthdays"].toArray())
+                m_birthdays.append(Birthday::fromJson(v.toObject()));
         }
-        if (readMate(kEventBackupPrefix, "events", &arr)) {
+        // Las categorías propias van con sus eventos: una copia de antes de
+        // que existieran deja sin ninguna, y sus eventos se pintan con el
+        // acento hasta que se les elija otra.
+        if (readMate(kEventBackupPrefix, "events", &mate)) {
             qDeleteAll(m_events);
             m_events.clear();
-            for (const QJsonValue v : arr) m_events.append(Event::fromJson(v.toObject()));
+            for (const QJsonValue v : mate["events"].toArray())
+                m_events.append(Event::fromJson(v.toObject()));
+            qDeleteAll(m_categories);
+            m_categories = readCategories(mate);
         }
     }
     // readObject trae el "última copia" que llevaba dentro la copia, que es
@@ -661,6 +707,14 @@ bool Store::readObject(const QJsonObject &root) {
     if (root.contains("opacity")) m_prefs.opacity = root["opacity"].toInt(96);
     if (root.contains("input")) m_prefs.input = root["input"].toString().toLatin1();
     m_prefs.onTop = root["onTop"].toBool();
+    // De antes de que existiera: activado, que es lo de serie.
+    if (root.contains("sizePerPage")) m_prefs.sizePerPage = root["sizePerPage"].toBool();
+    const QJsonObject pageSizes = root["pageSizes"].toObject();
+    for (auto it = pageSizes.begin(); it != pageSizes.end(); ++it) {
+        const QJsonArray wh = it.value().toArray();
+        const QSize size(wh.at(0).toInt(), wh.at(1).toInt());
+        if (size.isValid() && !size.isEmpty()) m_prefs.pageSizes.insert(it.key(), size);
+    }
     // Un fichero de antes de que hubiera idioma se queda en español, que es
     // como lo venía viendo su dueño; el del sistema solo decide en un
     // arranque en blanco.
@@ -718,15 +772,18 @@ bool Store::retryLoad() {
         const QList<Birthday *> pendingBdays = m_birthdays;
         const QList<Timer *> pendingTimers = m_timers;
         const QList<Event *> pendingEvents = m_events;
+        const QList<Event::Category *> pendingCats = m_categories;
         m_notes.clear();
         m_birthdays.clear();
         m_timers.clear();
         m_events.clear();
+        m_categories.clear();
         if (!readFile()) {
             m_notes = pending;
             m_birthdays = pendingBdays;
             m_timers = pendingTimers;
             m_events = pendingEvents;
+            m_categories = pendingCats;
             return false;
         }
         for (int i = int(pending.size()) - 1; i >= 0; --i) m_notes.prepend(pending[i]);
@@ -741,6 +798,7 @@ bool Store::retryLoad() {
         m_birthdays += pendingBdays;
         loadEvents();
         m_events += pendingEvents;
+        m_categories += pendingCats;
         // Lo leído es el punto de partida; lo escrito mientras la carpeta no
         // estaba sí es un cambio, y se queda sin foto para que se marque.
         resetSnapshots();
@@ -748,6 +806,7 @@ bool Store::retryLoad() {
         for (Birthday *b : pendingBdays) m_snap.remove(keyOf(b));
         for (Timer *t : pendingTimers) m_snap.remove(keyOf(t));
         for (Event *e : pendingEvents) m_snap.remove(keyOf(e));
+        for (Event::Category *c : pendingCats) m_snap.remove(keyOf(c));
     }
     // Si la carpeta apareció sin fichero, se queda lo que hubiera en memoria:
     // sembrar los ejemplos ahora sería ponerlos encima de lo que el usuario
@@ -816,6 +875,8 @@ void Store::adoptDataDir(const QString &raw) {
     m_timers.clear();
     qDeleteAll(m_events);
     m_events.clear();
+    qDeleteAll(m_categories);
+    m_categories.clear();
     m_prefs = Prefs{};
     // Otras notas, otra historia: las lápidas de aquí no son de allí.
     m_deleted.clear();
@@ -834,6 +895,7 @@ void Store::resetSnapshots() {
     for (Note *n : m_notes) m_snap[keyOf(n)] = snapshotOf(n);
     for (Birthday *b : m_birthdays) m_snap[keyOf(b)] = snapshotOf(b);
     for (Event *e : m_events) m_snap[keyOf(e)] = snapshotOf(e);
+    for (Event::Category *c : m_categories) m_snap[keyOf(c)] = snapshotOf(c);
     for (Timer *t : m_timers) m_snap[keyOf(t)] = snapshotOf(t);
     m_orderSnap.clear();
     for (Note *n : m_notes) m_orderSnap << n->id;
@@ -857,8 +919,10 @@ void Store::stampChanges() {
     // se ha llegado a cargar. Sin esta guarda se repartiría su borrado.
     if (m_birthdaysReadable)
         for (Birthday *b : m_birthdays) stamp(b);
-    if (m_eventsReadable)
+    if (m_eventsReadable) {
         for (Event *e : m_events) stamp(e);
+        for (Event::Category *c : m_categories) stamp(c);
+    }
     for (Timer *t : m_timers) stamp(t);
 
     for (auto it = m_snap.begin(); it != m_snap.end();) {
@@ -1000,9 +1064,12 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
     if (m_birthdaysReadable && birthdaysRoot.contains("birthdays"))
         result.changed |= mergeList<Birthday>(m_birthdays, birthdaysRoot["birthdays"].toArray(),
                                               m_deleted, false, nothing);
-    if (m_eventsReadable && eventsRoot.contains("events"))
+    if (m_eventsReadable && eventsRoot.contains("events")) {
         result.changed |= mergeList<Event>(m_events, eventsRoot["events"].toArray(), m_deleted,
                                            false, nothing);
+        result.changed |= mergeList<Event::Category>(
+            m_categories, eventsRoot["categories"].toArray(), m_deleted, false, nothing);
+    }
 
     // Lo borrado en el otro equipo, también aquí. Las notas se llevan sus
     // adjuntos, igual que al borrarlas a mano.
@@ -1012,7 +1079,10 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
     });
     result.changed |= applyTombstones<Timer>(m_timers, m_deleted);
     if (m_birthdaysReadable) result.changed |= applyTombstones<Birthday>(m_birthdays, m_deleted);
-    if (m_eventsReadable) result.changed |= applyTombstones<Event>(m_events, m_deleted);
+    if (m_eventsReadable) {
+        result.changed |= applyTombstones<Event>(m_events, m_deleted);
+        result.changed |= applyTombstones<Event::Category>(m_categories, m_deleted);
+    }
 
     // Lo que acaba de llegar no es un cambio de este equipo: si se marcara,
     // se llevaría la fecha de ahora y ganaría a la de verdad en el siguiente.
@@ -1063,6 +1133,7 @@ QByteArray Store::syncPayload(const QString &name) const {
         root["birthdays"] = sortedById(m_birthdays);
     } else if (name == "events.json") {
         root["events"] = sortedById(m_events);
+        root["categories"] = sortedById(m_categories);
     } else {
         return {};
     }

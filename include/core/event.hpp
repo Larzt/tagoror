@@ -30,7 +30,11 @@ struct Event {
     QTime end{11, 0};
     Repeat repeat = Once;
     QString category = "work";
-    bool remind = false;              // suena kRemindBeforeMin antes de empezar
+    bool remind = false;              // suena remindBeforeMin antes de empezar
+    // Cuánto antes avisa, en minutos. Cero es "al empezar". Los eventos de
+    // antes de que se pudiera elegir no traen la clave y siguen con los diez
+    // de siempre.
+    int remindBeforeMin = kDefaultRemindMin;
     QString description;
     // Una tarea repetida se hace muchas veces: se apunta qué días está hecha,
     // no un "hecha" suelto que marcaría todas las vueltas de golpe.
@@ -45,28 +49,66 @@ struct Event {
     // ninguna tarjeta tiene que acordarse de tocarlo.
     qint64 updatedMs = 0;
 
-    static constexpr int kRemindBeforeMin = 10;
+    static constexpr int kDefaultRemindMin = 10;
+    // Un día como mucho: alarmDue() mira las vueltas de hoy en adelante hasta
+    // donde alcance el aviso, y más allá de eso ya no es un aviso sino una
+    // agenda.
+    static constexpr int kMaxRemindMin = 24 * 60;
 
     // --- categorías ----------------------------------------------------------
-    // Fijas por ahora: con cuatro se ordena un horario, y el acento es la de
-    // trabajo porque es la que más se usa y la que tiene que parecer "la app".
+    // Cuatro de serie, que no se guardan en ningún sitio, y las que cree el
+    // usuario, que viven en events.json junto a los eventos y se sincronizan
+    // como un elemento más (con su fecha de cambio y sus lápidas). El acento es
+    // la de trabajo porque es la que más se usa y la que tiene que parecer "la
+    // app".
     struct Category {
         QString id;
-        QString label;    // en español; se traduce al pintar con L()
+        QString label;    // de serie: en español, se traduce con L(); propias: tal cual
         QColor color;     // inválido = el acento
+        qint64 updatedMs = 0;   // solo las propias: ver Event::updatedMs
+
+        QJsonObject toJson() const {
+            QJsonObject o;
+            o["id"] = id;
+            o["name"] = label;
+            o["color"] = color.name();
+            o["updated"] = double(updatedMs);
+            return o;
+        }
+        static Category *fromJson(const QJsonObject &o) {
+            auto *c = new Category;
+            c->id = o["id"].toString(QUuid::createUuid().toString(QUuid::WithoutBraces));
+            c->label = o["name"].toString();
+            c->color = QColor(o["color"].toString());
+            c->updatedMs = qint64(o["updated"].toDouble());
+            return c;
+        }
     };
     static const QList<Category> &categories() {
         static const QList<Category> list{
-            {"work", "Trabajo", QColor()},
-            {"personal", "Personal", QColor("#6fcf97")},
-            {"study", "Estudios", QColor("#4ecdc4")},
-            {"other", "Otros", QColor("#b98cff")},
+            {"work", "Trabajo", QColor(), 0},
+            {"personal", "Personal", QColor("#6fcf97"), 0},
+            {"study", "Estudios", QColor("#4ecdc4"), 0},
+            {"other", "Otros", QColor("#b98cff"), 0},
         };
         return list;
     }
-    static QColor categoryColor(const QString &id, const QColor &accent) {
+    static bool isBuiltinCategory(const QString &id) {
+        for (const Category &c : categories())
+            if (c.id == id) return true;
+        return false;
+    }
+    // Adónde van los eventos de una categoría propia que se borra.
+    static constexpr auto kFallbackCategory = "other";
+    // Una categoría que ya no existe (borrada en otro equipo a la vez que aquí
+    // se le asignaba un evento) se pinta con el acento en vez de desaparecer.
+    static QColor categoryColor(const QString &id, const QColor &accent,
+                                const QList<Category *> *custom = nullptr) {
         for (const Category &c : categories())
             if (c.id == id) return c.color.isValid() ? c.color : accent;
+        if (custom)
+            for (const Category *c : *custom)
+                if (c->id == id) return c->color.isValid() ? c->color : accent;
         return accent;
     }
 
@@ -106,19 +148,23 @@ struct Event {
         if (on) doneOn.append(d);
     }
 
-    // ¿Tiene que sonar ahora? Mira la vuelta de hoy y la de mañana (una clase a
-    // las 00:05 avisa a las 23:55 del día antes). No suena por una vuelta que
+    // ¿Tiene que sonar ahora? Mira la vuelta de hoy y las siguientes hasta
+    // donde llegue el aviso (una clase a las 00:05 avisa a las 23:55 del día
+    // antes; con un día de antelación, la de mañana avisa hoy). No suena por una vuelta que
     // ya ha terminado: con la aplicación cerrada toda la mañana, al abrirla no
     // tiene sentido avisar de la clase de las nueve. Devuelve el inicio de la
     // vuelta en ms, o 0.
     qint64 alarmDue(const QDateTime &now = QDateTime::currentDateTime()) const {
         if (!remind) return 0;
-        for (const QDate &d : {now.date(), now.date().addDays(1)}) {
+        const int lead = qBound(0, remindBeforeMin, kMaxRemindMin);
+        const int ahead = lead / (24 * 60) + 1;
+        for (int i = 0; i <= ahead; ++i) {
+            const QDate d = now.date().addDays(i);
             if (!occursOn(d) || isDoneOn(d)) continue;
             const QDateTime begins = startOn(d);
             const qint64 key = begins.toMSecsSinceEpoch();
             if (firedMs >= key) continue;
-            if (now >= begins.addSecs(-60 * kRemindBeforeMin) && now < endOn(d)) return key;
+            if (now >= begins.addSecs(-60 * lead) && now < endOn(d)) return key;
         }
         return 0;
     }
@@ -142,6 +188,10 @@ struct Event {
         o["repeat"] = int(repeat);
         o["category"] = category;
         o["remind"] = remind;
+        // Solo si no es el de siempre: así un evento que nadie ha tocado sigue
+        // escribiéndose igual que antes y la sincronización no lo toma por
+        // cambiado (ver Store::stampChanges).
+        if (remindBeforeMin != kDefaultRemindMin) o["remindBefore"] = remindBeforeMin;
         o["description"] = description;
         QJsonArray done;
         for (const QDate &d : doneOn) done.append(d.toString(Qt::ISODate));
@@ -164,6 +214,8 @@ struct Event {
         e->repeat = Repeat(qBound(0, o["repeat"].toInt(), int(Monthly)));
         e->category = o["category"].toString("work");
         e->remind = o["remind"].toBool();
+        e->remindBeforeMin =
+            qBound(0, o["remindBefore"].toInt(kDefaultRemindMin), int(kMaxRemindMin));
         e->description = o["description"].toString();
         for (const QJsonValue v : o["doneOn"].toArray())
             if (const QDate d = QDate::fromString(v.toString(), Qt::ISODate); d.isValid())

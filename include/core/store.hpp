@@ -42,6 +42,13 @@ public:
         bool hasWindowPos = false;
         QByteArray input;              // micrófono elegido en ajustes
         bool onTop = false;            // por defecto vive en el escritorio
+        // Cada página (planificador, temporizadores, cumpleaños, ajustes)
+        // recuerda su propio tamaño de ventana, y la lista el suyo
+        // (windowSize): agrandar el planificador ya no agranda la lista.
+        // Apagado, la ventana tiene un solo tamaño como antes. Es de este
+        // equipo, como el resto de lo de la ventana: no se sincroniza.
+        bool sizePerPage = true;
+        QHash<QString, QSize> pageSizes;   // "planner", "timers", "birthdays", "settings"
         Lang::Code lang = Lang::Es;    // idioma de la interfaz
         // Cómo se ordena la página de cumpleaños: por lo que falta para cada
         // uno (lo de serie) o por meses del año, de enero a diciembre. Vive
@@ -104,6 +111,12 @@ public:
     const QList<Event *> &events() const { return m_events; }
     void addEvent(Event *e);
     void removeEvent(Event *e);
+    // Las categorías que ha creado el usuario (las de serie no se guardan).
+    // Van en events.json con los eventos, y se sincronizan igual que ellos.
+    const QList<Event::Category *> &categories() const { return m_categories; }
+    void addCategory(Event::Category *c);
+    // Sus eventos no se quedan huérfanos: pasan a Event::kFallbackCategory.
+    void removeCategory(Event::Category *c);
 
     // --- cumpleaños (mismo dueño y mismo fichero que las notas) ------------
     // Viven aquí y no en la lista de notas porque son otra cosa (ver
@@ -264,6 +277,7 @@ private:
     QList<Birthday *> m_birthdays;
     QList<Timer *> m_timers;
     QList<Event *> m_events;
+    QList<Event::Category *> m_categories;
     Prefs m_prefs;
     QTimer *m_saveTimer = nullptr;
     bool m_available = true;

@@ -3,6 +3,7 @@
 #include "core/lang.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
+#include "ui/popup.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,6 +18,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -95,6 +97,30 @@ void setChosen(QToolButton *b, bool on) {
     b->setProperty("chosen", on);
     b->style()->unpolish(b);
     b->style()->polish(b);
+}
+
+// La antelación de un aviso, en minutos; -1 es "sin aviso". Tres por fila en
+// el formulario: en una sola no caben en el ancho mínimo del panel.
+struct AlertChoice {
+    int minutes;
+    const char *label;
+};
+constexpr AlertChoice kAlertChoices[] = {
+    {-1, "Sin aviso"}, {0, "Al empezar"}, {5, "5 min"},
+    {10, "10 min"},    {15, "15 min"},    {30, "30 min"},
+    {60, "1 h"},       {120, "2 h"},      {24 * 60, "1 día"},
+};
+
+QIcon colorDot(const QColor &color) {
+    QPixmap dot(16, 16);
+    dot.fill(Qt::transparent);
+    QPainter p(&dot);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    p.setBrush(color);
+    p.drawRoundedRect(QRectF(2, 2, 12, 12), 3.5, 3.5);
+    p.end();
+    return QIcon(dot);
 }
 
 }  // namespace
@@ -1154,30 +1180,38 @@ void PlannerView::buildEditor() {
     col->addWidget(m_repeatBox);
 
     col->addWidget(caption("CATEGORÍA"));
+    // Los botones los pone rebuildCatButtons(): la lista cambia cuando el
+    // usuario crea o borra una.
     m_catBox = new QWidget;
     auto *cg = new QGridLayout(m_catBox);
     cg->setContentsMargins(0, 0, 0, 0);
     cg->setSpacing(4);
-    for (int i = 0; i < Event::categories().size(); ++i) {
-        const Event::Category &c = Event::categories().at(i);
-        auto *b = segButton(L(c.label));
-        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        b->setProperty("tip", c.label);
-        b->setProperty("category", c.id);
-        b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        b->setIconSize(QSize(8, 8));
-        connect(b, &QToolButton::clicked, this, [this, id = c.id] {
-            m_fCategory = id;
-            refreshEditorChoices();
-        });
-        m_catButtons << b;
-        cg->addWidget(b, i / 2, i % 2);
-    }
+    cg->setColumnStretch(0, 1);
+    cg->setColumnStretch(1, 1);
     col->addWidget(m_catBox);
 
-    m_fRemind = new QCheckBox(L("Avisar 10 min antes"));
-    m_fRemind->setFocusPolicy(Qt::TabFocus);
-    col->addWidget(m_fRemind);
+    // Cuánto antes avisa. Sustituye a la casilla de "10 min antes", que era
+    // la única antelación posible.
+    col->addWidget(caption("AVISO"));
+    auto *alertBox = new QWidget;
+    alertBox->setObjectName("plannerAlertBox");
+    auto *ag = new QGridLayout(alertBox);
+    ag->setContentsMargins(0, 0, 0, 0);
+    ag->setSpacing(4);
+    for (int i = 0; i < int(std::size(kAlertChoices)); ++i) {
+        const AlertChoice &a = kAlertChoices[i];
+        auto *b = segButton(L(a.label));
+        b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        b->setProperty("tip", a.label);
+        b->setProperty("minutes", a.minutes);
+        connect(b, &QToolButton::clicked, this, [this, m = a.minutes] {
+            m_fAlert = m;
+            refreshEditorChoices();
+        });
+        m_alertButtons << b;
+        ag->addWidget(b, i / 3, i % 3);
+    }
+    col->addWidget(alertBox);
 
     m_fDesc = new QTextEdit;
     m_fDesc->setObjectName("plannerDesc");
@@ -1236,11 +1270,37 @@ void PlannerView::buildEditor() {
 // ---------------------------------------------------------------------------
 
 void PlannerView::setSources(const QList<Event *> *events, const QList<Note *> *notes,
-                             const QList<Birthday *> *birthdays) {
+                             const QList<Birthday *> *birthdays,
+                             const QList<Event::Category *> *categories) {
     m_events = events;
     m_notes = notes;
     m_birthdays = birthdays;
+    m_categories = categories;
     refresh();
+}
+
+QList<PlannerView::CatInfo> PlannerView::allCategories() const {
+    QList<CatInfo> out;
+    for (const Event::Category &c : Event::categories())
+        out.append({c.id, L(c.label), c.color.isValid() ? c.color : m_theme.accent, nullptr});
+    if (m_categories)
+        for (Event::Category *c : *m_categories)
+            out.append({c->id, c->label.isEmpty() ? L("Sin nombre") : c->label,
+                        c->color.isValid() ? c->color : m_theme.accent, c});
+    return out;
+}
+
+QColor PlannerView::categoryColor(const QString &id) const {
+    return Event::categoryColor(id, m_theme.accent, m_categories);
+}
+
+const QList<QColor> &PlannerView::categoryPalette() {
+    static const QList<QColor> list{
+        QColor("#ff9f7a"), QColor("#ffd166"), QColor("#a8e063"), QColor("#6fcf97"),
+        QColor("#4ecdc4"), QColor("#56b4f2"), QColor("#7c9cff"), QColor("#b98cff"),
+        QColor("#f78fb3"), QColor("#a0a4ad"),
+    };
+    return list;
 }
 
 void PlannerView::setTheme(const Theme &theme) {
@@ -1306,7 +1366,7 @@ QList<Item> PlannerView::itemsOn(const QDate &day) const {
             it.start = e->startHours();
             it.end = e->endHours();
             it.title = e->title.isEmpty() ? L("Sin título") : e->title;
-            it.color = Event::categoryColor(e->category, m_theme.accent);
+            it.color = categoryColor(e->category);
             it.task = e->kind == Event::Task;
             it.done = e->isDoneOn(day);
             it.alert = e->ringingMs != 0 && e->ringingMs == e->startOn(day).toMSecsSinceEpoch();
@@ -1347,6 +1407,7 @@ void PlannerView::refresh() {
         m_editing = nullptr;
         m_stack->setCurrentWidget(m_view == Month ? static_cast<QWidget *>(m_month) : m_gridPage);
     }
+    rebuildCatButtons();
     refreshToolbar();
     refreshSide();
 
@@ -1457,13 +1518,12 @@ void PlannerView::refreshSide() {
     // Filtro de categorías, con los recordatorios y los cumpleaños como dos
     // más: también se quieren esconder para ver solo el horario.
     clear(m_catList);
-    QList<QPair<QString, QPair<QString, QColor>>> cats;
-    for (const Event::Category &c : Event::categories())
-        cats.append({c.id, {L(c.label), c.color.isValid() ? c.color : m_theme.accent}});
-    cats.append({kReminders, {L("Recordatorios"), kAmber}});
-    cats.append({kBirthdays, {L("Cumpleaños"), kPink}});
-    for (const auto &[id, info] : cats) {
-        auto *box = new QCheckBox(info.first);
+    QList<CatInfo> cats = allCategories();
+    cats.append({kReminders, L("Recordatorios"), kAmber, nullptr});
+    cats.append({kBirthdays, L("Cumpleaños"), kPink, nullptr});
+    for (const CatInfo &cat : cats) {
+        const QString &id = cat.id;
+        auto *box = new QCheckBox(cat.name);
         box->setObjectName("plannerCat");
         box->setChecked(!m_hidden.contains(id));
         box->setFocusPolicy(Qt::TabFocus);
@@ -1471,7 +1531,7 @@ void PlannerView::refreshSide() {
         box->setStyleSheet(QString("QCheckBox#plannerCat::indicator:checked { background:%1;"
                                    " border:1.4px solid %1; }"
                                    "QCheckBox#plannerCat::indicator { border:1.4px solid %1; }")
-                               .arg(info.second.name()));
+                               .arg(cat.color.name()));
         connect(box, &QCheckBox::toggled, this, [this, id = id](bool on) {
             if (on) m_hidden.remove(id);
             else m_hidden.insert(id);
@@ -1481,8 +1541,159 @@ void PlannerView::refreshSide() {
                 emit hiddenChanged(hidden());
             });
         });
-        m_catList->addWidget(box);
+        if (!cat.custom) {
+            m_catList->addWidget(box);
+            continue;
+        }
+        // Las propias llevan su lápiz: nombre, color y borrarla.
+        auto *row = new QWidget;
+        auto *rl = new QHBoxLayout(row);
+        rl->setContentsMargins(0, 0, 0, 0);
+        rl->setSpacing(2);
+        box->setMinimumWidth(24);   // ver *Card widths*: el nombre lo pone el usuario
+        box->setToolTip(cat.name);
+        rl->addWidget(box, 1);
+        auto *edit = new QToolButton;
+        edit->setObjectName("calNav");
+        edit->setIcon(paintIcon("pencil", QColor(Theme::muted()), 11));
+        edit->setIconSize(QSize(11, 11));
+        edit->setFixedSize(20, 20);
+        edit->setCursor(Qt::PointingHandCursor);
+        edit->setToolTip(L("Editar categoría"));
+        edit->setFocusPolicy(Qt::TabFocus);
+        connect(edit, &QToolButton::clicked, this, [this, edit, c = cat.custom] {
+            openCategoryEditor(c, edit, false);
+        });
+        rl->addWidget(edit);
+        m_catList->addWidget(row);
     }
+
+    auto *add = new QToolButton;
+    add->setObjectName("todayBtn");
+    add->setText(L("Nueva categoría"));
+    add->setIcon(paintIcon("plus", m_theme.accent, 11));
+    add->setIconSize(QSize(11, 11));
+    add->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    add->setCursor(Qt::PointingHandCursor);
+    add->setFocusPolicy(Qt::TabFocus);
+    connect(add, &QToolButton::clicked, this, [this, add] { openCategoryEditor(nullptr, add, false); });
+    m_catList->addSpacing(4);
+    m_catList->addWidget(add, 0, Qt::AlignLeft);
+}
+
+void PlannerView::rebuildCatButtons() {
+    if (!m_catBox) return;
+    const QList<CatInfo> cats = allCategories();
+    QString sig = m_theme.accent.name();
+    for (const CatInfo &c : cats) sig += '|' + c.id + ':' + c.name + ':' + c.color.name();
+    // La categoría elegida puede haberse borrado (aquí o en otro equipo).
+    if (!std::any_of(cats.begin(), cats.end(),
+                     [this](const CatInfo &c) { return c.id == m_fCategory; }))
+        m_fCategory = Event::kFallbackCategory;
+    if (sig == m_catSignature) return;
+    m_catSignature = sig;
+
+    auto *grid = static_cast<QGridLayout *>(m_catBox->layout());
+    while (QLayoutItem *it = grid->takeAt(0)) {
+        if (QWidget *w = it->widget()) {
+            w->hide();   // ver *Removing rows*
+            w->deleteLater();
+        }
+        delete it;
+    }
+    m_catButtons.clear();
+
+    int i = 0;
+    for (const CatInfo &c : cats) {
+        auto *b = segButton(c.name);
+        // Las dos columnas a partes iguales, pida lo que pida el texto: el
+        // nombre de una propia puede ser largo, y con su ancho natural se
+        // comía la otra columna (ver *Card widths*).
+        b->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        b->setMinimumWidth(24);
+        // Solo las de serie se traducen: el nombre de una propia es del usuario.
+        if (!c.custom) b->setProperty("tip", Event::categories().at(i).label);
+        b->setProperty("category", c.id);
+        b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        b->setIconSize(QSize(8, 8));
+        b->setToolTip(c.name);
+        connect(b, &QToolButton::clicked, this, [this, id = c.id] {
+            m_fCategory = id;
+            refreshEditorChoices();
+        });
+        if (c.custom) {
+            // Clic derecho para cambiarla sin salir del formulario, que es
+            // lo único que hay cuando el panel es estrecho y no hay lateral.
+            b->setContextMenuPolicy(Qt::CustomContextMenu);
+            connect(b, &QToolButton::customContextMenuRequested, this,
+                    [this, b, cat = c.custom] { openCategoryEditor(cat, b, false); });
+        }
+        m_catButtons << b;
+        grid->addWidget(b, i / 2, i % 2);
+        ++i;
+    }
+    auto *add = segButton(L("Nueva…"));
+    add->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    add->setMinimumWidth(24);
+    add->setProperty("tip", "Nueva…");
+    add->setToolTip(L("Nueva categoría"));
+    connect(add, &QToolButton::clicked, this, [this, add] { openCategoryEditor(nullptr, add, true); });
+    grid->addWidget(add, i / 2, i % 2);
+    refreshEditorChoices();
+}
+
+void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool pickForForm) {
+    const QList<QColor> &palette = categoryPalette();
+    int chosen = 0;
+    if (c) {
+        chosen = int(palette.indexOf(c->color));
+    } else {
+        // La primera que no use nadie, para que dos nuevas no salgan iguales.
+        QList<QColor> used;
+        for (const CatInfo &info : allCategories()) used << info.color;
+        for (int i = 0; i < palette.size(); ++i)
+            if (!used.contains(palette.at(i))) {
+                chosen = i;
+                break;
+            }
+    }
+
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(c ? L("Editar categoría") : L("Nueva categoría"));
+    // El puntero se comprueba al volver: el popup puede cerrarse después de
+    // que una sincronización se lleve la categoría.
+    QPointer<PlannerView> self(this);
+    menu->addNameColor(L("Nombre"), c ? c->label : QString(), palette, chosen,
+                       [self, c, chosen, pickForForm](const QString &name, int color) {
+        if (!self) return;
+        const QColor picked = categoryPalette().value(color < 0 ? chosen : color);
+        if (!c) {
+            if (name.isEmpty()) return;   // sin nombre no se crea nada
+            auto *created = new Event::Category;
+            created->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+            created->label = name;
+            created->color = picked.isValid() ? picked : categoryPalette().first();
+            if (pickForForm) self->m_fCategory = created->id;
+            emit self->categoryCreated(created);
+            self->refresh();
+            return;
+        }
+        if (!self->m_categories || !self->m_categories->contains(c)) return;
+        // Un nombre vacío no borra nada: para eso está Eliminar.
+        if (!name.isEmpty()) c->label = name;
+        if (color >= 0 && picked.isValid()) c->color = picked;
+        emit self->categoryChanged(c);
+        self->refresh();
+    });
+    if (c) {
+        menu->addSeparator();
+        menu->addItem("trash", L("Eliminar categoría"), L("Sus eventos pasan a Otros"), [self, c] {
+            if (!self || !self->m_categories || !self->m_categories->contains(c)) return;
+            emit self->categoryDeleted(c);
+            self->refresh();
+        });
+    }
+    menu->showBelow(anchor);
 }
 
 void PlannerView::retranslate() {
@@ -1500,7 +1711,6 @@ void PlannerView::retranslate() {
     m_fTitle->setPlaceholderText(L("Título"));
     m_fDate->setPlaceholderText(L("dd/mm/aaaa"));
     m_fDesc->setPlaceholderText(L("Descripción"));
-    m_fRemind->setText(L("Avisar 10 min antes"));
     m_fDelete->setText(L("Eliminar"));
     if (auto *save = findChild<QPushButton *>("plannerSave")) save->setText(L("Guardar"));
     refresh();
@@ -1567,7 +1777,7 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
         m_fStart->setText(e->start.toString("HH:mm"));
         m_fEnd->setText(e->effectiveEnd().toString("HH:mm"));
         m_fDesc->setPlainText(e->description);
-        m_fRemind->setChecked(e->remind);
+        m_fAlert = e->remind ? e->remindBeforeMin : -1;
         m_fKind = e->kind == Event::Task ? 1 : 0;
         m_fRepeat = int(e->repeat);
         m_fCategory = e->category;
@@ -1579,11 +1789,12 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
         m_fStart->setText(start.toString("HH:mm"));
         m_fEnd->setText(end.toString("HH:mm"));
         m_fDesc->clear();
-        m_fRemind->setChecked(false);
+        m_fAlert = -1;
         m_fKind = 0;
         m_fRepeat = 0;
         m_fCategory = "work";
     }
+    rebuildCatButtons();
     setEditorKind(m_fKind);
     m_stack->setCurrentWidget(m_editor);
     QTimer::singleShot(0, m_fTitle, [this] { m_fTitle->setFocus(Qt::OtherFocusReason); });
@@ -1606,10 +1817,11 @@ void PlannerView::setEditorKind(int kind) {
     m_fEndBox->setVisible(!reminder);
     m_repeatBox->setVisible(!reminder);
     m_catBox->setVisible(!reminder);
-    m_fRemind->setVisible(!reminder);
+    if (auto *alerts = findChild<QWidget *>("plannerAlertBox")) alerts->setVisible(!reminder);
     for (QWidget *w : findChildren<QLabel *>())
         if (const QString tip = w->property("tip").toString();
-            tip == QStringLiteral("REPETICIÓN") || tip == QStringLiteral("CATEGORÍA"))
+            tip == QStringLiteral("REPETICIÓN") || tip == QStringLiteral("CATEGORÍA") ||
+            tip == QStringLiteral("AVISO"))
             w->setVisible(!reminder);
     refreshEditorChoices();
 }
@@ -1617,18 +1829,11 @@ void PlannerView::setEditorKind(int kind) {
 void PlannerView::refreshEditorChoices() {
     for (int i = 0; i < m_kindButtons.size(); ++i) setChosen(m_kindButtons.at(i), i == m_fKind);
     for (int i = 0; i < m_repeatButtons.size(); ++i) setChosen(m_repeatButtons.at(i), i == m_fRepeat);
+    for (QToolButton *b : m_alertButtons) setChosen(b, b->property("minutes").toInt() == m_fAlert);
     for (QToolButton *b : m_catButtons) {
         const QString id = b->property("category").toString();
         setChosen(b, id == m_fCategory);
-        QPixmap dot(16, 16);
-        dot.fill(Qt::transparent);
-        QPainter p(&dot);
-        p.setRenderHint(QPainter::Antialiasing);
-        p.setPen(Qt::NoPen);
-        p.setBrush(Event::categoryColor(id, m_theme.accent));
-        p.drawRoundedRect(QRectF(2, 2, 12, 12), 3.5, 3.5);
-        p.end();
-        b->setIcon(QIcon(dot));
+        b->setIcon(colorDot(categoryColor(id)));
     }
 }
 
@@ -1664,7 +1869,10 @@ void PlannerView::saveEditor() {
     e->end = end;
     e->repeat = Event::Repeat(m_fRepeat);
     e->category = m_fCategory;
-    e->remind = m_fRemind->isChecked();
+    e->remind = m_fAlert >= 0;
+    // Sin aviso se guarda la antelación que tenía: volver a activarlo no
+    // tiene por qué olvidar cuánto antes avisaba.
+    if (m_fAlert >= 0) e->remindBeforeMin = m_fAlert;
     e->description = m_fDesc->toPlainText();
     // Otra hora es otro aviso: el que ya sonó era el de la hora de antes.
     if (moved) e->firedMs = 0;

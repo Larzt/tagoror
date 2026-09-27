@@ -4,6 +4,7 @@
 
 #include <QFile>
 #include <QSoundEffect>
+#include <QTimer>
 #include <QUrl>
 #include <QtMath>
 
@@ -17,7 +18,12 @@ constexpr int kTailMs = 900;
 
 } // namespace
 
-Alarm::Alarm(QObject *parent) : QObject(parent) {}
+Alarm::Alarm(QObject *parent) : QObject(parent) {
+    m_limit = new QTimer(this);
+    m_limit->setSingleShot(true);
+    m_limit->setInterval(kMaxRingMs);
+    connect(m_limit, &QTimer::timeout, this, &Alarm::stop);
+}
 
 // Dos pitidos cortos a 880 Hz con envolvente suave (sin clics) y una cola de
 // silencio para que el bucle no resulte agobiante.
@@ -59,6 +65,9 @@ QString Alarm::ensureToneFile() {
 }
 
 void Alarm::start() {
+    // Un aviso nuevo mientras ya suena vuelve a contar el minuto: es otro
+    // aviso, y tiene derecho al suyo entero.
+    m_limit->start();
     if (isRinging()) return;
 
     const QString tone = ensureToneFile();
@@ -74,6 +83,7 @@ void Alarm::start() {
 }
 
 void Alarm::stop() {
+    m_limit->stop();
     if (m_effect) m_effect->stop();
 }
 

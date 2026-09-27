@@ -217,6 +217,60 @@ void Popup::addChoice(const QStringList &labels, int chosen,
     for (int i = 0; i < chips.size(); ++i) chips.at(i)->setProperty("chosen", i == chosen);
 }
 
+void Popup::addNameColor(const QString &placeholder, const QString &name,
+                         const QList<QColor> &colors, int chosen,
+                         std::function<void(const QString &, int)> commit) {
+    constexpr int kPerRow = 5;
+
+    auto *host = new QWidget;
+    auto *l = new QVBoxLayout(host);
+    l->setContentsMargins(7, 4, 7, 5);
+    l->setSpacing(6);
+
+    auto *edit = new QLineEdit(name);
+    edit->setObjectName("popupEdit");
+    edit->setPlaceholderText(placeholder);
+    edit->setFixedWidth(kRowWidth - 14);
+    edit->selectAll();
+    l->addWidget(edit);
+
+    auto *grid = new QGridLayout;
+    grid->setSpacing(4);
+    for (int i = 0; i < colors.size(); ++i) {
+        auto *chip = new QToolButton;
+        chip->setObjectName("popupChip");
+        chip->setProperty("chosen", i == chosen);
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setFixedHeight(26);
+        chip->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        QPixmap dot(28, 28);
+        dot.fill(Qt::transparent);
+        QPainter p(&dot);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(colors.at(i));
+        p.drawRoundedRect(QRectF(4, 4, 20, 20), 6, 6);
+        p.end();
+        dot.setDevicePixelRatio(2);
+        chip->setIcon(QIcon(dot));
+        chip->setIconSize(QSize(14, 14));
+        QObject::connect(chip, &QToolButton::clicked, this, [this, edit, i, commit] {
+            const QString value = edit->text().trimmed();
+            run([value, i, commit] { if (commit) commit(value, i); });
+        });
+        grid->addWidget(chip, i / kPerRow, i % kPerRow);
+    }
+    l->addLayout(grid);
+
+    QObject::connect(edit, &QLineEdit::returnPressed, this, [this, edit, chosen, commit] {
+        const QString value = edit->text().trimmed();
+        run([value, chosen, commit] { if (commit) commit(value, chosen); });
+    });
+
+    m_col->addWidget(host);
+    QTimer::singleShot(0, edit, qOverload<>(&QWidget::setFocus));
+}
+
 void Popup::addChips(const QStringList &labels, const QList<bool> &muted,
                      const QString &mutedTip, std::function<void(int)> action) {
     constexpr int kPerRow = 3;

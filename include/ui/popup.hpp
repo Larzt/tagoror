@@ -47,6 +47,12 @@ public:
     // una lista de acciones (qué hora pongo), esto es un ajuste con estado
     // (cada cuánto), y el menú tiene que enseñar cuál está puesto.
     void addChoice(const QStringList &labels, int chosen, std::function<void(int)> action);
+    // Un nombre y un color a la vez, para las categorías del planificador.
+    // Enter confirma con el color marcado; pulsar un color confirma con ese y
+    // con lo que haya escrito, así que crear una es escribir y elegir color.
+    void addNameColor(const QString &placeholder, const QString &name,
+                      const QList<QColor> &colors, int chosen,
+                      std::function<void(const QString &, int)> commit);
     void addSeparator();
 
     // Sitúa el popup pegado a un widget, corrigiendo si se sale de la pantalla.

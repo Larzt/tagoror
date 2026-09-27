@@ -170,6 +170,7 @@ Panel::Panel() {
     m_theme.opacity = m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
     m_expandedSize = m_store.prefs().windowSize;
+    m_listSize = m_expandedSize;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
 
     connect(&m_store, &Store::reloaded, this, &Panel::onStoreReloaded);
@@ -235,6 +236,7 @@ Panel::Panel() {
 
     if (!m_expandedSize.isValid())
         m_expandedSize = QSize(352 + kShadowMargin * 2, 560);
+    m_listSize = m_expandedSize;
     resize(m_expandedSize);
     showPage(m_shell);
     applyWindowFlags();
@@ -458,7 +460,25 @@ QWidget *Panel::buildBody() {
     m_planner = new PlannerView(m_theme);
     m_planner->setView(PlannerView::View(m_store.prefs().plannerView));
     m_planner->setHidden(m_store.prefs().plannerHidden);
-    m_planner->setSources(&m_store.events(), &m_store.notes(), &m_store.birthdays());
+    m_planner->setSources(&m_store.events(), &m_store.notes(), &m_store.birthdays(),
+                          &m_store.categories());
+    connect(m_planner, &PlannerView::categoryCreated, this, [this](Event::Category *c) {
+        m_store.addCategory(c);   // el Store se queda con ella y la guarda
+    });
+    connect(m_planner, &PlannerView::categoryChanged, this, [this](Event::Category *) { save(); });
+    connect(m_planner, &PlannerView::categoryDeleted, this, [this](Event::Category *c) {
+        const QString id = c->id;
+        const bool wasHidden = m_planner->hidden().contains(id);
+        m_store.removeCategory(c);   // la libera: a partir de aquí solo vale el id
+        // Si estaba escondida, que el id no se quede colgando en las preferencias.
+        if (wasHidden) {
+            QStringList hidden = m_planner->hidden();
+            hidden.removeAll(id);
+            m_planner->setHidden(hidden);
+            m_store.prefs().plannerHidden = hidden;
+            scheduleSave();
+        }
+    });
     connect(m_planner, &PlannerView::eventCreated, this, [this](Event *e) {
         m_store.addEvent(e);   // el Store se queda con él y lo guarda
         refreshPlanner();
@@ -547,6 +567,23 @@ QWidget *Panel::buildBody() {
     connect(m_settings, &SettingsView::onTopToggled, this, [this](bool on) {
         m_store.prefs().onTop = on;
         applyWindowFlags();
+        refreshSettings();
+        save();
+    });
+    connect(m_settings, &SettingsView::sizePerPageToggled, this, [this](bool on) {
+        if (on) {
+            // El de la lista sale de la regla de antes (sin el ensanche del
+            // planificador ni el estirón), y la página abierta, que son los
+            // ajustes, se queda con el que tiene ahora.
+            syncPrefs();
+            m_listSize = m_store.prefs().windowSize;
+            m_store.prefs().sizePerPage = true;
+            rememberPageSize(m_body->currentWidget());
+            m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
+        } else {
+            // Los tamaños apuntados se quedan: volver a encenderlo los recupera.
+            m_store.prefs().sizePerPage = false;
+        }
         refreshSettings();
         save();
     });
@@ -987,30 +1024,94 @@ void Panel::togglePage(QWidget *page) {
         showNotes();
         return;
     }
-    // Primero se devuelve el ancho: si no, la página que viene heredaría la
-    // ventana ensanchada para el planificador.
-    if (m_body->currentWidget() == m_planner) leaveWide();
-
     m_searchBar->hide();
     if (page == m_planner) m_planner->refresh();
     else if (page == m_timerView) m_timerView->refresh();
     else if (page == m_birthdays) m_birthdays->refresh();
     else if (page == m_settings) m_settings->refresh();
-    showBodyPage(page);
+    switchBodyPage(page);
     refreshPageButtons();
     refreshFooter();
     refreshTitle();
-    if (page == m_planner) enterWide();
 }
 
 void Panel::showNotes() {
     if (m_body->currentWidget() == m_scroll) return;
 
-    if (m_body->currentWidget() == m_planner) leaveWide();
-    showBodyPage(m_scroll);
+    switchBodyPage(m_scroll);
     refreshPageButtons();
     refreshFooter();
     refreshTitle();
+}
+
+// --- tamaño por página -----------------------------------------------------------
+
+bool Panel::sizePerPage() const { return m_store.prefs().sizePerPage; }
+
+// Nombres fijos y no los de pages(): esos están en español para traducirlos,
+// y estos se guardan en notes.json.
+QString Panel::pageKey(const QWidget *page) const {
+    if (page == m_planner) return "planner";
+    if (page == m_timerView) return "timers";
+    if (page == m_birthdays) return "birthdays";
+    if (page == m_settings) return "settings";
+    return {};
+}
+
+void Panel::rememberPageSize(QWidget *page) {
+    if (!sizePerPage() || !m_stack || m_stack->currentWidget() != m_shell || !page) return;
+    // Antes de mapearse la ventana tiene el tamaño de serie de Qt, no uno que
+    // haya elegido nadie: un guardado en pleno arranque lo apuntaría.
+    if (!m_posRestored) return;
+    if (page == m_scroll) m_listSize = size();
+    else if (const QString key = pageKey(page); !key.isEmpty()) m_store.prefs().pageSizes[key] = size();
+}
+
+// Una página que todavía no tiene tamaño abre con el de la lista, no con el de
+// la página de la que se viene: así una primera visita al planificador no
+// hereda los ajustes estirados, y el planificador se ensancha desde ahí.
+bool Panel::applyPageSize(QWidget *page) {
+    const QSize stored = page == m_scroll ? m_listSize
+                                          : m_store.prefs().pageSizes.value(pageKey(page));
+    QSize target = stored.isValid() ? stored : m_listSize;
+    if (target.isValid()) {
+        // Nunca por debajo de lo que pide la página (ver syncShellMinimum), y
+        // nunca más de lo que cabe: un tamaño apuntado en otro monitor.
+        target = target.expandedTo(minimumSize());
+        if (const QRect area = placementArea(); area.isValid()) target = target.boundedTo(area.size());
+        if (target != size()) {
+            setGeometry(QRect(anchoredTopLeft(geometry(), target), target));
+            keepOnScreen();
+        }
+    }
+    m_grownFrom = m_grownTo = QRect();
+    return stored.isValid();
+}
+
+void Panel::switchBodyPage(QWidget *page) {
+    QWidget *from = m_body->currentWidget();
+    const bool perPage = sizePerPage() && m_stack && m_stack->currentWidget() == m_shell;
+    if (perPage) {
+        // Cómo se deja esta página es su tamaño; los apuntes de ensanche y
+        // estirón son del modo de un solo tamaño y aquí no se devuelven.
+        rememberPageSize(from);
+        m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
+    } else if (from == m_planner) {
+        // Primero se devuelve el ancho: si no, la página que viene heredaría
+        // la ventana ensanchada para el planificador.
+        leaveWide();
+    }
+
+    showBodyPage(page);
+
+    if (perPage) {
+        if (!applyPageSize(page) && page == m_planner) {
+            enterWide();
+            m_narrowGeom = m_wideGeom = QRect();
+        }
+    } else if (page == m_planner) {
+        enterWide();
+    }
 }
 
 // El botón no cambia de icono al abrir su página: se queda encendido. Así el
@@ -1193,10 +1294,17 @@ void Panel::refreshAlarmBar() {
             timers = true;
         }
     for (Event *e : m_store.events())
-        if (e->ringingMs)
-            what << L("%1 · empieza a las %2")
-                        .arg(e->title.isEmpty() ? L("Sin título") : e->title,
-                             QDateTime::fromMSecsSinceEpoch(e->ringingMs).toString("HH:mm"));
+        if (e->ringingMs) {
+            // Con antelación de horas o de un día, "a las 10:00" puede ser
+            // mañana: entonces se dice el día.
+            const QDateTime at = QDateTime::fromMSecsSinceEpoch(e->ringingMs);
+            const QString title = e->title.isEmpty() ? L("Sin título") : e->title;
+            if (at.date() == QDate::currentDate())
+                what << L("%1 · empieza a las %2").arg(title, at.toString("HH:mm"));
+            else
+                what << L("%1 · empieza el %2")
+                            .arg(title, Lang::locale().toString(at, "ddd d, HH:mm"));
+        }
 
     const bool show = !what.isEmpty();
     if (show) {
@@ -1967,6 +2075,22 @@ void Panel::showPage(QWidget *page) {
 // mayor de sus páginas, así que sin esto el calendario -- que necesita bastante
 // más alto -- le impondría su mínimo a la lista de notas, que no lo necesita.
 void Panel::showBodyPage(QWidget *page) {
+    // Si el foco está en la página que se va, se deja antes en su botón de la
+    // cabecera. Esconder un widget con el foco hace que Qt se lo pase al
+    // siguiente de la cadena, y al volver a la lista ese era el título de la
+    // primera tarjeta: se quedaba seleccionado como si se fuera a editar. En
+    // el botón sigue sirviendo a quien navega con el teclado, y sin anillo,
+    // porque no ha llegado por Tab (ver keynav).
+    QWidget *leaving = m_body->currentWidget();
+    QWidget *focus = QApplication::focusWidget();
+    if (leaving && leaving != page && focus && leaving->isAncestorOf(focus)) {
+        QToolButton *to = nullptr;
+        for (const Page &p : pages())
+            if (p.page == leaving || (!to && p.page == page)) to = p.button;
+        if (to) to->setFocus(Qt::OtherFocusReason);
+        else setFocus(Qt::OtherFocusReason);
+    }
+
     for (int i = 0; i < m_body->count(); ++i) {
         QWidget *w = m_body->widget(i);
         const auto policy = (w == page) ? QSizePolicy::Preferred : QSizePolicy::Ignored;
@@ -2052,7 +2176,8 @@ void Panel::collapse() {
     // El tamaño que se guarda es el de siempre, no el ensanchado para el
     // planificador: si no, desplegar el dock abriría la ventana ancha para
     // cualquier página.
-    if (m_body->currentWidget() == m_planner) leaveWide();
+    if (sizePerPage()) rememberPageSize(m_body->currentWidget());
+    else if (m_body->currentWidget() == m_planner) leaveWide();
     m_expandedSize = size();
     const QRect panel = geometry();
     // El apunte de la crecida no sobrevive al dock: la geometría con la que se
@@ -2106,6 +2231,18 @@ void Panel::expand() {
     // ninguna manera: se recorta antes de aplicarlo, porque si no lo recorta
     // el gestor por su cuenta y además mueve la ventana.
     QSize target = m_expandedSize;
+    // Con tamaño por página se abre con el de la página en la que se plegó
+    // (o, si no tiene, con el de la lista).
+    bool hadPageSize = false;
+    if (sizePerPage()) {
+        QWidget *cur = m_body->currentWidget();
+        const QSize stored = cur == m_scroll ? m_listSize
+                                             : m_store.prefs().pageSizes.value(pageKey(cur));
+        hadPageSize = stored.isValid();
+        if (hadPageSize) target = stored;
+        else if (m_listSize.isValid()) target = m_listSize;
+    }
+    target = target.expandedTo(minimumSize());
     if (const QRect area = placementArea(); area.isValid())
         target = target.boundedTo(area.size());
 
@@ -2125,7 +2262,8 @@ void Panel::expand() {
     keepOnScreen();
     // Se plegó con el planificador abierto: collapse() le devolvió el ancho
     // estrecho antes de guardarlo, y aquí se le vuelve a dar el suyo.
-    if (m_body->currentWidget() == m_planner) enterWide();
+    if (m_body->currentWidget() == m_planner && !hadPageSize) enterWide();
+    if (sizePerPage()) m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
 }
 
 // Dónde admite el gestor de ventanas que se ponga la ventana: la pantalla
@@ -2231,8 +2369,15 @@ void Panel::syncPrefs() {
     const bool folded = m_stack && m_stack->currentWidget() == m_badge;
     // Ensanchada para el planificador, lo que vale es lo que medía antes: al
     // arrancar se abre la lista, no el planificador.
-    const bool wide = m_narrowGeom.isValid() && geometry() == m_wideGeom;
-    m_store.prefs().windowSize = folded ? m_expandedSize : wide ? m_narrowGeom.size() : size();
+    if (sizePerPage()) {
+        // Lo que se guarda como tamaño de la ventana es el de la lista, que es
+        // la que se abre al arrancar; el de la página abierta va a su sitio.
+        if (!folded && m_body) rememberPageSize(m_body->currentWidget());
+        m_store.prefs().windowSize = m_listSize.isValid() ? m_listSize : size();
+    } else {
+        const bool wide = m_narrowGeom.isValid() && geometry() == m_wideGeom;
+        m_store.prefs().windowSize = folded ? m_expandedSize : wide ? m_narrowGeom.size() : size();
+    }
 
     // La posición se guarda tal cual esté, plegada o no: al arrancar el panel
     // se abre por esa esquina, que es exactamente lo que hace desplegar el dock.

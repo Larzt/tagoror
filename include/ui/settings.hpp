@@ -58,6 +58,7 @@ signals:
     void languagePicked(Lang::Code code);
     void textScalePicked(int percent);
     void onTopToggled(bool on);
+    void sizePerPageToggled(bool on);
     void x11Toggled(bool on);
     void dataFolderRequested();
     void backupsRequested(QWidget *anchor);
