@@ -13,6 +13,7 @@
 #include <QStringList>
 #include <functional>
 
+#include "core/area.hpp"
 #include "core/birthday.hpp"
 #include "core/event.hpp"
 #include "core/lang.hpp"
@@ -42,6 +43,10 @@ public:
         bool hasWindowPos = false;
         QByteArray input;              // micrófono elegido en ajustes
         bool onTop = false;            // por defecto vive en el escritorio
+        // Modo aplicación: una ventana más, con la decoración del sistema, en
+        // la barra de tareas y minimizable, en vez del widget sin marco pegado
+        // al escritorio. Es de este equipo, como el resto de la ventana.
+        bool appMode = false;
         // Cada página (planificador, temporizadores, cumpleaños, ajustes)
         // recuerda su propio tamaño de ventana, y la lista el suyo
         // (windowSize): agrandar el planificador ya no agranda la lista.
@@ -49,6 +54,9 @@ public:
         // equipo, como el resto de lo de la ventana: no se sincroniza.
         bool sizePerPage = true;
         QHash<QString, QSize> pageSizes;   // "planner", "timers", "birthdays", "settings"
+        // El área abierta. Es de este equipo, como la ventana: en el portátil
+        // se puede estar en "Máster" y en el de casa en "Personal".
+        QString activeArea;
         Lang::Code lang = Lang::Es;    // idioma de la interfaz
         // Cómo se ordena la página de cumpleaños: por lo que falta para cada
         // uno (lo de serie) o por meses del año, de enero a diciembre. Vive
@@ -97,6 +105,24 @@ public:
     // pantalla en vez de calcular índices por su cuenta.
     void setOrder(const QList<Note *> &order);
 
+    // --- áreas de trabajo ------------------------------------------------------
+    // Las pestañas de la lista de notas. Siempre hay al menos una: si no queda
+    // ninguna (fichero de antes de las áreas, o todas borradas en otro equipo)
+    // se crea la de serie. Van ordenadas por Area::pos.
+    const QList<Area *> &areas() const { return m_areas; }
+    Area *area(const QString &id) const;
+    // El área en la que se enseña una nota. Una nota sin área es de la de
+    // serie, y una cuya área ya no existe (borrada en otro equipo mientras aquí
+    // se le asignaba) cae en la primera en vez de quedarse invisible.
+    QString areaOf(const Note *n) const;
+    QList<Note *> notesIn(const QString &areaId) const;
+    Area *addArea(const QString &name);           // al final de la tira
+    // Borra el área. Con 'moveTo' sus notas pasan a esa; vacío, se borran con
+    // ella (y sus adjuntos). La última área no se puede borrar.
+    void removeArea(Area *a, const QString &moveTo);
+    void moveArea(Area *a, int steps);            // un sitio a izquierda o derecha
+    void setNoteArea(Note *n, const QString &areaId);
+
     // --- temporizadores -----------------------------------------------------
     // Van dentro de notes.json: son pocos, cambian de estado a cada rato y no
     // son una agenda que haya que poder restaurar por separado.
@@ -109,14 +135,22 @@ public:
     // de seguridad con la misma marca de tiempo, y el mismo candado si el
     // fichero está pero no se deja leer.
     const QList<Event *> &events() const { return m_events; }
-    void addEvent(Event *e);
-    void removeEvent(Event *e);
+    // Con save a false no se escribe todavía: Google Calendar trae cientos de
+    // golpe en la primera pasada, y guarda una vez al terminar.
+    void addEvent(Event *e, bool save = true);
+    void removeEvent(Event *e, bool save = true);
     // Las categorías que ha creado el usuario (las de serie no se guardan).
     // Van en events.json con los eventos, y se sincronizan igual que ellos.
     const QList<Event::Category *> &categories() const { return m_categories; }
     void addCategory(Event::Category *c);
     // Sus eventos no se quedan huérfanos: pasan a Event::kFallbackCategory.
+    // Salvo los de un calendario de Google (id "gcal:…"): dejar de seguirlo
+    // se los lleva, y en Google se quedan donde estaban (ver CalendarSync).
     void removeCategory(Event::Category *c);
+    // Si events.json se leyó: sin él, nada sincroniza eventos.
+    bool eventsReadable() const { return m_eventsReadable; }
+    // Cuándo se borró ese elemento ("e:<id>"), o 0 si no consta borrado.
+    qint64 deletedAt(const QString &key) const { return m_deleted.value(key); }
 
     // --- cumpleaños (mismo dueño y mismo fichero que las notas) ------------
     // Viven aquí y no en la lista de notas porque son otra cosa (ver
@@ -253,6 +287,9 @@ private:
     void loadEvents();
     void saveEvents();
     void seedDemoNotes();
+    // Que haya al menos un área y que la lista siga el orden de sus 'pos'.
+    void ensureAreas();
+    void sortAreas();
 
     // Pone la fecha de cambio a lo que ha cambiado desde la última vez y apunta
     // como borrado lo que ya no está. Corre al principio de cada save(): así
@@ -274,6 +311,7 @@ private:
     void pruneBackups();
 
     QList<Note *> m_notes;
+    QList<Area *> m_areas;
     QList<Birthday *> m_birthdays;
     QList<Timer *> m_timers;
     QList<Event *> m_events;

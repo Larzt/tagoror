@@ -1,4 +1,5 @@
 #include "ui/panel.hpp"
+#include "ui/areatabs.hpp"
 #include "audio/alarm.hpp"
 #include "audio/recorder.hpp"
 #include "ui/birthdays.hpp"
@@ -42,6 +43,7 @@
 #include <QScrollBar>
 #include <QSettings>
 #include <QScrollArea>
+#include <QShortcut>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QSystemTrayIcon>
@@ -226,6 +228,7 @@ Panel::Panel() {
     m_drivePoll->start();
 
     buildShell();
+    applyAppModeChrome();
     buildTray();
     rebuildList();
     applyTheme();
@@ -235,7 +238,7 @@ Panel::Panel() {
     tickTimers();       // y un temporizador puede haber llegado a cero
 
     if (!m_expandedSize.isValid())
-        m_expandedSize = QSize(352 + kShadowMargin * 2, 560);
+        m_expandedSize = QSize(352 + shadowMargin() * 2, 560);
     m_listSize = m_expandedSize;
     resize(m_expandedSize);
     showPage(m_shell);
@@ -264,7 +267,8 @@ void Panel::buildShell() {
     m_store.beforeSave = [this] { syncPrefs(); };
 
     auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(kShadowMargin, kShadowMargin, kShadowMargin, kShadowMargin);
+    m_outer = outer;
+    outer->setContentsMargins(shadowMargin(), shadowMargin(), shadowMargin(), shadowMargin());
 
     m_stack = new QStackedWidget;
     outer->addWidget(m_stack);
@@ -274,17 +278,50 @@ void Panel::buildShell() {
     m_shell->setObjectName("shell");
     m_shell->setMinimumWidth(kShellMinWidth);   // ya no es fijo: se redimensiona
 
-    auto *shadow = new QGraphicsDropShadowEffect(m_shell);
-    shadow->setBlurRadius(56);
-    shadow->setOffset(0, 20);
-    shadow->setColor(QColor(0, 0, 0, 160));
-    m_shell->setGraphicsEffect(shadow);
+    // La sombra se pone en applyAppModeChrome(): en modo aplicación la
+    // dibuja el gestor de ventanas y aquí no hay sitio para ella.
 
     auto *col = new QVBoxLayout(m_shell);
     col->setContentsMargins(0, 0, 0, 0);
     col->setSpacing(0);
 
     col->addWidget(buildHeader());
+
+    // Las áreas de trabajo, pegadas a la cabecera como en el diseño. Solo con
+    // la lista delante: en el planificador o en ajustes no significan nada.
+    m_areaTabs = new AreaTabs(&m_theme);
+    m_areaTabs->activated = [this](const QString &id) { switchArea(id); };
+    m_areaTabs->addRequested = [this] { newArea(); };
+    m_areaTabs->menuRequested = [this](const QString &id, const QPoint &at) {
+        openAreaMenu(id, at);
+    };
+    m_areaTabs->overflowRequested = [this](const QPoint &at) { openAreaOverflow(at); };
+    m_areaTabs->renamed = [this](const QString &id, const QString &name) {
+        if (Area *a = m_store.area(id)) {
+            a->name = name;
+            save();
+        }
+        refreshAreaTabs();
+        refreshFooter();
+    };
+    m_areaTabs->deleteRequested = [this](const QString &id) { confirmDeleteArea(id); };
+    m_areaTabs->moveRequested = [this](const QString &id, int steps) {
+        if (Area *a = m_store.area(id)) m_store.moveArea(a, steps);
+        refreshAreaTabs();
+    };
+    col->addWidget(m_areaTabs);
+
+    // Atajos de las áreas, desde cualquier sitio del panel.
+    auto *newAreaKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_T), this);
+    connect(newAreaKey, &QShortcut::activated, this, &Panel::newArea);
+    for (int i = 1; i <= 9; ++i) {
+        auto *key = new QShortcut(
+            QKeySequence(QKeyCombination(Qt::ControlModifier, Qt::Key(Qt::Key_0 + i))), this);
+        connect(key, &QShortcut::activated, this, [this, i] {
+            const QList<Area *> &areas = m_store.areas();
+            if (i <= areas.size()) switchArea(areas.at(i - 1)->id);
+        });
+    }
 
     // Aviso de carpeta ausente. Va aquí arriba, no en el pie, porque no es un
     // detalle: mientras esté puesto, escribir en el panel no guarda nada.
@@ -368,7 +405,7 @@ void Panel::buildShell() {
     m_badge = buildBadge();
     m_stack->addWidget(m_badge);
 
-    setMinimumSize(kShellMinWidth + kShadowMargin * 2, kShellMinHeight);
+    setMinimumSize(kShellMinWidth + shadowMargin() * 2, kShellMinHeight);
 }
 
 QFrame *Panel::buildHeader() {
@@ -395,10 +432,16 @@ QFrame *Panel::buildHeader() {
     m_birthdayBtn = iconButton("cake", "Cumpleaños");
     m_settingsBtn = iconButton("gear", "Ajustes");
     auto *min = iconButton("minus", "Plegar a icono");
+    m_minBtn = min;
     m_headerButtons = {m_calendarBtn, m_timersBtn, m_birthdayBtn, search, add, m_settingsBtn, min};
 
     connect(search, &QToolButton::clicked, this, &Panel::toggleSearch);
-    connect(min, &QToolButton::clicked, this, &Panel::collapse);
+    connect(min, &QToolButton::clicked, this, [this] {
+        // Una ventana normal se minimiza a la barra de tareas; el dock es
+        // cosa del widget.
+        if (appMode()) showMinimized();
+        else collapse();
+    });
     connect(add, &QToolButton::clicked, this, [this, add] { openNewNoteMenu(add); });
     // Las páginas se conectan en buildBody(), que es donde existen.
 
@@ -564,6 +607,7 @@ QWidget *Panel::buildBody() {
         refreshSettings();   // el botón elegido y la muestra
         save();
     });
+    connect(m_settings, &SettingsView::appModeToggled, this, &Panel::setAppMode);
     connect(m_settings, &SettingsView::onTopToggled, this, [this](bool on) {
         m_store.prefs().onTop = on;
         applyWindowFlags();
@@ -804,10 +848,14 @@ void Panel::rebuildList() {
         QWidget *w = m_listLayout->itemAt(i)->widget();
         if (!qobject_cast<NoteCard *>(w)) continue;
         delete m_listLayout->takeAt(i);
+        // Oculta antes de soltarla: hasta que corra el borrado diferido seguiría
+        // pintada encima de la lista nueva (al cambiar de área se nota).
+        w->hide();
         w->deleteLater();
     }
 
-    for (Note *n : m_store.notes()) {
+    const QList<Note *> shown = m_store.notesIn(currentArea());
+    for (Note *n : shown) {
         auto *card = new NoteCard(n, m_theme);
         connect(card, &NoteCard::dirty, this, &Panel::scheduleSave);
         connect(card, &NoteCard::dirty, this, &Panel::refreshPlanner);
@@ -815,6 +863,7 @@ void Panel::rebuildList() {
         connect(card, &NoteCard::dismissRequested, this, &Panel::dismissNote);
         connect(card, &NoteCard::rescheduled, this, &Panel::rescheduleNote);
         connect(card, &NoteCard::moveRequested, this, &Panel::moveNote);
+        connect(card, &NoteCard::areaMenuRequested, this, &Panel::openMoveNoteMenu);
         connect(card, &NoteCard::dragStarted, this, [this, card] { beginCardDrag(card); });
         connect(card, &NoteCard::dragMoved, this,
                 [this, card](const QPoint &at) { dragCardTo(card, at); });
@@ -822,7 +871,14 @@ void Panel::rebuildList() {
         m_listLayout->insertWidget(m_listLayout->count() - 2, card);
     }
 
-    m_empty->setVisible(m_store.notes().isEmpty());
+    m_empty->setVisible(shown.isEmpty());
+    // Con una sola área es el cartel de siempre; con varias, dice cuál está vacía.
+    if (m_store.areas().size() > 1) {
+        const Area *a = m_store.area(currentArea());
+        m_emptyText->setText(L("Aún no hay notas en %1").arg(a ? a->name : QString()));
+    } else {
+        m_emptyText->setText(L("Todavía no hay notas"));
+    }
     m_badgeCount->setText(QString::number(m_store.count()));
     refreshFooter();
     refreshPlanner();
@@ -860,7 +916,12 @@ void Panel::refreshFooter() {
         m_footerText->setText(L("AJUSTES"));
         return;
     }
-    m_footerText->setText(L("%1 EN EL TAGOROR").arg(m_store.count()));
+    // El nombre del área va recortado: la etiqueta del pie no puede pedir su
+    // ancho (ver *Card widths*), y el nombre lo escribe el usuario.
+    const Area *a = m_store.area(currentArea());
+    const QString name = QFontMetrics(m_footerText->font())
+                             .elidedText(a ? a->name.toUpper() : QString(), Qt::ElideRight, 90);
+    m_footerText->setText(L("%1 · %2 NOTAS").arg(name).arg(m_store.notesIn(currentArea()).size()));
 }
 
 void Panel::addNote(Note::Type type) {
@@ -878,6 +939,7 @@ void Panel::addNote(Note::Type type) {
         n->dueAtMs = when.toMSecsSinceEpoch();
         n->due = dueLabel(when);
     }
+    m_store.setNoteArea(n, currentArea());
     m_store.add(n);
     rebuildList();
 }
@@ -893,15 +955,205 @@ void Panel::removeNote(Note *n) {
     rebuildList();   // de paso repinta el dock y la bandeja
 }
 
+// --- áreas de trabajo -------------------------------------------------------
+
+QString Panel::currentArea() const {
+    const QString id = m_store.prefs().activeArea;
+    if (m_store.area(id)) return id;
+    const QList<Area *> &areas = m_store.areas();
+    return areas.isEmpty() ? QString(Area::kDefaultId) : areas.first()->id;
+}
+
+void Panel::switchArea(const QString &id) {
+    if (!m_store.area(id)) return;
+    showNotes();   // Ctrl+1…9 también desde otra página
+    if (id == currentArea()) {
+        refreshAreaTabs();
+        return;
+    }
+    m_store.prefs().activeArea = id;
+    rebuildList();
+    m_scroll->verticalScrollBar()->setValue(0);
+    scheduleSave();
+}
+
+void Panel::refreshAreaTabs() {
+    if (!m_areaTabs) return;
+    QList<AreaTabs::Tab> tabs;
+    for (const Area *a : m_store.areas()) {
+        AreaTabs::Tab t{a->id, a->name, a->glyph, false};
+        for (const Note *n : m_store.notes())
+            if (n->ringing && m_store.areaOf(n) == a->id) t.ringing = true;
+        tabs.append(t);
+    }
+    m_areaTabs->setTabs(tabs, currentArea());
+}
+
+// Ctrl+T o «+»: el área se crea ya, con el nombre en edición. Intro lo
+// confirma y Escape deja el de serie, que siempre se puede cambiar luego.
+void Panel::newArea() {
+    showNotes();
+    Area *a = m_store.addArea(L("Área nueva"));
+    switchArea(a->id);
+    m_areaTabs->beginRename(a->id);
+}
+
+void Panel::openAreaMenu(const QString &id, const QPoint &globalPos) {
+    Area *a = m_store.area(id);
+    if (!a) return;
+    const QList<Area *> &areas = m_store.areas();
+    const int index = int(areas.indexOf(a));
+
+    auto *menu = new Popup(m_theme, m_areaTabs);
+    menu->addHeader(a->name);
+    menu->addItem("pencil", L("Renombrar"), "F2", [this, id] { m_areaTabs->beginRename(id); });
+
+    QStringList kinds{"glyph-none"};
+    QStringList tips{L("Sin glifo")};
+    const QStringList names{L("Círculo"), L("Cuadrado"), L("Triángulo"), L("Rombo"),
+                            L("Anillo"), L("Barra")};
+    for (int i = 0; i < Area::glyphs().size(); ++i) {
+        kinds << "glyph-" + Area::glyphs().at(i);
+        tips << names.value(i);
+    }
+    menu->addIconChoice(kinds, tips, int(Area::glyphs().indexOf(a->glyph)) + 1,
+                        [this, id](int i) {
+                            Area *area = m_store.area(id);
+                            if (!area) return;
+                            area->glyph = i == 0 ? QString() : Area::glyphs().value(i - 1);
+                            save();
+                            refreshAreaTabs();
+                        });
+
+    if (areas.size() > 1) {
+        menu->addSeparator();
+        if (index > 0)
+            menu->addItem("chevronLeft", L("Mover a la izquierda"), "Ctrl+⇧+←", [this, id] {
+                if (Area *area = m_store.area(id)) m_store.moveArea(area, -1);
+                refreshAreaTabs();
+            });
+        if (index < areas.size() - 1)
+            menu->addItem("chevronRight", L("Mover a la derecha"), "Ctrl+⇧+→", [this, id] {
+                if (Area *area = m_store.area(id)) m_store.moveArea(area, 1);
+                refreshAreaTabs();
+            });
+        menu->addSeparator();
+        menu->addItem("trash", L("Eliminar área…"), L("Supr"),
+                      [this, id] { confirmDeleteArea(id); });
+    }
+    menu->showAt(globalPos);
+}
+
+// «+N»: todas las áreas, con cuántas notas tiene cada una.
+void Panel::openAreaOverflow(const QPoint &globalPos) {
+    auto *menu = new Popup(m_theme, m_areaTabs);
+    menu->addHeader(L("Áreas · %1").arg(m_store.areas().size()));
+    const QString current = currentArea();
+    for (const Area *a : m_store.areas()) {
+        const QList<Note *> own = m_store.notesIn(a->id);
+        bool ringing = false;
+        for (const Note *n : own) ringing |= n->ringing;
+        QString sub = L("%1 notas").arg(own.size());
+        if (ringing) sub += " · " + L("Suena");
+        if (a->id == current) sub += " · " + L("abierta");
+        const QString id = a->id;
+        menu->addItem(a->glyph.isEmpty() ? QString() : "glyph-" + a->glyph, a->name, sub,
+                      [this, id] { switchArea(id); });
+    }
+    menu->addSeparator();
+    menu->addItem("plus", L("Nueva área"), "Ctrl+T", [this] { newArea(); });
+    menu->showAt(globalPos);
+}
+
+void Panel::confirmDeleteArea(const QString &id) {
+    Area *a = m_store.area(id);
+    // La última no se borra: la lista siempre está en alguna.
+    if (!a || m_store.areas().size() < 2) return;
+
+    const QList<Note *> own = m_store.notesIn(id);
+    int reminders = 0;
+    for (const Note *n : own)
+        if (n->isScheduled()) ++reminders;
+
+    auto remove = [this, id](const QString &moveTo) {
+        Area *area = m_store.area(id);
+        if (!area) return;
+        m_store.removeArea(area, moveTo);
+        // Si se han borrado notas que sonaban, el tono no puede quedarse solo.
+        if (!anyRinging()) m_alarm->stop();
+        if (!moveTo.isEmpty()) m_store.prefs().activeArea = moveTo;
+        rebuildList();
+        refreshPlanner();
+    };
+
+    auto *menu = new Popup(m_theme, m_areaTabs);
+    menu->addHeader(L("Eliminar «%1»").arg(a->name));
+    if (own.isEmpty()) {
+        menu->addText(L("No tiene notas."));
+        menu->addItem("trash", L("Eliminar área"), QString(), [remove] { remove(QString()); });
+    } else {
+        QString text = own.size() == 1 ? L("Tiene 1 nota") : L("Tiene %1 notas").arg(own.size());
+        if (reminders == 1) text += L(", 1 con recordatorio");
+        else if (reminders > 1) text += L(", %1 con recordatorio").arg(reminders);
+        text += L(". Los ajustes, el planificador y los temporizadores no cambian.");
+        menu->addText(text);
+        menu->addHeader(L("Mover sus notas a"));
+        for (const Area *other : m_store.areas()) {
+            if (other->id == id) continue;
+            const QString to = other->id;
+            menu->addItem(other->glyph.isEmpty() ? QString() : "glyph-" + other->glyph,
+                          other->name, L("Eliminar y mover"), [remove, to] { remove(to); });
+        }
+        menu->addSeparator();
+        menu->addItem("trash", L("Eliminar también sus notas"), L("No se puede deshacer"),
+                      [remove] { remove(QString()); });
+    }
+    menu->showAt(m_areaTabs->menuPoint(id));
+}
+
+void Panel::openMoveNoteMenu(Note *n, const QPoint &globalPos) {
+    if (!m_store.notes().contains(n)) return;
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Mover a"));
+    const QString from = m_store.areaOf(n);
+    for (const Area *a : m_store.areas()) {
+        if (a->id == from) continue;
+        const QString to = a->id;
+        menu->addItem(a->glyph.isEmpty() ? QString() : "glyph-" + a->glyph, a->name,
+                      L("%1 notas").arg(m_store.notesIn(a->id).size()),
+                      [this, n, to] { moveNoteToArea(n, to); });
+    }
+    if (m_store.areas().size() > 1) menu->addSeparator();
+    menu->addItem("plus", L("Nueva área…"), QString(), [this, n] {
+        if (!m_store.notes().contains(n)) return;
+        Area *a = m_store.addArea(L("Área nueva"));
+        moveNoteToArea(n, a->id);
+        switchArea(a->id);
+        m_areaTabs->beginRename(a->id);
+    });
+    menu->showAt(globalPos);
+}
+
+void Panel::moveNoteToArea(Note *n, const QString &areaId) {
+    // El menú se abrió antes: la nota puede haberse borrado entre medias (una
+    // sincronización), y el área también.
+    if (!m_store.notes().contains(n) || !m_store.area(areaId)) return;
+    m_store.setNoteArea(n, areaId);
+    save();
+    rebuildList();
+}
+
 // --- reordenar --------------------------------------------------------------
 
 void Panel::moveNote(Note *n, int steps) {
-    QList<Note *> order = m_store.notes();
-    const int from = int(order.indexOf(n));
-    const int to = from + steps;
-    if (from < 0 || to < 0 || to >= order.size()) return;
+    // Un paso dentro de su área: la vecina que cuenta es la de la misma
+    // pestaña, no la que esté al lado en la lista de todas.
+    const QList<Note *> area = m_store.notesIn(m_store.areaOf(n));
+    const int at = int(area.indexOf(n));
+    if (at < 0 || at + steps < 0 || at + steps >= area.size()) return;
 
-    order.move(from, to);
+    QList<Note *> order = m_store.notes();
+    order.move(order.indexOf(n), order.indexOf(area.at(at + steps)));
     m_store.setOrder(order);
     rebuildList();
     save();
@@ -921,6 +1173,13 @@ void Panel::beginCardDrag(NoteCard *card) {
 // vea dónde va a caer.
 void Panel::dragCardTo(NoteCard *card, const QPoint &globalPos) {
     if (!card || !m_listHost) return;
+
+    // Encima de la pestaña de otra área: se resalta, y al soltar la nota se
+    // muda allí. Mientras tanto la lista no se reordena.
+    const QString over = m_areaTabs ? m_areaTabs->areaAt(globalPos) : QString();
+    m_dropArea = over == currentArea() ? QString() : over;
+    if (m_areaTabs) m_areaTabs->setDropTarget(m_dropArea);
+    if (!m_dropArea.isEmpty()) return;
 
     // Cerca de los bordes, la lista acompaña: sin esto no se puede sacar una
     // tarjeta del trozo visible sin soltarla antes.
@@ -965,7 +1224,16 @@ void Panel::dragCardTo(NoteCard *card, const QPoint &globalPos) {
 
 void Panel::endCardDrag(NoteCard *card) {
     m_dragCard = nullptr;
+    const QString dropArea = m_dropArea;
+    m_dropArea.clear();
+    if (m_areaTabs) m_areaTabs->setDropTarget(QString());
     if (!card) return;
+    if (!dropArea.isEmpty()) {
+        // Rehace la lista, y con ella esta tarjeta: el borrado es diferido, así
+        // que el asidero que ha llamado aquí sigue vivo hasta volver.
+        moveNoteToArea(card->note(), dropArea);
+        return;
+    }
     card->setProperty("dragging", false);
     card->style()->unpolish(card);
     card->style()->polish(card);
@@ -974,8 +1242,14 @@ void Panel::endCardDrag(NoteCard *card) {
 
 // El orden que se ve es el que se guarda.
 void Panel::commitOrder() {
-    QList<Note *> order;
-    for (NoteCard *card : cards()) order.append(card->note());
+    // En pantalla solo están las del área abierta: ocupan los mismos huecos que
+    // tenían en la lista de todas, en el orden nuevo, y las demás no se mueven.
+    QList<Note *> onScreen;
+    for (NoteCard *card : cards()) onScreen.append(card->note());
+    QList<Note *> order = m_store.notes();
+    int next = 0;
+    for (Note *&n : order)
+        if (onScreen.contains(n) && next < onScreen.size()) n = onScreen.at(next++);
     m_store.setOrder(order);
 }
 
@@ -998,14 +1272,69 @@ void Panel::applyFilter(const QString &q) {
         if (ok) ++shown;
     }
     if (q.isEmpty()) refreshFooter();
-    else m_footerText->setText(L("%1 DE %2").arg(shown).arg(m_store.count()));
+    else m_footerText->setText(L("%1 DE %2").arg(shown).arg(cards().size()));
 }
 
 void Panel::bringToFront() {
-    expand();
+    // Una ventana normal ya abierta no se toca: expand() le repondría el
+    // tamaño guardado aunque el usuario la tenga maximizada.
+    if (!appMode() || m_stack->currentWidget() == m_badge) expand();
+    showRestored();
+}
+
+void Panel::showRestored() {
+    // Minimizada sigue "visible" para Qt; hay que quitarle el estado o show()
+    // no la saca de la barra de tareas.
+    setWindowState(windowState() & ~Qt::WindowMinimized);
     show();
     raise();
     activateWindow();
+}
+
+int Panel::shadowMargin() const { return appMode() ? 0 : kShadowMargin; }
+
+void Panel::setAppMode(bool on) {
+    if (on == appMode()) return;
+    // El marco del sistema sustituye al hueco de la sombra: la ventana encoge o
+    // crece en esos márgenes para que el panel de dentro mida lo mismo.
+    const int delta = 2 * kShadowMargin * (on ? -1 : 1);
+    m_store.prefs().appMode = on;
+    applyAppModeChrome();
+    applyWindowFlags();
+    // El mínimo primero: con el de antes puesto, encoger la ventana no cabe.
+    syncShellMinimum();
+    resize(size() + QSize(delta, delta));
+    m_expandedSize += QSize(delta, delta);
+    m_listSize += QSize(delta, delta);
+    for (QSize &s : m_store.prefs().pageSizes) s += QSize(delta, delta);
+    m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
+    keepOnScreen();
+    refreshSettings();
+    save();
+}
+
+void Panel::applyAppModeChrome() {
+    const int m = shadowMargin();
+    m_outer->setContentsMargins(m, m, m, m);
+    if (appMode()) {
+        // La sombra y las esquinas redondas las pone el gestor de ventanas; las
+        // de aquí dejarían un hueco transparente entre su marco y el panel.
+        m_shell->setGraphicsEffect(nullptr);   // la borra
+        m_shellShadow = nullptr;
+    } else if (!m_shellShadow) {
+        m_shellShadow = new QGraphicsDropShadowEffect(m_shell);
+        m_shellShadow->setBlurRadius(56);
+        m_shellShadow->setOffset(0, 20);
+        m_shellShadow->setColor(QColor(0, 0, 0, 160));
+        m_shell->setGraphicsEffect(m_shellShadow);
+    }
+    m_shell->setProperty("app", appMode());
+    m_shell->style()->unpolish(m_shell);
+    m_shell->style()->polish(m_shell);
+
+    const char *tip = appMode() ? "Minimizar" : "Plegar a icono";
+    m_minBtn->setProperty("tip", tip);
+    m_minBtn->setToolTip(L(tip));
 }
 
 // --- páginas -----------------------------------------------------------------
@@ -1189,7 +1518,7 @@ void Panel::createReminder(const QString &title, const QDateTime &when) {
 // pegada al borde derecho) y se apunta cómo quedó, para poder devolverla.
 void Panel::enterWide() {
     if (!m_stack || m_stack->currentWidget() != m_shell) return;
-    int target = PlannerView::kPreferredWidth + kShadowMargin * 2;
+    int target = PlannerView::kPreferredWidth + shadowMargin() * 2;
     if (const QRect area = placementArea(); area.isValid()) target = qMin(target, area.width());
     if (width() >= target) return;
 
@@ -1357,6 +1686,7 @@ void Panel::silenceEvent(Event *e) {
 
 void Panel::revealNote(Note *n) {
     showNotes();
+    if (m_store.areaOf(n) != currentArea()) switchArea(m_store.areaOf(n));
     for (NoteCard *card : cards()) {
         if (card->note() != n) continue;
         card->show();                       // pudo dejarlo oculto un filtro
@@ -1606,6 +1936,7 @@ void Panel::refreshDueCards() {
 
 void Panel::applyBadgeAlert() {
     const bool alert = anyRinging();
+    refreshAreaTabs();   // el punto rojo de cada área sale de aquí también
 
     auto *badge = m_badge->findChild<QToolButton *>("badge");
     if (badge) {
@@ -2000,7 +2331,9 @@ void Panel::buildTrayMenu() {
     // La etiqueta dice lo que va a pasar, y eso depende de cómo esté la
     // ventana en el momento de abrir el menú.
     connect(m_trayMenu, &QMenu::aboutToShow, this,
-            [this, toggle] { toggle->setText(isVisible() ? L("Ocultar") : L("Mostrar")); });
+            [this, toggle] {
+                toggle->setText(isVisible() && !isMinimized() ? L("Ocultar") : L("Mostrar"));
+            });
 
     m_trayMenu->addSeparator();
     QMenu *create = m_trayMenu->addMenu(L("Nueva nota"));
@@ -2013,9 +2346,7 @@ void Panel::buildTrayMenu() {
     for (const auto &[label, type] : types)
         connect(create->addAction(label), &QAction::triggered, this, [this, type] {
             addNote(type);
-            show();
-            raise();
-            activateWindow();
+            showRestored();
         });
 
     m_trayMenu->addSeparator();
@@ -2025,15 +2356,14 @@ void Panel::buildTrayMenu() {
 }
 
 void Panel::toggleFromTray() {
-    if (isVisible()) {
+    // Minimizada cuenta como escondida: el clic la trae, no la oculta.
+    if (isVisible() && !isMinimized()) {
         hide();
         return;
     }
     // Se vuelve tal como se dejó, plegada o desplegada: esconder no es lo
     // mismo que plegar y no tiene por qué deshacerlo.
-    show();
-    raise();
-    activateWindow();
+    showRestored();
 }
 
 void Panel::closeEvent(QCloseEvent *e) {
@@ -2050,7 +2380,9 @@ void Panel::closeEvent(QCloseEvent *e) {
 
 void Panel::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
-    wmSkipTaskbar(winId());
+    // En modo aplicación sí va en la barra de tareas: la propiedad no se pone,
+    // y como cambiar de flags rehace la ventana nativa, tampoco queda la vieja.
+    if (!appMode()) wmSkipTaskbar(winId());
 
     // Al mapear la ventana por primera vez el gestor la coloca donde le parece
     // y pisa la posición pedida antes de mostrarla -- la restauración de sesión
@@ -2069,6 +2401,13 @@ void Panel::applyWindowFlags() {
     // una sugerencia: manda el compositor.
     Qt::WindowFlags flags = Qt::FramelessWindowHint | Qt::Tool;
     flags |= m_store.prefs().onTop ? Qt::WindowStaysOnTopHint : Qt::WindowStaysOnBottomHint;
+    // Modo aplicación: la ventana de siempre, con su marco, en la barra de
+    // tareas y en Alt+Tab. Sin "siempre encima" se apila como cualquier otra,
+    // no por debajo: pegarla al escritorio es lo que hace el widget.
+    if (appMode()) {
+        flags = Qt::Window;
+        if (m_store.prefs().onTop) flags |= Qt::WindowStaysOnTopHint;
+    }
 
     const bool wasVisible = isVisible();
     setWindowFlags(flags);
@@ -2116,6 +2455,7 @@ void Panel::showBodyPage(QWidget *page) {
         w->setSizePolicy(policy, policy);
     }
     m_body->setCurrentWidget(page);
+    if (m_areaTabs) m_areaTabs->setVisible(page == m_scroll);
     syncShellMinimum();
 }
 
@@ -2135,7 +2475,7 @@ int Panel::shellMinimumHeight() const {
     QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
     l->invalidate();
     l->activate();
-    return qMax(kShellMinHeight, l->minimumSize().height() + kShadowMargin * 2);
+    return qMax(kShellMinHeight, l->minimumSize().height() + shadowMargin() * 2);
 }
 
 // El mínimo de la ventana lo pide el layout, no una constante.
@@ -2158,7 +2498,7 @@ void Panel::syncShellMinimum() {
     // nuestro y devolverla al área de trabajo si se ha salido por abajo.
     const QRect before = geometry();
     const int minH = shellMinimumHeight();
-    setMinimumSize(kShellMinWidth + kShadowMargin * 2, minH);
+    setMinimumSize(kShellMinWidth + shadowMargin() * 2, minH);
 
     if (height() > before.height()) {
         // Solo se apunta el primer estirón: abrir la lista y cambiar de página
@@ -2220,7 +2560,7 @@ void Panel::collapse() {
     // izquierda: si estaba abajo y el panel se abrió hacia arriba, plegar tiene
     // que devolverlo abajo. Con m_dockOffset a cero -- nada más arrancar, sin
     // ningún despliegue previo -- eso es la esquina superior izquierda.
-    const QSize dock = m_badge->sizeHint() + QSize(kShadowMargin * 2, kShadowMargin * 2);
+    const QSize dock = m_badge->sizeHint() + QSize(shadowMargin() * 2, shadowMargin() * 2);
     const QPoint inside(qBound(0, m_dockOffset.x(), qMax(0, panel.width() - dock.width())),
                         qBound(0, m_dockOffset.y(), qMax(0, panel.height() - dock.height())));
     setGeometry(QRect(clampInto(panel.topLeft() + inside, dock, placementArea()), dock));
@@ -2252,7 +2592,7 @@ void Panel::expand() {
         scheduleSave();
     }
     showPage(m_shell);
-    setMinimumSize(kShellMinWidth + kShadowMargin * 2, shellMinimumHeight());
+    setMinimumSize(kShellMinWidth + shadowMargin() * 2, shellMinimumHeight());
 
     // Un tamaño guardado mayor de lo que cabe (otro monitor, otra resolución,
     // un panel del escritorio que recorta el área de trabajo) no entra de
@@ -2318,8 +2658,8 @@ QRect Panel::placementArea(const QScreen *sc) const {
     if (!sc) sc = screen();
     if (!sc) return {};
 
-    QRect area = sc->availableGeometry().adjusted(-kShadowMargin, -kShadowMargin,
-                                                  kShadowMargin, kShadowMargin);
+    QRect area = sc->availableGeometry().adjusted(-shadowMargin(), -shadowMargin(),
+                                                  shadowMargin(), shadowMargin());
     if (const QRect wm = wmWorkArea(); wm.isValid()) area &= wm;
     return area;
 }

@@ -1711,6 +1711,8 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
                   [this] { emit moveRequested(m_note, -1); });
     menu->addItem("chevronDown", L("Bajar"), QString(),
                   [this] { emit moveRequested(m_note, 1); });
+    menu->addItem("chevronRight", L("Mover a…"), L("Otra área de trabajo"),
+                  [this, at] { emit areaMenuRequested(m_note, at); });
 
     menu->addSeparator();
     menu->addItem("trash", L("Eliminar nota"), QString(),

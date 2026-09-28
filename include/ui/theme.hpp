@@ -287,6 +287,35 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 3; ++j)
                 p.drawEllipse(QPointF(c - 2.1 + i * 4.2, c - 3.6 + j * 3.6), 1.05, 1.05);
+    } else if (kind.startsWith("glyph-")) {
+        // Los glifos de las áreas (ver area.hpp): formas macizas y sencillas
+        // que se distinguen a 8 px sin necesitar color. Escalan con px porque
+        // la pestaña los pinta más pequeños que un icono de menú.
+        const QString g = kind.mid(6);
+        const qreal r = px * 0.26;
+        if (g == "none") {
+            p.drawLine(QPointF(c - r, c + r), QPointF(c + r, c - r));
+        } else if (g == "ring") {
+            pen.setWidthF(qMax(1.2, px / 10.0));
+            p.setPen(pen);
+            p.drawEllipse(QPointF(c, c), r * 0.9, r * 0.9);
+        } else {
+            p.setPen(Qt::NoPen);
+            p.setBrush(color);
+            if (g == "dot") {
+                p.drawEllipse(QPointF(c, c), r, r);
+            } else if (g == "square") {
+                p.drawRoundedRect(QRectF(c - r * 0.9, c - r * 0.9, r * 1.8, r * 1.8), 1.2, 1.2);
+            } else if (g == "triangle") {
+                p.drawPolygon(QPolygonF({QPointF(c, c - r * 1.05), QPointF(c + r * 1.1, c + r * 0.85),
+                                         QPointF(c - r * 1.1, c + r * 0.85)}));
+            } else if (g == "diamond") {
+                p.drawPolygon(QPolygonF({QPointF(c, c - r * 1.15), QPointF(c + r * 1.15, c),
+                                         QPointF(c, c + r * 1.15), QPointF(c - r * 1.15, c)}));
+            } else if (g == "bar") {
+                p.drawRoundedRect(QRectF(c - r * 1.1, c - r * 0.4, r * 2.2, r * 0.8), r * 0.4, r * 0.4);
+            }
+        }
     }
     p.end();
     return QIcon(pm);
@@ -301,6 +330,8 @@ QFrame#shell {
     border: 1px solid %2;
     border-radius: 14px;
 }
+/* Modo aplicación: el marco es el del sistema, que ya tiene sus esquinas. */
+QFrame#shell[app="true"] { border: none; border-radius: 0; }
 QFrame#header { border: none; border-bottom: 1px solid %2; }
 QFrame#footer { border: none; border-top: 1px solid %2; background: %6; }
 
@@ -721,6 +752,13 @@ QLabel#popupHeader {
     color: %4; font-size: 9px; font-weight: 700;
     font-family: "IBM Plex Mono", monospace;
     padding: 2px 8px;
+}
+QLabel#popupText { color: %4; font-size: 11px; }
+/* Renombrar un área en su propia pestaña: sin caja, con la letra de la
+   pestaña, para que el nombre no dé un salto al entrar en edición. */
+QLineEdit#areaRename {
+    background: %6; border: 1px solid %5; border-radius: 6px;
+    padding: 1px 5px; font-size: 12px; font-weight: 600; color: %3;
 }
 QLineEdit#popupEdit {
     background: %6; border: 1px solid %2; border-radius: 8px;

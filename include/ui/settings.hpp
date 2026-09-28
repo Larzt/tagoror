@@ -61,6 +61,7 @@ signals:
     void languagePicked(Lang::Code code);
     void textScalePicked(int percent);
     void onTopToggled(bool on);
+    void appModeToggled(bool on);
     void sizePerPageToggled(bool on);
     void x11Toggled(bool on);
     void dataFolderRequested();
@@ -74,6 +75,10 @@ signals:
     void driveCancelRequested();
     void driveSyncRequested();
     void driveDisconnectRequested();
+    void calendarToggled(bool on);
+    void calendarGrantRequested();   // volver a autorizar con el permiso de Calendar
+    void calendarFollowToggled(const QString &calId, bool on);
+    void calendarTargetRequested(QWidget *anchor);
 
 private:
     // Abre una sección: cabecera con icono y un grupo donde van sus filas.
@@ -89,6 +94,9 @@ private:
     void addInputs();
     void addUpdates();
     void addDrive();
+    void addCalendar();
+    // Lo que enseña la sección de Calendar: si cambia, se rehace la página.
+    QString calendarSignature() const;
     void addQuit();
     // Lo que dice la tarjeta de actualizaciones ahora mismo.
     QString updateSubtitle(bool busy, const QString &error) const;
@@ -121,4 +129,5 @@ private:
     class ElidedLabel *m_driveSub = nullptr;
     class QToolButton *m_driveBtn = nullptr;
     bool m_driveBuiltConnected = false;
+    QString m_calendarBuilt;   // calendarSignature() con la que se montó
 };

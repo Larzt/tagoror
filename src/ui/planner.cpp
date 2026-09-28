@@ -1145,17 +1145,33 @@ void PlannerView::buildEditor() {
     m_fDate = field(L("dd/mm/aaaa"));
     m_fStart = field("09:00");
     m_fEnd = field("10:00");
+    // Uno de todo el día no tiene horas: en su sitio va hasta qué día dura,
+    // que es lo que tienen unas vacaciones (y lo que traen de Google).
+    m_fLastDay = field(L("dd/mm/aaaa"));
     when->addWidget(caption("FECHA"), 0, 0);
-    when->addWidget(caption("INICIO"), 0, 1);
+    m_fStartBox = caption("INICIO");
+    when->addWidget(m_fStartBox, 0, 1);
     m_fEndBox = caption("FIN");
     when->addWidget(m_fEndBox, 0, 2);
+    m_fLastDayBox = caption("ÚLTIMO DÍA");
+    when->addWidget(m_fLastDayBox, 0, 1, 1, 2);
     when->addWidget(m_fDate, 1, 0);
     when->addWidget(m_fStart, 1, 1);
     when->addWidget(m_fEnd, 1, 2);
+    when->addWidget(m_fLastDay, 1, 1, 1, 2);
     when->setColumnStretch(0, 5);
     when->setColumnStretch(1, 3);
     when->setColumnStretch(2, 3);
     col->addLayout(when);
+
+    m_fAllDayBtn = segButton(L("Todo el día"));
+    m_fAllDayBtn->setProperty("tip", "Todo el día");
+    m_fAllDayBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    connect(m_fAllDayBtn, &QToolButton::clicked, this, [this] {
+        m_fAllDay = !m_fAllDay;
+        setEditorKind(m_fKind);
+    });
+    col->addWidget(m_fAllDayBtn);
 
     // Repetición y categoría en rejillas de dos: en una fila no caben las
     // cuatro con sus nombres en el ancho mínimo del panel.
@@ -1165,8 +1181,9 @@ void PlannerView::buildEditor() {
     auto *rg = new QGridLayout(m_repeatBox);
     rg->setContentsMargins(0, 0, 0, 0);
     rg->setSpacing(4);
-    const char *repeatNames[] = {"No se repite", "Cada día", "Cada semana", "Cada mes"};
-    for (int i = 0; i < 4; ++i) {
+    const char *repeatNames[] = {"No se repite", "Cada día", "Cada semana", "Cada mes",
+                                 "Cada año"};
+    for (int i = 0; i < 5; ++i) {
         auto *b = segButton(L(repeatNames[i]));
         b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         b->setProperty("tip", repeatNames[i]);
@@ -1255,7 +1272,7 @@ void PlannerView::buildEditor() {
     col->addLayout(foot);
     col->addStretch();
 
-    for (QLineEdit *e : {m_fTitle, m_fDate, m_fStart, m_fEnd})
+    for (QLineEdit *e : {m_fTitle, m_fDate, m_fStart, m_fEnd, m_fLastDay})
         connect(e, &QLineEdit::returnPressed, this, [this] { saveEditor(); });
 
     auto *scroll = new QScrollArea;
@@ -1367,6 +1384,7 @@ QList<Item> PlannerView::itemsOn(const QDate &day) const {
             it.end = e->endHours();
             it.title = e->title.isEmpty() ? L("Sin título") : e->title;
             it.color = categoryColor(e->category);
+            it.allDay = e->allDay;
             it.task = e->kind == Event::Task;
             it.done = e->isDoneOn(day);
             it.alert = e->ringingMs != 0 && e->ringingMs == e->startOn(day).toMSecsSinceEpoch();
@@ -1502,7 +1520,7 @@ void PlannerView::refreshSide() {
         auto *title = new ElidedLabel(it.title, QColor(it.done ? Theme::muted() : Theme::fg()));
         title->setObjectName("plannerSideText");
         rl->addWidget(title, 1);
-        auto *time = new QLabel(hhmm(it.start));
+        auto *time = new QLabel(it.allDay ? QString() : hhmm(it.start));
         time->setObjectName("dayTime");
         rl->addWidget(time);
         m_todayList->addWidget(row);
@@ -1687,7 +1705,11 @@ void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool p
     });
     if (c) {
         menu->addSeparator();
-        menu->addItem("trash", L("Eliminar categoría"), L("Sus eventos pasan a Otros"), [self, c] {
+        const bool google = c->id.startsWith("gcal:");
+        menu->addItem("trash", google ? L("Dejar de seguir este calendario") : L("Eliminar categoría"),
+                      google ? L("Sus eventos se quitan de aquí; en Google siguen")
+                             : L("Sus eventos pasan a Otros"),
+                      [self, c] {
             if (!self || !self->m_categories || !self->m_categories->contains(c)) return;
             emit self->categoryDeleted(c);
             self->refresh();
@@ -1781,6 +1803,10 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
         m_fKind = e->kind == Event::Task ? 1 : 0;
         m_fRepeat = int(e->repeat);
         m_fCategory = e->category;
+        m_fAllDay = e->allDay;
+        m_fLastDay->setText(e->endDate.isValid() && e->endDate > e->date
+                                ? e->endDate.toString("dd/MM/yyyy")
+                                : QString());
     } else {
         const QTime start = QTime(0, 0).addSecs(int(hour * 3600));
         const QTime end = start.addSecs(3600) > start ? start.addSecs(3600) : QTime(23, 59);
@@ -1793,6 +1819,8 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
         m_fKind = 0;
         m_fRepeat = 0;
         m_fCategory = "work";
+        m_fAllDay = false;
+        m_fLastDay->clear();
     }
     rebuildCatButtons();
     setEditorKind(m_fKind);
@@ -1813,21 +1841,31 @@ void PlannerView::setEditorKind(int kind) {
     // Un recordatorio es un instante: sin fin, sin categoría y sin la
     // repetición de aquí (la suya se elige en la tarjeta, como siempre).
     const bool reminder = kind == 2;
-    m_fEnd->setVisible(!reminder);
-    m_fEndBox->setVisible(!reminder);
-    m_repeatBox->setVisible(!reminder);
+    const bool allDay = m_fAllDay && !reminder;
+    // Una vuelta suelta de una serie de Google no se repite por su cuenta.
+    const bool instance = m_editing && m_editing->gcalInstance();
+    m_fStart->setVisible(!allDay);
+    m_fStartBox->setVisible(!allDay);
+    m_fEnd->setVisible(!reminder && !allDay);
+    m_fEndBox->setVisible(!reminder && !allDay);
+    m_fLastDay->setVisible(allDay);
+    m_fLastDayBox->setVisible(allDay);
+    m_fAllDayBtn->setVisible(!reminder);
+    m_repeatBox->setVisible(!reminder && !instance);
     m_catBox->setVisible(!reminder);
     if (auto *alerts = findChild<QWidget *>("plannerAlertBox")) alerts->setVisible(!reminder);
     for (QWidget *w : findChildren<QLabel *>())
         if (const QString tip = w->property("tip").toString();
-            tip == QStringLiteral("REPETICIÓN") || tip == QStringLiteral("CATEGORÍA") ||
-            tip == QStringLiteral("AVISO"))
+            tip == QStringLiteral("CATEGORÍA") || tip == QStringLiteral("AVISO"))
             w->setVisible(!reminder);
+        else if (tip == QStringLiteral("REPETICIÓN"))
+            w->setVisible(!reminder && !instance);
     refreshEditorChoices();
 }
 
 void PlannerView::refreshEditorChoices() {
     for (int i = 0; i < m_kindButtons.size(); ++i) setChosen(m_kindButtons.at(i), i == m_fKind);
+    setChosen(m_fAllDayBtn, m_fAllDay);
     for (int i = 0; i < m_repeatButtons.size(); ++i) setChosen(m_repeatButtons.at(i), i == m_fRepeat);
     for (QToolButton *b : m_alertButtons) setChosen(b, b->property("minutes").toInt() == m_fAlert);
     for (QToolButton *b : m_catButtons) {
@@ -1839,8 +1877,12 @@ void PlannerView::refreshEditorChoices() {
 
 void PlannerView::saveEditor() {
     const QDate date = QDate::fromString(m_fDate->text().trimmed(), "d/M/yyyy");
-    const QTime start = QTime::fromString(m_fStart->text().trimmed(), "H:mm");
-    const QTime end = QTime::fromString(m_fEnd->text().trimmed(), "H:mm");
+    const bool allDay = m_fAllDay && m_fKind != 2;
+    // Todo el día cuenta desde las 00:00: es el inicio del que sale el aviso.
+    const QTime start = allDay ? QTime(0, 0) : QTime::fromString(m_fStart->text().trimmed(), "H:mm");
+    const QTime end = allDay ? QTime(23, 59) : QTime::fromString(m_fEnd->text().trimmed(), "H:mm");
+    const QString lastText = m_fLastDay->text().trimmed();
+    const QDate lastDay = QDate::fromString(lastText, "d/M/yyyy");
     auto fail = [this](const QString &why, QWidget *field) {
         m_fError->setText(why);
         m_fError->show();
@@ -1856,8 +1898,16 @@ void PlannerView::saveEditor() {
         goTo(date);
         return;
     }
-    if (!end.isValid() || end <= start)
+    if (allDay && !lastText.isEmpty() && (!lastDay.isValid() || lastDay < date))
+        return fail(L("El último día tiene que ser dd/mm/aaaa, y no antes de la fecha."), m_fLastDay);
+    // Uno con hora que venía de Google pasando de un día a otro conserva lo que
+    // dura: se mueve entero con su fecha, y su fin es el del último día.
+    int span = 0;
+    if (!allDay && m_editing && !m_editing->allDay && m_editing->endDate.isValid())
+        span = int(m_editing->date.daysTo(m_editing->endDate));
+    if (!allDay && span <= 0 && (!end.isValid() || end <= start))
         return fail(L("El fin tiene que ser una hora posterior al inicio."), m_fEnd);
+    if (!end.isValid()) return fail(L("El fin tiene que ser una hora posterior al inicio."), m_fEnd);
 
     Event *e = m_editing ? m_editing : new Event;
     const bool isNew = m_editing == nullptr;
@@ -1867,7 +1917,10 @@ void PlannerView::saveEditor() {
     e->date = date;
     e->start = start;
     e->end = end;
-    e->repeat = Event::Repeat(m_fRepeat);
+    e->allDay = allDay;
+    if (allDay) e->endDate = lastDay.isValid() && lastDay > date ? lastDay : QDate();
+    else e->endDate = span > 0 ? date.addDays(span) : QDate();
+    e->repeat = e->gcalInstance() ? Event::Once : Event::Repeat(m_fRepeat);
     e->category = m_fCategory;
     e->remind = m_fAlert >= 0;
     // Sin aviso se guarda la antelación que tenía: volver a activarlo no

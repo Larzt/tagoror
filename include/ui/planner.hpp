@@ -191,6 +191,11 @@ private:
     QLineEdit *m_fStart = nullptr;
     QLineEdit *m_fEnd = nullptr;
     QWidget *m_fEndBox = nullptr;
+    QWidget *m_fStartBox = nullptr;
+    QLineEdit *m_fLastDay = nullptr;     // último día de uno de todo el día
+    QWidget *m_fLastDayBox = nullptr;
+    QToolButton *m_fAllDayBtn = nullptr;
+    bool m_fAllDay = false;
     QTextEdit *m_fDesc = nullptr;
     QList<QToolButton *> m_alertButtons;   // "minutes" = -1 sin aviso
     QLabel *m_fError = nullptr;

@@ -10,6 +10,7 @@
 #include "ui/theme.hpp"
 
 class QFrame;
+class QGraphicsDropShadowEffect;
 class QLabel;
 class QLineEdit;
 class QMenu;
@@ -22,6 +23,7 @@ class QTimer;
 class QToolButton;
 class QVBoxLayout;
 class Alarm;
+class AreaTabs;
 class DriveSync;
 class Updater;
 class BirthdayView;
@@ -84,6 +86,21 @@ private:
     // --- notas ---
     void addNote(Note::Type type);
     void removeNote(Note *n);
+
+    // --- áreas de trabajo ---
+    // La lista enseña solo las notas del área abierta; la tira de pestañas
+    // cambia de una a otra. Ver area.hpp.
+    QString currentArea() const;
+    void switchArea(const QString &id);
+    void refreshAreaTabs();
+    void newArea();
+    void openAreaMenu(const QString &id, const QPoint &globalPos);
+    void openAreaOverflow(const QPoint &globalPos);
+    // Pregunta dentro de un menú qué hacer con sus notas: por defecto se
+    // mueven a otra área; borrarlas es una opción explícita.
+    void confirmDeleteArea(const QString &id);
+    void openMoveNoteMenu(Note *n, const QPoint &globalPos);
+    void moveNoteToArea(Note *n, const QString &areaId);
 
     // --- reordenar ---
     // El orden lo lleva la pantalla y el Store lo copia: arrastrar mueve la
@@ -225,6 +242,14 @@ private:
 
     // --- ventana ---
     void applyWindowFlags();        // encima de todo o pegado al escritorio
+    // Widget sin marco o ventana normal de escritorio (Prefs::appMode). En
+    // modo aplicación no hay hueco para la sombra ni dock: «–» minimiza.
+    void setAppMode(bool on);
+    void applyAppModeChrome();      // márgenes, sombra, marco y botón «–»
+    bool appMode() const { return m_store.prefs().appMode; }
+    int shadowMargin() const;
+    // Desde la bandeja o una segunda instancia: también si está minimizada.
+    void showRestored();
     void keepOnScreen();            // que plegar/desplegar no la saque de la pantalla
     // Devuelve la ventana al sitio guardado en el arranque. Sin esto reaparece
     // donde la ponga el gestor, que no es donde la dejó su dueño.
@@ -303,11 +328,18 @@ private:
     QToolButton *m_birthdayBtn = nullptr;
     QToolButton *m_settingsBtn = nullptr;
     QList<QToolButton *> m_headerButtons;
+    QToolButton *m_minBtn = nullptr;
+    QVBoxLayout *m_outer = nullptr;
+    QGraphicsDropShadowEffect *m_shellShadow = nullptr;
 
     QSystemTrayIcon *m_tray = nullptr;
     QMenu *m_trayMenu = nullptr;
 
     NoteCard *m_dragCard = nullptr;        // tarjeta que se está arrastrando
+    // Área sobre cuya pestaña está la tarjeta que se arrastra: al soltar, la
+    // nota se muda allí en vez de reordenarse.
+    QString m_dropArea;
+    AreaTabs *m_areaTabs = nullptr;
     QTimer *m_dueTimer = nullptr;          // vigilancia de recordatorios
     QTimer *m_tick = nullptr;              // temporizadores en marcha
     Alarm *m_alarm = nullptr;

@@ -42,6 +42,10 @@ struct Note {
     // Las imágenes se pliegan por nota, no por panel: una tarjeta con capturas
     // se lee mejor cerrada, y esa elección es de quien la escribió.
     bool imagesHidden = false;
+    // Área de trabajo a la que pertenece (ver area.hpp). Vacío es la de serie,
+    // Area::kDefaultId: así las notas de antes de que hubiera áreas no cambian
+    // ni un byte y la sincronización no las ve como editadas.
+    QString area;
     QString audio;            // solo Voice: nombre de fichero dentro de audioDir()
     qint64 durationMs = 0;    // solo Voice
     QList<int> peaks;         // solo Voice: onda ya calculada, 0..100
@@ -197,6 +201,7 @@ struct Note {
         o["fired"] = fired;
         o["imagesHidden"] = imagesHidden;
         o["updated"] = double(updatedMs);
+        if (!area.isEmpty()) o["area"] = area;
 
         QJsonArray imgArr;
         for (const QString &name : images) imgArr.append(name);
@@ -233,6 +238,7 @@ struct Note {
         n->fired = o["fired"].toBool();
         n->imagesHidden = o["imagesHidden"].toBool();
         n->updatedMs = qint64(o["updated"].toDouble());
+        n->area = o["area"].toString();
         for (const QJsonValue v : o["images"].toArray())
             n->images.append(v.toString());
         for (const QJsonValue v : o["peaks"].toArray())

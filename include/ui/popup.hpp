@@ -47,6 +47,13 @@ public:
     // una lista de acciones (qué hora pongo), esto es un ajuste con estado
     // (cada cuánto), y el menú tiene que enseñar cuál está puesto.
     void addChoice(const QStringList &labels, int chosen, std::function<void(int)> action);
+    // Lo mismo con iconos en vez de texto, todos en una fila: los glifos de
+    // las áreas. 'tips' es lo que dice cada uno al pasar por encima.
+    void addIconChoice(const QStringList &iconKinds, const QStringList &tips, int chosen,
+                       std::function<void(int)> action);
+    // Un párrafo de texto suelto, para lo que un menú tiene que explicar antes
+    // de ofrecer nada (qué se lleva por delante borrar un área).
+    void addText(const QString &text);
     // Un nombre y un color a la vez, para las categorías del planificador.
     // Enter confirma con el color marcado; pulsar un color confirma con ese y
     // con lo que haya escrito, así que crear una es escribir y elegir color.

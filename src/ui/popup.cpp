@@ -205,6 +205,40 @@ void Popup::addFields(const QStringList &placeholders, const QStringList &values
 // Los presets de hora del calendario: cinco filas de menú son 150 px, más que
 // la mitad del panel, y el popup terminaba encima del calendario. En chips
 // caben tres por línea y el menú entero mide poco más que una tarjeta.
+void Popup::addIconChoice(const QStringList &iconKinds, const QStringList &tips, int chosen,
+                          std::function<void(int)> action) {
+    auto *host = new QWidget;
+    auto *row = new QHBoxLayout(host);
+    row->setContentsMargins(7, 3, 7, 4);
+    row->setSpacing(4);
+    for (int i = 0; i < iconKinds.size(); ++i) {
+        auto *chip = new QToolButton;
+        chip->setObjectName("popupChip");
+        chip->setIcon(paintIcon(iconKinds.at(i), i == chosen ? m_theme.accent
+                                                             : QColor(Theme::fg()), 16));
+        chip->setIconSize(QSize(16, 16));
+        chip->setToolTip(tips.value(i));
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setProperty("chosen", i == chosen);
+        chip->setFixedSize(28, 26);
+        QObject::connect(chip, &QToolButton::clicked, this, [this, i, action] {
+            run([i, action] { if (action) action(i); });
+        });
+        row->addWidget(chip);
+    }
+    row->addStretch();
+    m_col->addWidget(host);
+}
+
+void Popup::addText(const QString &text) {
+    auto *l = new QLabel(text);
+    l->setObjectName("popupText");
+    l->setWordWrap(true);
+    l->setMinimumWidth(24);   // ver *Card widths*: el texto no impone su ancho
+    l->setContentsMargins(10, 2, 10, 6);
+    m_col->addWidget(l);
+}
+
 void Popup::addChoice(const QStringList &labels, int chosen,
                       std::function<void(int)> action) {
     addChips(labels, {}, QString(), std::move(action));

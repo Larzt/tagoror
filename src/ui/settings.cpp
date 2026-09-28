@@ -281,6 +281,7 @@ void SettingsView::refresh() {
     addWindow();
     addData();
     addDrive();
+    addCalendar();
     addInputs();
     addUpdates();
     addQuit();
@@ -448,9 +449,14 @@ void SettingsView::addLanguage() {
 
 void SettingsView::addWindow() {
     beginGroup(L("VENTANA"), "window");
+    addToggle(L("Modo aplicación"),
+              m_store->prefs().appMode ? L("Ventana normal, en la barra de tareas")
+                                       : L("Widget sin marco en el escritorio"),
+              m_store->prefs().appMode, [this](bool on) { emit appModeToggled(on); });
     addToggle(L("Siempre encima"),
-              m_store->prefs().onTop ? L("Por encima de todo")
-                                     : L("Pegada al escritorio"),
+              m_store->prefs().onTop     ? L("Por encima de todo")
+              : m_store->prefs().appMode ? L("Como cualquier otra ventana")
+                                         : L("Pegada al escritorio"),
               m_store->prefs().onTop, [this](bool on) { emit onTopToggled(on); });
     addToggle(L("Tamaño por página"),
               m_store->prefs().sizePerPage ? L("Cada página recuerda el suyo")
@@ -534,7 +540,8 @@ void SettingsView::addDrive() {
 
 void SettingsView::refreshDrive() {
     if (!m_drive || !m_driveSub || !m_driveBtn) return;
-    if (m_drive->connected() != m_driveBuiltConnected) {
+    if (m_drive->connected() != m_driveBuiltConnected ||
+        calendarSignature() != m_calendarBuilt) {
         refresh();
         return;
     }
@@ -583,6 +590,74 @@ void SettingsView::refreshDrive() {
     m_driveSub->setColor(bad ? QColor("#ff7a6b") : QColor(Theme::muted()));
     m_driveBtn->setText(button);
     m_driveBtn->setEnabled(enabled);
+}
+
+QString SettingsView::calendarSignature() const {
+    if (!m_drive || !m_drive->connected()) return QString();
+    const CalendarSync *cal = m_drive->calendar();
+    QStringList parts{cal->enabled() ? "on" : "off", m_drive->hasCalendarScope() ? "scope" : "",
+                      cal->target(), cal->lastError()};
+    for (const CalendarSync::Calendar &c : cal->calendars())
+        parts << c.id + (cal->isFollowed(c.id) ? "+" : "-") + c.name;
+    return parts.join('\n');
+}
+
+// Google Calendar, con la misma cuenta que Drive: solo aparece con ella
+// conectada. Cada calendario seguido es una categoría del planificador.
+void SettingsView::addCalendar() {
+    m_calendarBuilt = calendarSignature();
+    if (!m_drive || !m_drive->connected()) return;
+    const CalendarSync *cal = m_drive->calendar();
+    beginGroup(L("GOOGLE CALENDAR"), "calendar");
+
+    addToggle(L("Sincronizar el planificador"),
+              L("Eventos y tareas, en los dos sentidos"), cal->enabled(),
+              [this](bool on) { emit calendarToggled(on); });
+    if (!cal->enabled()) return;
+
+    if (!m_drive->hasCalendarScope()) {
+        addAction(L("Falta el permiso de Calendar"),
+                  L("Vuelve a autorizar la cuenta para concederlo"), L("Autorizar"),
+                  m_drive->state() != DriveSync::Authorizing,
+                  [this](QWidget *) { emit calendarGrantRequested(); });
+        return;
+    }
+    if (cal->calendars().isEmpty()) {
+        auto *row = new QWidget;
+        auto *rl = new QHBoxLayout(row);
+        rl->setContentsMargins(8, 6, 8, 7);
+        auto *wait = new QLabel(L("Los calendarios de la cuenta aparecen tras la próxima sincronización."));
+        wait->setObjectName("meta");
+        wait->setWordWrap(true);
+        wait->setMinimumWidth(24);   // ver *Card widths*
+        rl->addWidget(wait, 1);
+        addToGroup(row);
+        return;
+    }
+
+    for (const CalendarSync::Calendar &c : cal->calendars()) {
+        QString hint = c.primary ? L("Principal") : QString();
+        if (!c.writable) hint = hint.isEmpty() ? L("Solo lectura") : hint + " · " + L("Solo lectura");
+        addToggle(c.name, hint, cal->isFollowed(c.id),
+                  [this, id = c.id](bool on) { emit calendarFollowToggled(id, on); });
+    }
+
+    const CalendarSync::Calendar *target = cal->calendar(cal->target());
+    const bool usable = target && target->writable && cal->isFollowed(target->id);
+    addAction(L("Eventos nuevos de Tagoror"),
+              usable ? L("Se guardan en «%1»").arg(target->name)
+                     : L("En ninguno · se quedan en Tagoror"),
+              L("Cambiar"), true, [this](QWidget *anchor) { emit calendarTargetRequested(anchor); });
+
+    if (!cal->lastError().isEmpty()) {
+        ElidedLabel *sub = nullptr;
+        auto *row = new QWidget;
+        auto *rl = new QHBoxLayout(row);
+        rl->setContentsMargins(8, 4, 8, 6);
+        rl->addLayout(textColumn(L("Último error"), cal->lastError(), &sub), 1);
+        sub->setColor(QColor("#ff7a6b"));
+        addToGroup(row);
+    }
 }
 
 void SettingsView::addInputs() {

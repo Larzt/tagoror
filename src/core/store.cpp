@@ -79,6 +79,7 @@ inline QString keyOf(const Birthday *b) { return "b:" + b->id; }
 inline QString keyOf(const Event *e) { return "e:" + e->id; }
 inline QString keyOf(const Timer *t) { return "t:" + t->id; }
 inline QString keyOf(const Event::Category *c) { return "c:" + c->id; }
+inline QString keyOf(const Area *a) { return "a:" + a->id; }
 
 // Lo que dice un elemento, sin la fecha de cambio: si esto no cambia, el
 // elemento no ha cambiado.
@@ -108,6 +109,7 @@ void adopt(Event *local, const Event *remote) {
 }
 void adopt(Timer *local, const Timer *remote) { *local = *remote; }
 void adopt(Event::Category *local, const Event::Category *remote) { *local = *remote; }
+void adopt(Area *local, const Area *remote) { *local = *remote; }
 
 // Las categorías propias de un events.json (o de su copia). Un fichero de antes
 // de que existieran no trae la clave y no hay ninguna.
@@ -138,6 +140,7 @@ Store::Store(QObject *parent) : QObject(parent) {
 Store::~Store() {
     save();
     qDeleteAll(m_notes);
+    qDeleteAll(m_areas);
     qDeleteAll(m_birthdays);
     qDeleteAll(m_timers);
     qDeleteAll(m_events);
@@ -194,6 +197,89 @@ void Store::setOrder(const QList<Note *> &order) {
     scheduleSave();
 }
 
+// --- áreas de trabajo ----------------------------------------------------------
+
+Area *Store::area(const QString &id) const {
+    for (Area *a : m_areas)
+        if (a->id == id) return a;
+    return nullptr;
+}
+
+QString Store::areaOf(const Note *n) const {
+    const QString id = n->area.isEmpty() ? QString(Area::kDefaultId) : n->area;
+    if (area(id)) return id;
+    return m_areas.isEmpty() ? QString(Area::kDefaultId) : m_areas.first()->id;
+}
+
+QList<Note *> Store::notesIn(const QString &areaId) const {
+    QList<Note *> out;
+    for (Note *n : m_notes)
+        if (areaOf(n) == areaId) out.append(n);
+    return out;
+}
+
+Area *Store::addArea(const QString &name) {
+    auto *a = new Area;
+    a->name = name;
+    a->pos = m_areas.isEmpty() ? 0 : m_areas.last()->pos + 1;
+    m_areas.append(a);
+    save();
+    return a;
+}
+
+void Store::removeArea(Area *a, const QString &moveTo) {
+    if (!m_areas.contains(a) || m_areas.size() < 2) return;
+    const QString id = a->id;
+    // Se decide con el área todavía en la lista: sin ella, areaOf() ya
+    // mandaría sus notas a la primera y no se las podría distinguir.
+    const QList<Note *> own = notesIn(id);
+    for (Note *n : own) {
+        if (!moveTo.isEmpty() && moveTo != id && area(moveTo)) {
+            setNoteArea(n, moveTo);
+            continue;
+        }
+        if (!n->audio.isEmpty()) QFile::remove(n->audioPath());
+        for (const QString &image : n->images) QFile::remove(Note::imagePath(image));
+        m_notes.removeOne(n);
+        delete n;
+    }
+    m_areas.removeOne(a);
+    delete a;
+    if (m_prefs.activeArea == id) m_prefs.activeArea.clear();
+    save();
+}
+
+void Store::moveArea(Area *a, int steps) {
+    const int from = int(m_areas.indexOf(a));
+    const int to = from + steps;
+    if (from < 0 || to < 0 || to >= m_areas.size()) return;
+    m_areas.move(from, to);
+    // Se renumeran todas: dos áreas con el mismo 'pos' (creadas a la vez en
+    // dos equipos) quedarían si no en un orden que depende de la mezcla.
+    for (int i = 0; i < m_areas.size(); ++i) m_areas[i]->pos = i;
+    save();
+}
+
+void Store::setNoteArea(Note *n, const QString &areaId) {
+    n->area = areaId == Area::kDefaultId ? QString() : areaId;
+}
+
+void Store::sortAreas() {
+    std::stable_sort(m_areas.begin(), m_areas.end(), [](const Area *a, const Area *b) {
+        // A igual 'pos', por id: dos equipos tienen que verlas en el mismo orden.
+        return a->pos != b->pos ? a->pos < b->pos : a->id < b->id;
+    });
+}
+
+void Store::ensureAreas() {
+    sortAreas();
+    if (!m_areas.isEmpty()) return;
+    auto *a = new Area;
+    a->id = Area::kDefaultId;
+    a->name = L("Personal");
+    m_areas.append(a);
+}
+
 // --- temporizadores ----------------------------------------------------------
 
 void Store::addTimer(Timer *t) {
@@ -209,15 +295,15 @@ void Store::removeTimer(Timer *t) {
 
 // --- planificador -------------------------------------------------------------
 
-void Store::addEvent(Event *e) {
+void Store::addEvent(Event *e, bool save) {
     m_events.append(e);
-    save();
+    if (save) this->save();
 }
 
-void Store::removeEvent(Event *e) {
+void Store::removeEvent(Event *e, bool save) {
     m_events.removeOne(e);
     delete e;
-    save();
+    if (save) this->save();
 }
 
 void Store::addCategory(Event::Category *c) {
@@ -226,8 +312,17 @@ void Store::addCategory(Event::Category *c) {
 }
 
 void Store::removeCategory(Event::Category *c) {
-    for (Event *e : m_events)
-        if (e->category == c->id) e->category = Event::kFallbackCategory;
+    const bool google = c->id.startsWith("gcal:");
+    for (int i = int(m_events.size()) - 1; i >= 0; --i) {
+        Event *e = m_events.at(i);
+        if (e->category != c->id) continue;
+        if (google) {
+            m_events.removeAt(i);
+            delete e;
+        } else {
+            e->category = Event::kFallbackCategory;
+        }
+    }
     m_categories.removeOne(c);
     delete c;
     save();
@@ -279,9 +374,13 @@ void Store::save() {
 
     QJsonArray arr;
     for (Note *n : m_notes) arr.append(n->toJson());
+    QJsonArray areas;
+    for (Area *a : m_areas) areas.append(a->toJson());
 
     QJsonObject root;
     root["notes"] = arr;
+    root["areas"] = areas;
+    root["activeArea"] = m_prefs.activeArea;
     root["accent"] = m_prefs.accent.name();
     root["opacity"] = m_prefs.opacity;
     root["w"] = m_prefs.windowSize.width();
@@ -292,6 +391,7 @@ void Store::save() {
     }
     root["input"] = QString::fromLatin1(m_prefs.input);
     root["onTop"] = m_prefs.onTop;
+    root["appMode"] = m_prefs.appMode;
     root["sizePerPage"] = m_prefs.sizePerPage;
     QJsonObject pageSizes;
     for (auto it = m_prefs.pageSizes.cbegin(); it != m_prefs.pageSizes.cend(); ++it)
@@ -572,8 +672,16 @@ bool Store::restoreBackup(const QString &file) {
     m_notes.clear();
     qDeleteAll(m_timers);
     m_timers.clear();
+    // Las áreas van con sus notas: una copia de antes de que existieran no
+    // trae ninguna y se vuelve a la de serie, donde caen todas sus notas.
+    qDeleteAll(m_areas);
+    m_areas.clear();
+    const QString activeArea = m_prefs.activeArea;
     m_prefs = Prefs{};
     readObject(root);
+    ensureAreas();
+    // El área abierta es de este equipo y no de la copia.
+    m_prefs.activeArea = activeArea;
 
     // La mitad de los cumpleaños de esa misma copia, si está. Si no está —una
     // copia de antes de que existieran— los de ahora se quedan como están: no
@@ -652,6 +760,7 @@ void Store::load() {
         m_prefs.lang = Lang::systemDefault();
         Lang::setCurrent(m_prefs.lang);
         seedDemoNotes();
+        ensureAreas();
         // Puede haber cumpleaños sin notas: quien borró todas las notas, o
         // quien llegó aquí con un birthdays.json copiado a mano.
         loadBirthdays();
@@ -661,6 +770,10 @@ void Store::load() {
     }
 
     if (m_available && readFile()) {
+        // Un fichero de antes de las áreas no trae ninguna: se crea la de
+        // serie, con la foto ya tomada abajo -- no es un cambio del usuario,
+        // y todos los equipos la crean igual, con el mismo id.
+        ensureAreas();
         // Después de readFile: si los cumpleaños siguen dentro de notes.json
         // (la versión anterior), ahí es donde acaban de leerse, y esto decide
         // si el fichero propio los sustituye.
@@ -691,6 +804,7 @@ void Store::load() {
     // aplica.
     m_prefs.lang = Lang::systemDefault();
     Lang::setCurrent(m_prefs.lang);
+    ensureAreas();   // el panel necesita una pestaña aunque esté vacío
 }
 
 bool Store::readFile() {
@@ -707,6 +821,7 @@ bool Store::readObject(const QJsonObject &root) {
     if (root.contains("opacity")) m_prefs.opacity = root["opacity"].toInt(96);
     if (root.contains("input")) m_prefs.input = root["input"].toString().toLatin1();
     m_prefs.onTop = root["onTop"].toBool();
+    m_prefs.appMode = root["appMode"].toBool();   // de antes: widget, como siempre
     // De antes de que existiera: activado, que es lo de serie.
     if (root.contains("sizePerPage")) m_prefs.sizePerPage = root["sizePerPage"].toBool();
     const QJsonObject pageSizes = root["pageSizes"].toObject();
@@ -746,6 +861,9 @@ bool Store::readObject(const QJsonObject &root) {
 
     for (const QJsonValue v : root["notes"].toArray())
         m_notes.append(Note::fromJson(v.toObject()));
+    for (const QJsonValue v : root["areas"].toArray())
+        m_areas.append(Area::fromJson(v.toObject()));
+    m_prefs.activeArea = root["activeArea"].toString();
     // Un fichero de antes de que existieran los cumpleaños no trae la clave, y
     // entonces toArray() devuelve una lista vacía: no hace falta guarda.
     for (const QJsonValue v : root["birthdays"].toArray())
@@ -773,6 +891,8 @@ bool Store::retryLoad() {
         const QList<Timer *> pendingTimers = m_timers;
         const QList<Event *> pendingEvents = m_events;
         const QList<Event::Category *> pendingCats = m_categories;
+        const QList<Area *> pendingAreas = m_areas;
+        m_areas.clear();
         m_notes.clear();
         m_birthdays.clear();
         m_timers.clear();
@@ -784,8 +904,22 @@ bool Store::retryLoad() {
             m_timers = pendingTimers;
             m_events = pendingEvents;
             m_categories = pendingCats;
+            m_areas = pendingAreas;
             return false;
         }
+        // Las áreas creadas mientras tanto se quedan, salvo las que el fichero
+        // ya tiene (la de serie, que se creó sola al abrir en vacío).
+        QList<Area *> newAreas;
+        for (Area *a : pendingAreas) {
+            if (area(a->id)) {
+                delete a;
+                continue;
+            }
+            a->pos = 1 << 20;   // detrás de las que ya había
+            m_areas.append(a);
+            newAreas.append(a);
+        }
+        ensureAreas();
         for (int i = int(pending.size()) - 1; i >= 0; --i) m_notes.prepend(pending[i]);
         for (int i = int(pendingTimers.size()) - 1; i >= 0; --i) m_timers.prepend(pendingTimers[i]);
 
@@ -807,6 +941,7 @@ bool Store::retryLoad() {
         for (Timer *t : pendingTimers) m_snap.remove(keyOf(t));
         for (Event *e : pendingEvents) m_snap.remove(keyOf(e));
         for (Event::Category *c : pendingCats) m_snap.remove(keyOf(c));
+        for (Area *a : newAreas) m_snap.remove(keyOf(a));
     }
     // Si la carpeta apareció sin fichero, se queda lo que hubiera en memoria:
     // sembrar los ejemplos ahora sería ponerlos encima de lo que el usuario
@@ -877,6 +1012,8 @@ void Store::adoptDataDir(const QString &raw) {
     m_events.clear();
     qDeleteAll(m_categories);
     m_categories.clear();
+    qDeleteAll(m_areas);
+    m_areas.clear();
     m_prefs = Prefs{};
     // Otras notas, otra historia: las lápidas de aquí no son de allí.
     m_deleted.clear();
@@ -897,6 +1034,7 @@ void Store::resetSnapshots() {
     for (Event *e : m_events) m_snap[keyOf(e)] = snapshotOf(e);
     for (Event::Category *c : m_categories) m_snap[keyOf(c)] = snapshotOf(c);
     for (Timer *t : m_timers) m_snap[keyOf(t)] = snapshotOf(t);
+    for (Area *a : m_areas) m_snap[keyOf(a)] = snapshotOf(a);
     m_orderSnap.clear();
     for (Note *n : m_notes) m_orderSnap << n->id;
 }
@@ -924,6 +1062,7 @@ void Store::stampChanges() {
         for (Event::Category *c : m_categories) stamp(c);
     }
     for (Timer *t : m_timers) stamp(t);
+    for (Area *a : m_areas) stamp(a);
 
     for (auto it = m_snap.begin(); it != m_snap.end();) {
         if (alive.contains(it.key())) {
@@ -1040,6 +1179,8 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
         result.changed |= mergeList<Note>(m_notes, remoteNotes, m_deleted, true, pullNote);
         result.changed |= mergeList<Timer>(m_timers, notesRoot["timers"].toArray(), m_deleted,
                                            true, nothing);
+        result.changed |= mergeList<Area>(m_areas, notesRoot["areas"].toArray(), m_deleted,
+                                          false, nothing);
 
         // El orden: el de quien lo cambió más tarde. Lo que ese orden no
         // conoce (lo recién creado aquí) va arriba, en el orden de aquí.
@@ -1078,6 +1219,8 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
         for (const QString &image : n->images) QFile::remove(Note::imagePath(image));
     });
     result.changed |= applyTombstones<Timer>(m_timers, m_deleted);
+    result.changed |= applyTombstones<Area>(m_areas, m_deleted);
+    sortAreas();
     if (m_birthdaysReadable) result.changed |= applyTombstones<Birthday>(m_birthdays, m_deleted);
     if (m_eventsReadable) {
         result.changed |= applyTombstones<Event>(m_events, m_deleted);
@@ -1087,6 +1230,9 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
     // Lo que acaba de llegar no es un cambio de este equipo: si se marcara,
     // se llevaría la fecha de ahora y ganaría a la de verdad en el siguiente.
     resetSnapshots();
+    // Después de la foto: si no queda ningún área, la de serie que se crea
+    // ahora sí es un cambio de aquí, y el save() de abajo la marca y la sube.
+    ensureAreas();
     save();
     if (result.changed) emit merged();
     return result;
@@ -1124,6 +1270,7 @@ QByteArray Store::syncPayload(const QString &name) const {
         for (const Note *n : m_notes) notes.append(n->toJson());
         root["notes"] = notes;
         root["timers"] = sortedById(m_timers);
+        root["areas"] = sortedById(m_areas);
         root["orderUpdated"] = double(m_orderUpdatedMs);
         QJsonObject deleted;
         for (auto it = m_deleted.cbegin(); it != m_deleted.cend(); ++it)

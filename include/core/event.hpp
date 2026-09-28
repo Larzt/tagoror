@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include <QColor>
 #include <QDate>
 #include <QDateTime>
@@ -19,8 +21,9 @@
 struct Event {
     enum Kind { Meeting, Task };
     // Diaria, semanal y mensual son las que pide un horario: la clase de los
-    // martes, el gimnasio a diario, el alquiler el día 1.
-    enum Repeat { Once, Daily, Weekly, Monthly };
+    // martes, el gimnasio a diario, el alquiler el día 1. La anual llegó con
+    // Google Calendar, donde es la de los aniversarios y los festivos.
+    enum Repeat { Once, Daily, Weekly, Monthly, Yearly };
 
     QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString title;
@@ -29,6 +32,18 @@ struct Event {
     QTime start{10, 0};
     QTime end{11, 0};
     Repeat repeat = Once;
+    // Todo el día: sin horas, se pinta en la franja de arriba. Las horas se
+    // quedan en 00:00–23:59 para que el aviso tenga un inicio del que contar.
+    bool allDay = false;
+    // Último día de uno que dura varios (unas vacaciones). Inválido = el mismo
+    // día. Solo uno de todo el día ocupa todos; uno con hora que pasa de la
+    // medianoche se pinta en su primer día, hasta el final.
+    QDate endDate;
+    // Hasta cuándo se repite (inclusive). Inválido = sin fin.
+    QDate until;
+    // Vueltas que no tocan: en Google una vuelta suelta se puede cancelar o
+    // mover, y la movida pasa a ser un evento aparte.
+    QList<QDate> skip;
     QString category = "work";
     bool remind = false;              // suena remindBeforeMin antes de empezar
     // Cuánto antes avisa, en minutos. Cero es "al empezar". Los eventos de
@@ -48,6 +63,27 @@ struct Event {
     // quien edita sino Store al guardar (ver Store::stampChanges), así que
     // ninguna tarjeta tiene que acordarse de tocarlo.
     qint64 updatedMs = 0;
+
+    // --- Google Calendar -------------------------------------------------------
+    // El calendario y el evento de Google con el que va enlazado (vacíos: solo
+    // de Tagoror), y la huella de lo que se compartió la última vez que los
+    // dos lados coincidieron (ver CalendarSync::fingerprint). Viajan por Drive
+    // con el evento: otro equipo conectado a la misma cuenta sabe así que ya
+    // está en Google y no lo sube dos veces.
+    QString gcalCal;
+    QString gcalId;
+    QString gcalHash;
+    // Una serie de Google que se repite de una forma que aquí no cabe (cada
+    // dos semanas, lunes y miércoles, el segundo martes): no se pinta, la
+    // representan sus vueltas, cada una un evento suelto. Se esconde en vez de
+    // borrarse porque su lápida viajaría por Drive y otro equipo la tomaría
+    // por un borrado del usuario, y la borraría también en Google.
+    bool gcalExpanded = false;
+
+    bool linked() const { return !gcalId.isEmpty(); }
+    // Una vuelta de una serie de Google: sus id son "<serie>_<instante>", y
+    // los de Google no llevan nunca guion bajo.
+    bool gcalInstance() const { return gcalId.contains('_'); }
 
     static constexpr int kDefaultRemindMin = 10;
     // Un día como mucho: alarmDue() mira las vueltas de hoy en adelante hasta
@@ -116,20 +152,35 @@ struct Event {
 
     // ¿Cae en ese día? Como Note::occursOn, un día 31 mensual no se corre al 30
     // en los meses cortos: ese mes simplemente no toca.
+    // La anual, como un cumpleaños: un 29 de febrero solo cae en bisiesto.
     bool occursOn(const QDate &d) const {
-        if (!date.isValid() || !d.isValid() || d < date) return false;
+        if (gcalExpanded || !date.isValid() || !d.isValid() || d < date) return false;
+        if (repeat != Once && until.isValid() && d > until) return false;
+        if (skip.contains(d)) return false;
         switch (repeat) {
             case Daily:   return true;
             case Weekly:  return d.dayOfWeek() == date.dayOfWeek();
             case Monthly: return d.day() == date.day();
-            default:      return d == date;
+            case Yearly:  return d.day() == date.day() && d.month() == date.month();
+            default:
+                if (allDay && endDate.isValid()) return d <= endDate;
+                return d == date;
         }
+    }
+
+    // Días que ocupa (1 = uno solo). Lo que no es de todo el día ocupa uno.
+    int spanDays() const {
+        return endDate.isValid() && endDate > date ? int(date.daysTo(endDate)) + 1 : 1;
     }
 
     // Un fin anterior al inicio (o inválido) se toma como una hora de duración:
     // es lo que se quería casi siempre, y un bloque de alto negativo no se
     // puede ni pintar ni pulsar.
     QTime effectiveEnd() const {
+        if (allDay) return QTime(23, 59);
+        // Uno con hora que termina otro día se pinta en el primero hasta el
+        // final: la rejilla no parte bloques entre columnas.
+        if (endDate.isValid() && endDate > date) return QTime(23, 59);
         if (end.isValid() && end > start) return end;
         const QTime plus = start.addSecs(3600);
         return plus > start ? plus : QTime(23, 59);
@@ -161,6 +212,8 @@ struct Event {
         for (int i = 0; i <= ahead; ++i) {
             const QDate d = now.date().addDays(i);
             if (!occursOn(d) || isDoneOn(d)) continue;
+            // Uno de varios días avisa al empezar, no cada uno de ellos.
+            if (repeat == Once && d != date) continue;
             const QDateTime begins = startOn(d);
             const qint64 key = begins.toMSecsSinceEpoch();
             if (firedMs >= key) continue;
@@ -186,6 +239,25 @@ struct Event {
         o["start"] = start.toString("HH:mm");
         o["end"] = end.toString("HH:mm");
         o["repeat"] = int(repeat);
+        // Lo que vino con Google solo se escribe si está: un evento de antes
+        // sigue escribiéndose byte a byte igual y la sincronización no lo toma
+        // por cambiado.
+        if (allDay) o["allDay"] = true;
+        if (endDate.isValid()) o["endDate"] = endDate.toString(Qt::ISODate);
+        if (until.isValid()) o["until"] = until.toString(Qt::ISODate);
+        if (!skip.isEmpty()) {
+            QList<QDate> sorted = skip;
+            std::sort(sorted.begin(), sorted.end());
+            QJsonArray a;
+            for (const QDate &d : sorted) a.append(d.toString(Qt::ISODate));
+            o["skip"] = a;
+        }
+        if (!gcalId.isEmpty()) {
+            o["gcalCal"] = gcalCal;
+            o["gcalId"] = gcalId;
+            o["gcalHash"] = gcalHash;
+            if (gcalExpanded) o["gcalExpanded"] = true;
+        }
         o["category"] = category;
         o["remind"] = remind;
         // Solo si no es el de siempre: así un evento que nadie ha tocado sigue
@@ -211,7 +283,17 @@ struct Event {
             e->start = t;
         if (const QTime t = QTime::fromString(o["end"].toString(), "HH:mm"); t.isValid())
             e->end = t;
-        e->repeat = Repeat(qBound(0, o["repeat"].toInt(), int(Monthly)));
+        e->repeat = Repeat(qBound(0, o["repeat"].toInt(), int(Yearly)));
+        e->allDay = o["allDay"].toBool();
+        e->endDate = QDate::fromString(o["endDate"].toString(), Qt::ISODate);
+        e->until = QDate::fromString(o["until"].toString(), Qt::ISODate);
+        for (const QJsonValue v : o["skip"].toArray())
+            if (const QDate d = QDate::fromString(v.toString(), Qt::ISODate); d.isValid())
+                e->skip.append(d);
+        e->gcalCal = o["gcalCal"].toString();
+        e->gcalId = o["gcalId"].toString();
+        e->gcalHash = o["gcalHash"].toString();
+        e->gcalExpanded = o["gcalExpanded"].toBool();
         e->category = o["category"].toString("work");
         e->remind = o["remind"].toBool();
         e->remindBeforeMin =

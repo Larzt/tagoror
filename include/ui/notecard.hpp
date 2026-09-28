@@ -45,6 +45,8 @@ signals:
     // Un paso arriba (-1) o abajo (+1) desde el menú; el arrastre por el
     // asidero va aparte, porque necesita seguir al ratón mientras dura.
     void moveRequested(Note *, int steps);
+    // «Mover a…»: el panel es quien sabe qué áreas hay.
+    void areaMenuRequested(Note *, const QPoint &globalPos);
     void dragStarted();
     void dragMoved(const QPoint &globalPos);
     void dragFinished();

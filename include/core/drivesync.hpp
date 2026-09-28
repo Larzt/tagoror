@@ -12,6 +12,7 @@
 #include <functional>
 
 class Store;
+class CalendarSync;
 class QNetworkAccessManager;
 class QNetworkReply;
 class QTcpServer;
@@ -76,12 +77,22 @@ public:
     QDateTime lastSync() const { return m_lastSync; }
     QString lastError() const { return m_error; }
 
+    // Conecta (o vuelve a conectar) la cuenta. Si Google Calendar está
+    // encendido en este equipo, pide también sus permisos.
     void connectAccount();
     void cancel();
     void disconnectAccount();
     // Una pasada completa: bajar, mezclar, subir. Si ya hay una en marcha, se
     // apunta y se repite al terminar: lo guardado entre medias también cuenta.
     void syncNow();
+
+    // Google Calendar: un paso más de cada pasada, con esta misma cuenta.
+    CalendarSync *calendar() { return m_calendar; }
+    const CalendarSync *calendar() const { return m_calendar; }
+    // Si Google dio los permisos de calendario. Se pueden desmarcar en la
+    // pantalla de consentimiento, y una cuenta conectada antes de que
+    // existiera esto no los tiene: entonces hay que volver a autorizar.
+    bool hasCalendarScope() const;
 
     // Las direcciones de Google. Son configurables solo para poder probar la
     // subida contra un servidor falso; la aplicación usa las de serie.
@@ -91,6 +102,7 @@ public:
         QString revoke = "https://oauth2.googleapis.com/revoke";
         QString api = "https://www.googleapis.com/drive/v3";
         QString upload = "https://www.googleapis.com/upload/drive/v3";
+        QString calendar = "https://www.googleapis.com/calendar/v3";
     };
     static Endpoints &endpoints();
 
@@ -105,6 +117,8 @@ signals:
     void deferred();
 
 private:
+    friend class CalendarSync;   // usa api() y el token de esta cuenta
+
     struct Transfer {
         bool download = false;
         QString path;       // en disco
@@ -143,6 +157,8 @@ private:
                     QHash<QString, Remote> *into, std::function<void()> next);
     void fetchRemoteJson(int index);   // los tres JSON, uno detrás de otro
     void mergeAndPlan();
+    // Después de Calendar: lo que hay que subir, que ya incluye lo que trajo.
+    void planUploads();
     void planAttachments(int index);   // audio/ e images/
     void transferNext();
     void finishSync();
@@ -153,6 +169,7 @@ private:
     QNetworkAccessManager *m_net = nullptr;
     State m_state = Disconnected;
     QString m_refresh;
+    QString m_scopes;   // los que concedió Google, separados por espacios
     QString m_access;
     QDateTime m_accessUntil;
     QString m_account;
@@ -168,6 +185,7 @@ private:
     int m_attempt = 0;   // para que un tiempo de espera viejo no cancele uno nuevo
 
     Store *m_store = nullptr;
+    CalendarSync *m_calendar = nullptr;
 
     // Pasada en curso.
     QList<Transfer> m_queue;

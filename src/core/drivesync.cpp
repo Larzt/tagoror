@@ -1,5 +1,7 @@
 #include "core/drivesync.hpp"
 
+#include "core/calendarsync.hpp"
+
 #include "core/lang.hpp"
 #include "core/paths.hpp"
 #include "core/store.hpp"
@@ -35,6 +37,12 @@
 namespace {
 
 constexpr auto kScope = "https://www.googleapis.com/auth/drive.file";
+// Los de Google Calendar, solo si este equipo lo tiene encendido: son
+// permisos "sensibles" y no tiene sentido pedírselos a quien solo quiere Drive.
+// calendar.events para leer y escribir eventos; la lista de calendarios pide
+// uno aparte, y el de solo lectura basta.
+constexpr auto kCalendarScope = "https://www.googleapis.com/auth/calendar.events";
+constexpr auto kCalendarListScope = "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
 constexpr auto kFolderMime = "application/vnd.google-apps.folder";
 constexpr auto kRootFolder = "Tagoror";
 constexpr int kTimeoutMs = 60000;
@@ -96,6 +104,7 @@ DriveSync::DriveSync(Store *store, QObject *parent) : QObject(parent), m_store(s
     QSettings s;
     s.beginGroup("drive");
     m_refresh = s.value("refreshToken").toString();
+    m_scopes = s.value("scopes").toString();
     m_account = s.value("account").toString();
     const qint64 last = s.value("lastSync").toLongLong();
     if (last > 0) m_lastSync = QDateTime::fromMSecsSinceEpoch(last);
@@ -103,6 +112,13 @@ DriveSync::DriveSync(Store *store, QObject *parent) : QObject(parent), m_store(s
 
     if (!configured()) m_state = Unavailable;
     else m_state = connected() ? Idle : Disconnected;
+
+    m_calendar = new CalendarSync(this, store);
+}
+
+bool DriveSync::hasCalendarScope() const {
+    const QStringList granted = m_scopes.split(' ', Qt::SkipEmptyParts);
+    return granted.contains(kCalendarScope) && granted.contains(kCalendarListScope);
 }
 
 void DriveSync::saveSettings() {
@@ -114,6 +130,7 @@ void DriveSync::saveSettings() {
         s.remove("");   // todo el grupo: desconectar no deja nada atrás
     } else {
         s.setValue("refreshToken", m_refresh);
+        s.setValue("scopes", m_scopes);
         s.setValue("account", m_account);
         s.setValue("lastSync", m_lastSync.isValid() ? m_lastSync.toMSecsSinceEpoch() : 0);
     }
@@ -163,7 +180,11 @@ void DriveSync::connectAccount() {
     q.addQueryItem("client_id", TAGOROR_GOOGLE_CLIENT_ID);
     q.addQueryItem("redirect_uri", m_redirect);
     q.addQueryItem("response_type", "code");
-    q.addQueryItem("scope", kScope);
+    QString scope = kScope;
+    if (m_calendar->enabled()) scope += QString(" %1 %2").arg(kCalendarScope, kCalendarListScope);
+    q.addQueryItem("scope", scope);
+    // Volver a autorizar para añadir Calendar no quita lo que ya se tenía.
+    q.addQueryItem("include_granted_scopes", "true");
     q.addQueryItem("code_challenge", QString::fromLatin1(challenge));
     q.addQueryItem("code_challenge_method", "S256");
     q.addQueryItem("state", m_stateToken);
@@ -302,6 +323,7 @@ void DriveSync::exchangeCode(const QString &code) {
         }
         m_verifier.clear();
         m_refresh = o["refresh_token"].toString();
+        m_scopes = o["scope"].toString();
         m_access = o["access_token"].toString();
         m_accessUntil = QDateTime::currentDateTime().addSecs(o["expires_in"].toInt(3600));
         saveSettings();
@@ -336,9 +358,11 @@ void DriveSync::disconnectAccount() {
         connect(r, &QNetworkReply::finished, r, &QObject::deleteLater);
     }
     m_refresh.clear();
+    m_scopes.clear();
     m_access.clear();
     m_account.clear();
     m_lastSync = QDateTime();
+    m_calendar->forget();
     m_error.clear();
     m_queue.clear();
     m_rootId.clear();
@@ -380,6 +404,12 @@ void DriveSync::withToken(std::function<void()> next) {
         }
         m_access = o["access_token"].toString();
         m_accessUntil = QDateTime::currentDateTime().addSecs(o["expires_in"].toInt(3600));
+        // Google dice en cada renovación qué permisos siguen dados: así se sabe
+        // también en una cuenta conectada antes de que se guardaran.
+        if (const QString scopes = o["scope"].toString(); !scopes.isEmpty() && scopes != m_scopes) {
+            m_scopes = scopes;
+            saveSettings();
+        }
         next();
     });
 }
@@ -509,6 +539,14 @@ void DriveSync::mergeAndPlan() {
                 setSeenMd5(jsonFiles().at(i), m_rootFiles.value(jsonFiles().at(i)).md5);
     }
 
+    // Google Calendar va entre la mezcla y la subida: así lo que traiga de
+    // allí sale hacia los otros equipos en esta misma pasada.
+    m_calendar->run([this] {
+        if (m_state == Syncing) planUploads();
+    });
+}
+
+void DriveSync::planUploads() {
     // Y lo de aquí, ya mezclado, sube si difiere de lo que hay allí. Lo que
     // sube es lo compartido (Store::syncPayload), no el fichero local.
     for (const QString &name : m_store->syncableFiles()) {
