@@ -10,47 +10,34 @@
 
 #include "core/lang.hpp"
 
-// Un cumpleaños, y no una nota con la fecha puesta.
-//
-// Se podría haber hecho con un Note::Reminder anual -- de hecho la repetición
-// anual nació para esto -- pero son dos cosas distintas: una nota se escribe,
-// se lee y se acaba borrando, mientras que un cumpleaños es el dato de una
-// persona que vuelve todos los años y que no se toca casi nunca. Metidos en la
-// lista de notas, veinte cumpleaños son veinte tarjetas que nadie quiere leer
-// ahí; en su propia página son una agenda.
-//
-// La fecha va partida en día, mes y año sueltos a propósito: de mucha gente se
-// sabe el día pero no el año, y un QDate no admite quedarse a medias.
+/// A birthday: a person's date that comes back every year, not a Note.
+///
+/// The date is stored split (day, month, year) because the year is often
+/// unknown and a QDate cannot be half-filled.
 struct Birthday {
     QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString name;
     int day = 1;
     int month = 1;
-    int year = 0;            // 0 = no se sabe; entonces no hay "cumple 32"
-    QString relation;        // texto libre: "hermana", "trabajo", "uni"…
-    QTime remindAt;          // inválida = no avisa; válida = suena ese día
-    int greetedYear = 0;     // el último año en el que se marcó como felicitado
-    int firedYear = 0;       // el último año en el que sonó (y se calló)
-    bool ringing = false;    // solo en memoria: está sonando ahora mismo
-    // Cuándo cambió por última vez, para la sincronización con Drive: entre
-    // dos equipos gana la versión más reciente de cada elemento. No lo pone
-    // quien edita sino Store al guardar (ver Store::stampChanges), así que
-    // ninguna tarjeta tiene que acordarse de tocarlo.
+    int year = 0;            ///< 0 means unknown, and then there is no age.
+    QString relation;        ///< Free text: "sister", "work"…
+    QTime remindAt;          ///< Invalid: no alarm. Valid: rings on the day at that time.
+    int greetedYear = 0;     ///< Last year it was marked as greeted.
+    int firedYear = 0;       ///< Last year it rang (and was silenced).
+    bool ringing = false;    ///< Runtime only: ringing right now.
+    /// Last change, for the Drive sync (newest version of each element wins).
+    /// Set by Store::stampChanges() on save, never by the editor.
     qint64 updatedMs = 0;
 
-    // 2004 es bisiesto: así un 29 de febrero se admite al escribirlo, aunque
-    // el año que viene no exista ese día.
+    /// 2004 is a leap year, so a 29 February is accepted.
     bool isValid() const { return QDate(2004, month, day).isValid(); }
 
-    // La fecha que le toca a un año concreto. Un 29 de febrero sale inválido
-    // en los años normales en vez de correrse al 28, que es la misma regla que
-    // sigue Note::occursOn: adelantarlo sería inventarse un día que su dueño
-    // no escribió.
+    /// The date in year @p y. A 29 February is invalid in common years instead of
+    /// sliding to the 28th, the same rule as Note::occursOn().
     QDate dateIn(int y) const { return QDate(y, month, day); }
 
-    // El próximo, contando hoy. Es un bucle y no una cuenta por el 29 de
-    // febrero: en un año normal no hay tal día y hay que seguir buscando, que
-    // es justo lo que hace que ese cumpleaños espere cuatro años.
+    /// The next one, today included. A loop rather than arithmetic because of the
+    /// 29 February, which has to wait for the next leap year.
     QDate nextDate(const QDate &from = QDate::currentDate()) const {
         for (int y = from.year(); y <= from.year() + 8; ++y) {
             const QDate d = dateIn(y);
@@ -59,7 +46,7 @@ struct Birthday {
         return {};
     }
 
-    // Cuántos días faltan; -1 si la fecha no vale para nada.
+    /// Days left; -1 if the date is invalid.
     int daysUntil(const QDate &from = QDate::currentDate()) const {
         const QDate next = nextDate(from);
         return next.isValid() ? int(from.daysTo(next)) : -1;
@@ -69,27 +56,27 @@ struct Birthday {
         return dateIn(today.year()) == today;
     }
 
-    // Los años que cumple en su próxima vuelta, o 0 si no se sabe el año.
+    /// Age at the next birthday, or 0 if the year is unknown.
     int turns(const QDate &from = QDate::currentDate()) const {
         const QDate next = nextDate(from);
         return (year > 0 && next.isValid()) ? next.year() - year : 0;
     }
 
-    // Ya felicitado este año. Se guarda el año y no un booleano porque la
-    // marca tiene que caducar sola: en enero nadie quiere ir borrando cruces.
+    /// Already greeted this year. A year rather than a flag so the mark expires
+    /// on its own.
     bool greeted(const QDate &today = QDate::currentDate()) const {
         return greetedYear > 0 && greetedYear == today.year();
     }
 
-    // Suena este año si tiene hora puesta, es hoy y todavía no ha sonado.
+    /// Rings this year if it has a time, it is today and it has not rung yet.
     bool alarmDue(const QDateTime &now = QDateTime::currentDateTime()) const {
         if (!remindAt.isValid() || !isToday(now.date())) return false;
         if (firedYear == now.date().year()) return false;
         return now >= QDateTime(now.date(), remindAt);
     }
 
-    // Una o dos letras para el círculo de la fila. Sin nombre va un
-    // interrogante: un círculo vacío se lee como un fallo de dibujo.
+    /// One or two letters for the avatar; "?" without a name, since an empty
+    /// circle reads as a drawing bug.
     QString initials() const {
         QString out;
         for (const QString &word : name.split(' ', Qt::SkipEmptyParts)) {
@@ -99,16 +86,14 @@ struct Birthday {
         return out.isEmpty() ? QStringLiteral("?") : out;
     }
 
-    // El día, escrito en el idioma de la interfaz. Sin año: la gracia de un
-    // cumpleaños es el día, y el año sería siempre el de la próxima vez.
+    /// The day in the interface language, without the year.
     QString dateLabel(const QDate &from = QDate::currentDate()) const {
         const QDate next = nextDate(from);
         return next.isValid() ? Lang::locale().toString(next, "d MMM") : QString();
     }
 
-    // Cuánto falta, en palabras. Los tramos son los que se leen de un vistazo:
-    // los días exactos la primera quincena, y de ahí en adelante semanas y
-    // meses redondeados, que es toda la precisión que le interesa a nadie.
+    /// Time left in words: exact days for the first fortnight, then rounded
+    /// weeks and months.
     QString whenLabel(const QDate &from = QDate::currentDate()) const {
         const int d = daysUntil(from);
         if (d < 0) return QString();
@@ -116,11 +101,10 @@ struct Birthday {
         if (d == 1) return L("mañana");
         if (d < 14) return L("en %1 días").arg(d);
         if (d < 60) return L("en %1 sem").arg(d / 7);
-        return L("en %1 meses").arg(d / 30);   // d >= 60, así que nunca es "1 mes"
+        return L("en %1 meses").arg(d / 30);   // d >= 60, so never "1 month"
     }
 
-    // La segunda línea de la fila: "cumple 36 · trabajo". Cada mitad puede
-    // faltar, y con las dos vacías la fila se queda solo con el nombre.
+    /// Second line of the row ("turns 36 · work"); either half may be missing.
     QString subtitle(const QDate &from = QDate::currentDate()) const {
         QStringList parts;
         if (const int age = turns(from); age > 0) parts << L("cumple %1").arg(age);
@@ -128,18 +112,16 @@ struct Birthday {
         return parts.join(" · ");
     }
 
-    // Lo que se enseña en el campo de la fecha al editar: con año si se sabe.
+    /// Text for the editor's date field, with the year if known.
     QString dateText() const {
         const QString dm = QString("%1/%2").arg(day, 2, 10, QChar('0'))
                                            .arg(month, 2, 10, QChar('0'));
         return year > 0 ? dm + "/" + QString::number(year) : dm;
     }
 
-    // Lo contrario: "24/12", "24/12/1990", "24-12-90", "24.12.1990". El año es
-    // opcional porque de mucha gente se sabe el día y no el año; sin él
-    // simplemente no se dice cuántos cumple. Devuelve false sin tocar nada si
-    // lo escrito no es una fecha, que es lo que deja el editor sin efecto en
-    // vez de guardar un 1 de enero inventado.
+    /// Parses "24/12", "24/12/1990", "24-12-90" or "24.12.1990" (year optional).
+    /// @return false without writing anything if the text is not a date, so a
+    ///         typo has no effect instead of storing an invented 1 January.
     static bool parseDate(const QString &text, int *day, int *month, int *year) {
         QString norm = text.trimmed();
         norm.replace('-', '/').replace('.', '/');
@@ -149,16 +131,14 @@ struct Birthday {
         bool okD = false, okM = false;
         const int d = parts.at(0).toInt(&okD);
         const int m = parts.at(1).toInt(&okM);
-        if (!okD || !okM || !QDate(2004, m, d).isValid()) return false;   // 2004 es bisiesto
+        if (!okD || !okM || !QDate(2004, m, d).isValid()) return false;   // 2004 is a leap year
 
         int y = 0;
         if (parts.size() == 3) {
             bool okY = false;
             y = parts.at(2).toInt(&okY);
             if (!okY) return false;
-            // Dos cifras se reparten alrededor del año en curso, que es la
-            // única lectura razonable de "90" o de "05" en un año de
-            // nacimiento. Por encima del actual, el siglo pasado.
+            // Two digits: above the current year means last century.
             if (parts.at(2).size() <= 2) y += (y > QDate::currentDate().year() % 100) ? 1900 : 2000;
             if (y < 1900 || y > QDate::currentDate().year()) return false;
         }
@@ -174,8 +154,6 @@ struct Birthday {
         return name.contains(query, Qt::CaseInsensitive) ||
                relation.contains(query, Qt::CaseInsensitive);
     }
-
-    // --- serialización -----------------------------------------------------
 
     QJsonObject toJson() const {
         QJsonObject o;

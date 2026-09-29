@@ -1,6 +1,7 @@
 #include "ui/settings.hpp"
 
 #include "audio/recorder.hpp"
+#include "core/calendarsync.hpp"
 #include "core/lang.hpp"
 #include "core/updater.hpp"
 #include "ui/elidedlabel.hpp"
@@ -26,27 +27,22 @@
 
 namespace {
 
-// Las rutas son largas y la fila las corta por la mitad; bajo el home se
-// enseñan con ~ para que se lea la parte que importa.
+/// Paths are long and the row elides them; under home they are shown with ~
+/// so the part that matters stays readable.
 QString prettyPath(const QString &path) {
     const QString home = QDir::homePath();
     return path.startsWith(home + "/") ? "~" + path.mid(home.size()) : path;
 }
 
-// Punto de color del acento. Venía de Popup::addSwatches, que existía solo para
-// este menú; al mudarse aquí, aquello se quedaba sin usar y se ha ido con él.
-//
-// Sostiene un puntero al Theme de la vista, no una copia: así cambiar el acento
-// solo pide repintar, sin rehacer la página (ver SettingsView::setTheme).
+/// An accent colour dot. Holds a pointer to the view's Theme, not a copy, so
+/// changing the accent only needs a repaint (see SettingsView::setTheme()).
 class ColorDot : public QWidget {
 public:
     ColorDot(const QColor &color, const Theme *theme, std::function<void()> onClick,
              QWidget *parent = nullptr)
         : QWidget(parent), m_color(color), m_theme(theme), m_click(std::move(onClick)) {
-        // 26 y no 30: la fila del acento es lo más ancho de la página (los seis
-        // puntos más el botón de al lado), y con una fuente de sistema mayor
-        // ese botón crece. Ver *Card widths*: lo que aquí se pase de ancho
-        // recorta la página entera, así que se deja holgura de sobra.
+        // 26, not 30: the accent row is the widest thing on the page, and a larger
+        // system font grows the button next to the dots (see *Card widths*).
         setFixedSize(26, 26);
         setCursor(Qt::PointingHandCursor);
         setAttribute(Qt::WA_Hover);
@@ -68,8 +64,8 @@ protected:
         const QPointF c(width() / 2.0, height() / 2.0);
         const bool current = m_theme && m_theme->accent.rgb() == m_color.rgb();
 
-        // Con el foco del teclado, el anillo en el color del texto: el del
-        // propio color ya dice "es el elegido" y no puede decir las dos cosas.
+        // With keyboard focus the ring is in the text colour: the dot's own colour
+        // already means "chosen" and cannot say both things.
         if (keynav::showsFocus(this)) {
             p.setPen(QPen(QColor(Theme::fg()), 1.6));
             p.setBrush(Qt::NoBrush);
@@ -91,10 +87,8 @@ private:
     bool m_hover = false;
 };
 
-// Interruptor de los de deslizar. Se pinta a mano porque un QCheckBox con la
-// hoja de estilos no llega a esto, y porque una casilla dice "marca esto de una
-// lista" mientras que un interruptor dice "esto está encendido o apagado", que
-// es justo lo que son "siempre encima" y la compatibilidad X11.
+/// A sliding switch, painted by hand. A checkbox says "tick this one from a
+/// list"; a switch says "this is on or off", which is what these settings are.
 class Switch : public QWidget {
 public:
     Switch(bool on, const Theme *theme, std::function<void(bool)> changed,
@@ -140,7 +134,7 @@ private:
     std::function<void(bool)> m_changed;
 };
 
-// Fila de un grupo, con fondo propio al pasar por encima.
+/// A group row, with its own background on hover.
 class SettingRow : public QWidget {
 public:
     explicit SettingRow(QWidget *parent = nullptr) : QWidget(parent) {
@@ -149,8 +143,8 @@ public:
         setAttribute(Qt::WA_Hover, true);
     }
 
-    // Solo las filas que hacen algo al pulsarlas (los micrófonos); las de los
-    // interruptores dejan el foco al propio interruptor.
+    // Only rows that do something when clicked (the microphones); toggle rows
+    // leave the focus to the switch itself.
     void setClick(std::function<void()> f) {
         click = std::move(f);
         keynav::activatable(this, [this] { if (click) click(); });
@@ -165,8 +159,8 @@ protected:
     }
 };
 
-// Icono pintado en el acento. No es un QLabel con un pixmap porque el acento
-// cambia sin rehacer la página (ver setTheme): así basta con repintarlo.
+/// An icon painted in the accent. Not a QLabel with a pixmap, so an accent
+/// change only needs a repaint (see setTheme()).
 class AccentIcon : public QWidget {
 public:
     AccentIcon(const QString &kind, const Theme *theme, int px, QWidget *parent = nullptr)
@@ -188,7 +182,7 @@ private:
     int m_px;
 };
 
-// Título y subtítulo apilados, recortados los dos: ver *Card widths*.
+/// Title and subtitle stacked, both elided: see *Card widths*.
 QVBoxLayout *textColumn(const QString &title, const QString &hint, ElidedLabel **subOut = nullptr) {
     auto *texts = new QVBoxLayout;
     texts->setContentsMargins(0, 0, 0, 0);
@@ -216,8 +210,6 @@ QToolButton *actionButton(const QString &text) {
 
 }  // namespace
 
-// ---------------------------------------------------------------------------
-
 SettingsView::SettingsView(const Theme &theme, QWidget *parent)
     : QWidget(parent), m_theme(theme) {
     setObjectName("settings");
@@ -233,9 +225,8 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
     m_layout->setSpacing(0);
     m_layout->addStretch();
 
-    // Todo dentro del desplazamiento, como en los cumpleaños: así el alto
-    // mínimo de la página es una constante y no depende de cuántos micrófonos
-    // tenga el equipo enchufados.
+    // Everything scrolls, as in birthdays, so the page's minimum height is a
+    // constant that does not depend on how many microphones are plugged in.
     auto *scroll = new QScrollArea;
     scroll->setWidget(host);
     scroll->setWidgetResizable(true);
@@ -255,13 +246,13 @@ void SettingsView::setSource(const Store *store) {
 
 void SettingsView::setTheme(const Theme &theme) {
     m_theme = theme;
-    // Los colores de la hoja de estilos bajan solos desde el Panel; aquí solo
-    // hay que repintar lo que se dibuja a mano y lee el acento.
+    // Stylesheet colours cascade from the Panel; only what is painted by hand and
+    // reads the accent needs a repaint.
     for (QWidget *w : findChildren<QWidget *>()) w->update();
 }
 
 void SettingsView::refresh() {
-    m_updateSub = nullptr;   // lo que hubiera muere en este mismo barrido
+    m_updateSub = nullptr;   // whatever was there dies in this same sweep
     m_updateBtn = nullptr;
     m_driveSub = nullptr;
     m_driveBtn = nullptr;
@@ -269,13 +260,17 @@ void SettingsView::refresh() {
     while (m_layout->count() > 1) {
         QLayoutItem *item = m_layout->takeAt(0);
         if (QWidget *w = item->widget()) {
-            w->hide();          // ver *Removing rows*: quitarla del layout no la borra
+            w->hide();          // see *Removing rows*: taking it out of the layout does not delete it
             w->deleteLater();
         }
         delete item;
     }
     if (!m_store) return;
 
+    // Before building anything: addDrive() ends in refreshDrive(), which compares
+    // against this and calls refresh() if it differs. Recorded later, in
+    // addCalendar(), it never matched and the page rebuilt itself forever.
+    m_calendarBuilt = calendarSignature();
     addAppearance();
     addLanguage();
     addWindow();
@@ -287,10 +282,8 @@ void SettingsView::refresh() {
     addQuit();
 }
 
-// Cada sección es una cabecera (icono en el acento + nombre) y un grupo con
-// sus filas separadas por una línea fina. Antes cada ajuste flotaba suelto,
-// unas filas con tarjeta y otras sin ella, y con las cabeceras en gris de 9 px
-// no se veía dónde acababa una sección y empezaba la siguiente.
+/// Every section is a header (accent icon plus name) and a group whose rows
+/// are separated by a thin divider.
 void SettingsView::beginGroup(const QString &title, const QString &icon) {
     auto *head = new QWidget;
     auto *hl = new QHBoxLayout(head);
@@ -324,8 +317,8 @@ void SettingsView::addToGroup(QWidget *row) {
     m_groupLayout->addWidget(row);
 }
 
-// Una fila del grupo sin fondo al pasar: las que contienen sus propios mandos
-// (puntos, deslizador, segmentos) no son pulsables en sí.
+/// A group row without hover background: rows holding their own controls
+/// (dots, slider, segments) are not clickable themselves.
 QVBoxLayout *SettingsView::addBlock() {
     auto *block = new QWidget;
     auto *l = new QVBoxLayout(block);
@@ -338,7 +331,7 @@ QVBoxLayout *SettingsView::addBlock() {
 void SettingsView::addAppearance() {
     beginGroup(L("APARIENCIA"), "palette");
 
-    // --- acento ---
+    // Accent
     {
         QVBoxLayout *b = addBlock();
         b->addLayout(textColumn(L("Color de acento"), QString()));
@@ -360,7 +353,7 @@ void SettingsView::addAppearance() {
         b->addLayout(l);
     }
 
-    // --- opacidad ---
+    // Opacity
     {
         QVBoxLayout *b = addBlock();
         auto *hl = new QHBoxLayout;
@@ -383,11 +376,9 @@ void SettingsView::addAppearance() {
         b->addWidget(slider);
     }
 
-    // --- tamaño de texto ---
-    // Cuatro tamaños y no un deslizador: entre 88 y 130 no hay nada que afinar,
-    // y un botón por tamaño dice de un vistazo cuál está puesto. Cada uno
-    // enseña su "Aa" al tamaño que da, así la fila se explica sola en los dos
-    // idiomas y no necesita cuatro palabras que no caben (ver *Card widths*).
+    // Text size: four sizes rather than a slider, each showing its "Aa" at the
+    // size it gives, so the row explains itself in both languages without words
+    // that would not fit (see *Card widths*).
     {
         QVBoxLayout *b = addBlock();
         b->addLayout(textColumn(L("Tamaño de texto"), QString()));
@@ -410,13 +401,13 @@ void SettingsView::addAppearance() {
         for (int i = 0; i < buttons.size(); ++i) {
             buttons[i]->setToolTip(L(levels[i].name));
             buttons[i]->setAccessibleName(L(levels[i].name));
-            // Con selector: una regla suelta bajaría a todo lo que cuelgue del botón.
+            // With a selector: a bare rule would cascade to everything under the button.
             buttons[i]->setStyleSheet(QString("QToolButton#segOption { font-size: %1px; }")
                                           .arg(11.0 * levels[i].percent / 100.0, 0, 'f', 1));
         }
 
-        // Una muestra con los mismos nombres de objeto que una tarjeta, así que
-        // crece con la hoja de estilos igual que las notas de verdad.
+        // A sample using a card's object names, so it scales with the stylesheet like
+        // real notes.
         auto *card = new QFrame;
         card->setObjectName("setCard");
         auto *cl = new QVBoxLayout(card);
@@ -425,7 +416,7 @@ void SettingsView::addAppearance() {
         auto *title = new QLabel(L("Comprar pan y café"));
         title->setObjectName("cardTitle");
         title->setWordWrap(true);
-        title->setMinimumWidth(24);   // ver *Card widths*
+        title->setMinimumWidth(24);   // see *Card widths*
         auto *body = new QLabel(L("Así se verán las notas, las listas y el planificador."));
         body->setObjectName("body");
         body->setWordWrap(true);
@@ -438,8 +429,8 @@ void SettingsView::addAppearance() {
 
 void SettingsView::addLanguage() {
     beginGroup(L("IDIOMA"), "globe");
-    // Los nombres van cada uno en su propio idioma, no traducidos: quien abre
-    // esto con la interfaz en el que no entiende tiene que reconocer el otro.
+    // Each name in its own language, untranslated: someone who opened this in the
+    // language they do not understand must recognise the other.
     addBlock()->addWidget(segments({"Español", "English"},
                                    m_store->prefs().lang == Lang::Es ? 0 : 1,
                                    [this](int i) {
@@ -464,9 +455,8 @@ void SettingsView::addWindow() {
               m_store->prefs().sizePerPage, [this](bool on) { emit sizePerPageToggled(on); });
 
 #ifdef Q_OS_LINUX
-    // Ver choosePlatform() en main.cpp: de esto depende que el panel pueda
-    // abrirse hacia el centro de la pantalla y que "siempre encima" se cumpla.
-    // Fuera de Linux no hay tal disyuntiva y la fila no pinta nada.
+    // See choosePlatform() in main.cpp: the panel's placement and "always on top"
+    // depend on this. Outside Linux the choice does not exist.
     const bool nativeWayland = QSettings().value("platform").toString() == "wayland";
     addToggle(L("Compatibilidad X11"),
               nativeWayland ? L("Desactivada · Wayland nativo")
@@ -505,8 +495,8 @@ void SettingsView::addDrive() {
     if (!m_drive) return;
     beginGroup(L("GOOGLE DRIVE"), "cloud");
 
-    // Recortado, con el texto entero en la ayuda: un error de Google puede ser
-    // largo, y aquí no puede ensanchar la página (ver *Card widths*).
+    // Elided, full text in the tooltip: a Google error can be long and must not
+    // widen the page (see *Card widths*).
     m_driveBtn = addAction(L("Sincronizar con Google Drive"), QString(), QString(), true,
                            [this](QWidget *) {
         switch (m_drive->state()) {
@@ -520,7 +510,7 @@ void SettingsView::addDrive() {
 
     m_driveBuiltConnected = m_drive->connected();
     if (m_driveBuiltConnected) {
-        // Qué hace y cómo se deja de hacer, dentro del mismo grupo.
+        // What it does and how to stop it, inside the same group.
         auto *row = new QWidget;
         auto *rl = new QHBoxLayout(row);
         rl->setContentsMargins(8, 6, 6, 7);
@@ -528,7 +518,7 @@ void SettingsView::addDrive() {
         auto *what = new QLabel(L("Tus equipos conectados a esta cuenta comparten notas, tareas, cumpleaños y temporizadores a través de la carpeta Tagoror de tu Drive."));
         what->setObjectName("meta");
         what->setWordWrap(true);
-        what->setMinimumWidth(24);   // ver *Card widths*
+        what->setMinimumWidth(24);   // see *Card widths*
         rl->addWidget(what, 1);
         auto *off = actionButton(L("Desconectar"));
         connect(off, &QToolButton::clicked, this, [this] { emit driveDisconnectRequested(); });
@@ -602,10 +592,9 @@ QString SettingsView::calendarSignature() const {
     return parts.join('\n');
 }
 
-// Google Calendar, con la misma cuenta que Drive: solo aparece con ella
-// conectada. Cada calendario seguido es una categoría del planificador.
+/// Google Calendar, using Drive's account: shown only while connected. Each
+/// followed calendar is a planner category.
 void SettingsView::addCalendar() {
-    m_calendarBuilt = calendarSignature();
     if (!m_drive || !m_drive->connected()) return;
     const CalendarSync *cal = m_drive->calendar();
     beginGroup(L("GOOGLE CALENDAR"), "calendar");
@@ -629,7 +618,7 @@ void SettingsView::addCalendar() {
         auto *wait = new QLabel(L("Los calendarios de la cuenta aparecen tras la próxima sincronización."));
         wait->setObjectName("meta");
         wait->setWordWrap(true);
-        wait->setMinimumWidth(24);   // ver *Card widths*
+        wait->setMinimumWidth(24);   // see *Card widths*
         rl->addWidget(wait, 1);
         addToGroup(row);
         return;
@@ -670,7 +659,7 @@ void SettingsView::addInputs() {
     if (devices.isEmpty()) {
         auto *none = new QLabel(L("No hay micrófono disponible"));
         none->setObjectName("meta");
-        none->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
+        none->setWordWrap(true);   // see *Card widths*: it must not demand its width
         none->setMinimumWidth(24);
         none->setContentsMargins(8, 7, 8, 7);
         addToGroup(none);
@@ -693,15 +682,16 @@ void SettingsView::addInputs() {
         name->setObjectName("setRowText");
         name->setToolTip(dev.description());
         l->addWidget(name, 1);
-        // La marca a la derecha, como en los menús del sistema: a la izquierda
-        // dejaba las filas sin elegir sangradas sin motivo aparente.
+        // The tick on the right, as in system menus: on the left it indented the
+        // unchosen rows for no visible reason.
         l->addWidget(new AccentIcon(inUse ? "check" : QString(), &m_theme, 13), 0,
                      Qt::AlignVCenter);
         addToGroup(row);
     }
 }
 
-// Qué dice la tarjeta: buscando, lo que falló, hay una nueva, o al día.
+/// What the update card says: checking, the error, a new version, or up to
+/// date.
 QString SettingsView::updateSubtitle(bool busy, const QString &error) const {
     if (busy) return L("Buscando…");
     if (!error.isEmpty()) return error;
@@ -724,7 +714,7 @@ void SettingsView::addUpdates() {
               on ? L("Una vez al día") : L("Desactivado · solo a mano"), on,
               [this](bool v) { emit updateCheckToggled(v); });
 
-    // Hay versión nueva: el botón lleva a verla. Si no, busca.
+    // A new version exists: the button opens it. Otherwise it checks.
     const QString latest = m_store->prefs().latestSeen;
     const bool hayNueva = !latest.isEmpty() &&
                           Updater::compare(latest, Updater::current()) > 0;
@@ -736,11 +726,10 @@ void SettingsView::addUpdates() {
         if (hayNueva) emit openLatestRequested();
         else emit checkUpdatesRequested();
     }, &m_updateSub);
-    m_updateBtn->setProperty("chosen", hayNueva);   // teñido cuando hay novedad
+    m_updateBtn->setProperty("chosen", hayNueva);   // tinted when there is something new
     if (hayNueva) m_updateSub->setColor(m_theme.accent);
 }
 
-// Solo toca los dos trozos que cambian; ver el comentario de la cabecera.
 void SettingsView::setUpdateState(bool busy, const QString &error) {
     m_updateBusy = busy;
     m_updateError = error;
@@ -784,9 +773,8 @@ void SettingsView::addToggle(const QString &label, const QString &hint, bool on,
     addToGroup(row);
 }
 
-// Control segmentado: una pista con las opciones pegadas, que se reparten el
-// ancho a partes iguales. Los botones sueltos de antes, cada uno de su ancho,
-// quedaban desalineados y no se leían como "uno de estos".
+/// Segmented control: a track with the options side by side, sharing the
+/// width equally, so they read as "one of these".
 QWidget *SettingsView::segments(const QStringList &labels, int chosen,
                                 std::function<void(int)> picked,
                                 QList<QToolButton *> *out) {
@@ -818,8 +806,8 @@ QToolButton *SettingsView::addAction(const QString &title, const QString &subtit
     auto *l = new QHBoxLayout(row);
     l->setContentsMargins(8, 6, 6, 6);
     l->setSpacing(8);
-    // La ruta se recorta, no ensancha la fila: es la trampa de *Card widths*
-    // y una ruta larga es justo lo que la dispara.
+    // The path is elided, not widening the row: the *Card widths* trap, and a
+    // long path is exactly what triggers it.
     l->addLayout(textColumn(title, subtitle, subOut), 1);
 
     auto *btn = actionButton(action);

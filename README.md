@@ -26,7 +26,7 @@
 ## Features
 
 <p align="center">
-  <img src="docs/panel.png" alt="The panel with a checklist, a reminder, a voice note and a text note" width="380">
+  <img src="docs/panel.png" alt="The panel with its area tabs, a checklist, a reminder, a voice note and a text note" width="380">
 </p>
 
 ### Four kinds of note

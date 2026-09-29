@@ -11,23 +11,21 @@
 
 struct Theme {
     QColor accent{"#7c9cff"};
-    int opacity = 96;   // 40..100
-    // Tamaño del texto del contenido en tanto por ciento (ajustes → Tamaño de
-    // texto). Solo lo que escribe el usuario: en la hoja va marcado como
-    // {fs:12} y sheet() lo convierte; el resto de la interfaz no cambia.
+    int opacity = 96;   ///< 40..100
+    /// Content text size in percent (Settings → Text size). Only what the user
+    /// writes scales: the sheet marks those sizes as {fs:12} and sheet() converts
+    /// them; the rest of the interface stays fixed.
     int textScale = 100;
 
-    // Un tamaño del contenido ya escalado, para lo que se pinta a mano.
+    /// A content size already scaled, for what is painted by hand.
     qreal fs(qreal px) const { return px * textScale / 100.0; }
 
-    // Color base de las superficies. Se expone también como QColor para que
-    // los popups (que se pintan a mano) usen exactamente la misma opacidad
-    // que el panel en lugar de quedarse opacos.
+    /// Base surface colour, also exposed as a QColor so hand-painted popups use
+    /// exactly the panel's opacity.
     QColor cardColor() const {
         return QColor(19, 22, 27, int(255 * opacity / 100.0));
     }
-    // El acento con transparencia, para los fondos y bordes teñidos de la
-    // hoja de estilos (píldora de "Hoy", botón de página activa, chips).
+    /// The accent with transparency, for tinted backgrounds and borders.
     QString accentRgba(qreal alpha) const {
         return QString("rgba(%1,%2,%3,%4)")
             .arg(accent.red()).arg(accent.green()).arg(accent.blue())
@@ -45,7 +43,7 @@ struct Theme {
     QString sheet() const;
 };
 
-// Iconos dibujados a mano: evita depender de un tema de iconos del sistema.
+/// Icons drawn in code: no dependency on a system icon theme.
 inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
     const qreal dpr = 2.0;
     QPixmap pm(int(px * dpr), int(px * dpr));
@@ -78,7 +76,7 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawLine(QPointF(c - 3, c - 2), QPointF(c + 3, c - 2));
         p.drawLine(QPointF(c - 3, c + 1.5), QPointF(c + 1, c + 1.5));
 
-    // --- tipos de nota (selector de "nueva nota") --------------------------
+    // Note types (new-note selector)
     } else if (kind == "text") {
         p.drawLine(QPointF(c - 5, c - 3.5), QPointF(c + 5, c - 3.5));
         p.drawLine(QPointF(c - 5, c), QPointF(c + 5, c));
@@ -103,9 +101,8 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawEllipse(QPointF(c - 2.4, c + 1.8), 1.0, 1.0);
         p.drawEllipse(QPointF(c + 1.0, c + 1.8), 1.0, 1.0);
     } else if (kind == "cake") {
-        // Tarta: base, una vela y la llama. A 16 px un pastel con relleno se
-        // convierte en un borrón, así que va con la misma línea fina que el
-        // resto de los iconos de la cabecera.
+        // Cake: base, one candle and the flame. At 16px a filled cake is a blur, so
+        // it uses the same thin line as the other header icons.
         p.drawRoundedRect(QRectF(c - 5.6, c - 0.6, 11.2, 6.4), 1.8, 1.8);
         p.drawLine(QPointF(c - 5.6, c + 2.4), QPointF(c + 5.6, c + 2.4));
         p.drawLine(QPointF(c, c - 3.4), QPointF(c, c - 0.6));
@@ -113,8 +110,8 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.setBrush(color);
         p.drawEllipse(QPointF(c, c - 4.6), 1.2, 1.5);
     } else if (kind == "timer") {
-        // Cronómetro: la esfera, el botón de arriba y una aguja. Distinto del
-        // reloj de los recordatorios, que es una hora; esto es una cuenta.
+        // Stopwatch: dial, top button and a hand. Unlike the reminders' clock, which
+        // is a time, this is a countdown.
         p.drawEllipse(QPointF(c, c + 1.0), 5.0, 5.0);
         p.drawLine(QPointF(c - 1.6, c - 5.8), QPointF(c + 1.6, c - 5.8));
         p.drawLine(QPointF(c, c - 5.8), QPointF(c, c - 4.0));
@@ -140,7 +137,7 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawPath(arc);
         p.drawLine(QPointF(c, c + 4.6), QPointF(c, c + 6.4));
 
-    // --- acciones -----------------------------------------------------------
+    // Actions
     } else if (kind == "bell") {
         QPainterPath body;
         body.moveTo(c - 4.6, c + 2.2);
@@ -172,7 +169,7 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.setBrush(color);
         p.drawRoundedRect(QRectF(c - 3.8, c - 3.8, 7.6, 7.6), 1.6, 1.6);
     } else if (kind == "link") {
-        // Dos eslabones inclinados: se solapan en el centro.
+        // Two tilted links overlapping in the middle.
         p.save();
         p.translate(c, c);
         p.rotate(-45);
@@ -182,8 +179,7 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawRoundedRect(QRectF(-0.8, -2.7, 6.8, 5.4), 2.7, 2.7);
         p.restore();
     } else if (kind == "repeat") {
-        // Ciclo abierto con una punta de flecha: dice "vuelve" sin depender
-        // de un texto que además cambia de idioma.
+        // An open cycle with an arrowhead: says "comes back" without text.
         QPainterPath arc;
         arc.arcMoveTo(QRectF(c - 4.8, c - 4.8, 9.6, 9.6), 60);
         arc.arcTo(QRectF(c - 4.8, c - 4.8, 9.6, 9.6), 60, 280);
@@ -194,7 +190,7 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
                                  QPointF(c + 1.6, c - 1.8)}));
     } else if (kind == "image") {
         p.drawRoundedRect(QRectF(c - 5.8, c - 4.8, 11.6, 9.6), 2.4, 2.4);
-        // Sol y montaña: la silueta que se reconoce como "foto" a 13 px.
+        // Sun and mountain: the silhouette read as "photo" at 13px.
         p.setPen(Qt::NoPen);
         p.setBrush(color);
         p.drawEllipse(QPointF(c - 2.4, c - 2.0), 1.2, 1.2);
@@ -235,7 +231,7 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawPath(arc);
         p.drawLine(QPointF(c, c - 6), QPointF(c, c - 1.4));
 
-    // --- secciones de los ajustes -------------------------------------------
+    // Settings sections
     } else if (kind == "globe") {
         p.drawEllipse(QPointF(c, c), 5.4, 5.4);
         p.drawEllipse(QRectF(c - 2.4, c - 5.4, 4.8, 10.8));
@@ -267,10 +263,10 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
                                   QPointF(c + 3.2, c - 1.2)}));
         p.drawLine(QPointF(c - 5.2, c + 5.0), QPointF(c + 5.2, c + 5.0));
 
-    // --- adornos ------------------------------------------------------------
+    // Ornaments
     } else if (kind == "checkdots") {
-        // Igual que QCheckBox::indicator pero con el borde punteado: marca la
-        // fila de "añadir elemento" como una casilla todavía sin existir.
+        // Like QCheckBox::indicator but dotted: marks the add-item row as a checkbox
+        // that does not exist yet.
         pen.setWidthF(1.4);
         pen.setStyle(Qt::CustomDashLine);
         pen.setDashPattern({0.9, 1.8});
@@ -278,19 +274,17 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.setPen(pen);
         p.drawRoundedRect(QRectF(c - 5.2, c - 5.2, 10.4, 10.4), 3.2, 3.2);
     } else if (kind == "grip") {
-        // Rejilla de 2x3 puntos: el asidero de siempre. El triángulo de puntos
-        // que había antes es el dibujo de una esquina de redimensionar, y junto
-        // al cursor de estirar en vertical el conjunto se leía como "haz la
-        // tarjeta más alta" en lugar de "agarra la tarjeta y muévela".
+        // A 2x3 dot grid, the usual grip. The previous triangle of dots is a resize
+        // corner, and with the vertical resize cursor it read as "make the card
+        // taller" rather than "grab it".
         p.setPen(Qt::NoPen);
         p.setBrush(color);
         for (int i = 0; i < 2; ++i)
             for (int j = 0; j < 3; ++j)
                 p.drawEllipse(QPointF(c - 2.1 + i * 4.2, c - 3.6 + j * 3.6), 1.05, 1.05);
     } else if (kind.startsWith("glyph-")) {
-        // Los glifos de las áreas (ver area.hpp): formas macizas y sencillas
-        // que se distinguen a 8 px sin necesitar color. Escalan con px porque
-        // la pestaña los pinta más pequeños que un icono de menú.
+        // Area glyphs (see area.hpp): simple solid shapes distinguishable at 8px
+        // without colour. They scale with px because tabs draw them smaller.
         const QString g = kind.mid(6);
         const qreal r = px * 0.26;
         if (g == "none") {
@@ -330,7 +324,7 @@ QFrame#shell {
     border: 1px solid %2;
     border-radius: 14px;
 }
-/* Modo aplicación: el marco es el del sistema, que ya tiene sus esquinas. */
+/* App mode: the frame is the system's, which has its own corners. */
 QFrame#shell[app="true"] { border: none; border-radius: 0; }
 QFrame#header { border: none; border-bottom: 1px solid %2; }
 QFrame#footer { border: none; border-top: 1px solid %2; background: %6; }
@@ -346,16 +340,15 @@ QLabel#chip {
     border: 1px solid rgba(242,183,87,0.35);
     border-radius: 6px; padding: 2px 7px;
 }
-/* Un recordatorio pasado de hora va en rojo, haya sonado ya o no: en ámbar
-   se confundía con los que aún están por llegar. */
+/* An overdue reminder is red whether or not it has rung: in amber it was
+   confused with those still to come. */
 QLabel#chip[state="overdue"], QLabel#chip[state="ringing"] {
     color: #ff7a6b;
     background: rgba(255,122,107,0.16);
     border: 1px solid rgba(255,122,107,0.55);
 }
-/* Carpeta de datos ausente: en el mismo rojo que un recordatorio vencido,
-   porque dice lo mismo —esto necesita atención ahora—, y pegado a la cabecera
-   para que no se lea como parte de ninguna nota. */
+/* Missing data folder: the red of an overdue reminder, since it says the same
+   thing (this needs attention now). */
 QLabel#warnBanner {
     color: #ff7a6b; font-size: 10.5px; font-weight: 600;
     background: rgba(255,122,107,0.14);
@@ -380,8 +373,7 @@ QToolButton {
     background: transparent;
 }
 QToolButton:hover { background: %7; }
-/* Página activa de la cabecera: el botón se queda encendido en vez de
-   cambiar de icono, así se ve de un vistazo dónde estás. */
+/* Active page button: it stays lit instead of changing icon. */
 QToolButton[active="true"] {
     background: %8;
     border: 1px solid %9;
@@ -406,14 +398,14 @@ QLineEdit#cardTitleEdit {
     background: transparent; border: none; padding: 0;
     font-size: {fs:12}px; font-weight: 600; color: %3;
 }
-/* Fila "añadir elemento": sin caja, para que se lea como una tarea más. */
+/* Add-item row: borderless, so it reads as one more task. */
 QLineEdit#newItemEdit {
     background: transparent; border: none; padding: 0;
     font-size: {fs:11.5}px; color: %3;
 }
 QLineEdit#newItemEdit:focus { border: none; }
-/* Renombrar un elemento: el mismo campo sin caja, con el tamaño del texto al
-   que sustituye para que la fila no dé un salto al entrar en edición. */
+/* Renaming an item: the same borderless field, at the size of the text it
+   replaces so the row does not jump. */
 QLineEdit#checkTextEdit {
     background: transparent; border: none; padding: 0;
     font-size: {fs:11.5}px; color: %3;
@@ -427,8 +419,7 @@ QTextEdit {
 }
 
 QCheckBox { color: %3; font-size: {fs:11.5}px; spacing: 8px; }
-/* El texto de un elemento vive en su propia etiqueta para poder partirse en
-   varias líneas; ver addCheckRow(). */
+/* An item's text has its own label so it can wrap; see addCheckRow(). */
 QLabel#checkText { color: %3; font-size: {fs:11.5}px; }
 QCheckBox::indicator {
     width: 13px; height: 13px; border-radius: 4px;
@@ -463,16 +454,14 @@ QScrollBar::handle:vertical {
 QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
 QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
 
-/* --- enlaces adjuntos ---------------------------------------------------- */
-/* Igual que las filas del calendario, necesita WA_StyledBackground. */
+/* Attached links */
+/* Needs WA_StyledBackground. */
 QWidget#linkRow { background: transparent; border-radius: 7px; }
 QWidget#linkRow:hover { background: %7; }
 QLabel#linkText { font-size: {fs:11.5}px; }
 )" R"(
-/* --- calendario ---------------------------------------------------------- */
 QWidget#calendar { background: transparent; }
 QFrame#calSeparator { background: %2; border: none; }
-/* Cabecera del mes: flechas en cajas discretas y el mes centrado. */
 QToolButton#calNav {
     background: %6; border: 1px solid %2;
     border-radius: 7px; padding: 3px;
@@ -486,7 +475,6 @@ QToolButton#todayBtn {
 }
 QToolButton#todayBtn:hover { background: %10; }
 
-/* Filas del día: hora en monoespaciada, barra de estado y chip a la derecha. */
 QLabel#dayTime {
     color: %4; font-size: 10px;
     font-family: "IBM Plex Mono", monospace;
@@ -497,26 +485,22 @@ QLabel#dayChip {
     border: 1px solid rgba(255,122,107,0.40);
     border-radius: 5px; padding: 1px 5px;
 }
-/* Las filas del día son QWidget lisos: sin WA_StyledBackground no pintarían
-   este fondo (se pone en calendar.cpp). */
 QWidget#dayRow { background: transparent; border-radius: 8px; }
 QWidget#dayRow:hover { background: %7; }
 QLabel#dayRowTitle { color: %3; font-size: 11.5px; }
 QLabel#dayRowTitleAlert { color: #ff7a6b; font-size: 11.5px; font-weight: 600; }
 
-/* La tarjeta que se está arrastrando se despega del resto: mismo relleno, el
-   acento por borde, para que se vea qué se está moviendo. */
+/* The dragged card: same fill, accent border, so it shows what is moving. */
 QFrame#card[dragging="true"] {
     border: 1px solid %5;
     background: %7;
 }
-/* El asidero de reordenar solo se tiñe al pasar por encima: en reposo tiene
-   que desaparecer detrás del título. */
+/* The reorder grip is only tinted on hover: at rest it hides behind the title. */
 QToolButton#dragHandle { background: transparent; border: none; padding: 0; }
 QToolButton#dragHandle:hover { background: %7; }
 
-/* Lista terminada: el botón solo aparece cuando no queda nada por marcar, así
-   que se puede permitir el rojo sin gritarle al usuario todo el rato. */
+/* Finished list: the button only appears when nothing is left to tick, so it
+   can afford red. */
 QToolButton#listDone {
     color: #ff7a6b; background: transparent;
     border: 1px solid rgba(255,122,107,0.35); border-radius: 8px;
@@ -524,12 +508,12 @@ QToolButton#listDone {
 }
 QToolButton#listDone:hover { background: rgba(255,122,107,0.14); }
 
-/* "Añadir detalles": un recordatorio sin cuerpo no enseña editor ninguno, así
-   que esta es la única puerta de entrada y tiene que parecer pulsable. */
+/* "Add details": the only way into an empty reminder, so it must look
+   clickable. */
 QLabel#addDetails { color: %4; font-size: {fs:10.5}px; }
 QLabel#addDetails:hover { color: %5; }
 
-/* --- imágenes adjuntas ---------------------------------------------------- */
+/* Attached images */
 QWidget#imgHeader { background: transparent; border-radius: 7px; }
 QWidget#imgHeader:hover { background: %7; }
 QLabel#imgTitle {
@@ -537,14 +521,13 @@ QLabel#imgTitle {
     font-family: "IBM Plex Mono", monospace;
 }
 
-/* --- cabecera plegable de la lista del día -------------------------------- */
 QWidget#dayHeader { background: transparent; border-radius: 7px; }
 QWidget#dayHeader:hover { background: %7; }
 
-/* --- cumpleaños ----------------------------------------------------------- */
+/* Birthdays */
 QWidget#birthdays { background: transparent; }
-/* El de hoy, destacado: es la única fila de la página sobre la que hay algo
-   que hacer, así que lleva marco teñido en vez de ser una fila más. */
+/* The highlighted birthday card: tinted frame, since it is the one row with
+   something to do. */
 QFrame#bdayToday {
     background: %6;
     border: 1px solid %9;
@@ -557,8 +540,7 @@ QLabel#bdayTodayChip {
     background: %10; border: 1px solid %9;
     border-radius: 5px; padding: 1px 5px;
 }
-/* Ya felicitado: la misma píldora en verde, porque dice lo contrario que la
-   de arriba —aquí no queda nada por hacer— y en el acento se confundirían. */
+/* Already greeted: the same chip in green, since it says the opposite. */
 QLabel#bdayDoneChip {
     color: #6fcf97; font-size: 8.5px; font-weight: 700;
     font-family: "IBM Plex Mono", monospace;
@@ -566,22 +548,19 @@ QLabel#bdayDoneChip {
     border: 1px solid rgba(111,207,151,0.40);
     border-radius: 5px; padding: 1px 5px;
 }
-/* Botón secundario de la tarjeta de hoy: el de felicitar ya es el QPushButton
-   con el acento de relleno, y dos rellenos seguidos no dicen cuál es cuál. */
+/* Secondary button of the highlighted card: the greet button already has the
+   accent fill, and two fills side by side do not say which is which. */
 QToolButton#bdayGhost {
     color: %4; background: %6;
     border: 1px solid %2; border-radius: 8px;
     padding: 5px 10px; font-size: 11px; font-weight: 600;
 }
 QToolButton#bdayGhost:hover { color: %5; border: 1px solid %5; background: %8; }
-/* Mientras suena, el botón principal es el de callarlo, y va en el rojo de
-   todo lo vencido en vez de en el acento. */
+/* While ringing, the main button silences it, in the red of everything due. */
 QPushButton#bdayStop { background: #ff7a6b; }
 QPushButton#bdayStop:hover { background: #ff8f82; }
-/* Los dos órdenes de la lista, como pestañas pequeñas. Mismo lenguaje que los
-   chips de los popups —el elegido teñido del acento— pero con su propio nombre:
-   estos no viven en un menú y compartir el objectName ataría dos sitios que no
-   tienen por qué cambiar a la vez. */
+/* The two list orders as small tabs. Same language as the popup chips, with
+   their own object name so the two places can change independently. */
 QToolButton#bdayTab {
     color: %4; background: transparent;
     border: 1px solid transparent; border-radius: 7px;
@@ -593,16 +572,15 @@ QToolButton#bdayTab[chosen="true"] {
     color: %5; background: %8; border: 1px solid %9;
 }
 
-/* Separador de mes: el nombre en el acento y una línea hasta el borde. En el
-   gris de #meta se perdía entre las filas, que es justo lo que no puede pasar
-   -- está ahí para que se vea de un golpe en qué mes cae cada uno. */
+/* Month separator in the accent: in #meta's grey it got lost between the
+   rows, and it exists to make the month visible at a glance. */
 QLabel#bdayMonth {
     color: %5; font-size: 9px; font-weight: 700;
     font-family: "IBM Plex Mono", monospace;
 }
 QFrame#bdayMonthRule { background: %2; border: none; }
 
-/* Filas: QWidget lisos, así que necesitan WA_StyledBackground (birthdays.cpp). */
+/* Plain QWidget rows: they need WA_StyledBackground (birthdays.cpp). */
 QWidget#bdayRow { background: transparent; border-radius: 9px; }
 QWidget#bdayRow:hover { background: %7; }
 QLabel#bdayRowName { color: %3; font-size: {fs:12}px; font-weight: 600; }
@@ -611,12 +589,11 @@ QLabel#bdayDate {
     font-family: "IBM Plex Mono", monospace;
 }
 QLabel#bdayWhen { color: %5; font-size: 9.5px; font-weight: 600; }
-/* Lo que cae hoy o mañana se lee antes en el acento; lo demás es contexto. */
+/* Today and tomorrow read first in the accent; the rest is context. */
 QLabel#bdayWhen[soon="false"] { color: %4; }
 
-/* Hay versión nueva. En el acento y no en rojo: es una novedad, no un problema
-   —el rojo lo tiene el aviso de "no se está guardando", que sí lo es y va justo
-   encima cuando coinciden los dos. */
+/* New version: in the accent, not red. It is news, not a problem; red belongs
+   to the "not saving" warning, which sits right above when both show. */
 QWidget#updateBanner {
     background: %8;
     border-bottom: 1px solid %9;
@@ -624,9 +601,9 @@ QWidget#updateBanner {
 QWidget#updateBanner:hover { background: %10; }
 QLabel#updateBannerText { color: %5; font-size: 10.5px; font-weight: 600; }
 )" R"(
-/* --- temporizadores ------------------------------------------------------- */
+/* Timers */
 QWidget#timers { background: transparent; }
-/* Filas: QWidget lisos, así que necesitan WA_StyledBackground (timers.cpp). */
+/* Plain QWidget rows: they need WA_StyledBackground (timers.cpp). */
 QWidget#timerRow {
     background: %6; border: 1px solid %2; border-radius: 10px;
 }
@@ -644,13 +621,13 @@ QLineEdit#timerField {
     font-size: 14px; font-family: "IBM Plex Mono", monospace;
     padding: 6px 2px;
 }
-/* Cuenta atrás en el pie: la del temporizador en marcha. */
+/* Footer countdown of the running timer. */
 QToolButton#footerTimer {
     color: %5; background: %8; border: 1px solid %9; border-radius: 7px;
     padding: 1px 7px; font-size: 10px; font-family: "IBM Plex Mono", monospace;
 }
 
-/* Tiempo cumplido / evento que empieza: el rojo de lo vencido, con sus botones. */
+/* Time's up / event starting: the red of everything due, with its buttons. */
 QWidget#alarmBar {
     background: rgba(255,122,107,0.14);
     border-bottom: 1px solid rgba(255,122,107,0.35);
@@ -663,7 +640,7 @@ QToolButton#alarmBtn {
 }
 QToolButton#alarmBtn:hover { background: rgba(255,122,107,0.18); }
 
-/* --- planificador ---------------------------------------------------------- */
+/* Planner */
 QWidget#planner { background: transparent; }
 QWidget#plannerSide { background: rgba(255,255,255,0.015); }
 QLabel#plannerSideText { font-size: {fs:11.5}px; }
@@ -674,7 +651,7 @@ QLineEdit#plannerTitleEdit {
 QLineEdit#plannerField { font-family: "IBM Plex Mono", monospace; }
 QLabel#plannerError { color: #ff7a6b; font-size: 10.5px; }
 
-/* --- página de ajustes ---------------------------------------------------- */
+/* Settings page */
 QWidget#settings { background: transparent; }
 QLabel#setSection {
     color: %4; font-size: 9px; font-weight: 700;
@@ -686,19 +663,18 @@ QLabel#setValue {
     font-family: "IBM Plex Mono", monospace;
 }
 QLabel#setRowText { color: %3; font-size: 11.5px; }
-/* Cabecera de cada sección: el nombre en claro, con el icono en el acento
-   delante. La de antes (gris, 9 px) no separaba una sección de la siguiente. */
+/* Section header: the name in the text colour with the accent icon before it. */
 QLabel#setHead {
     color: %3; font-size: 10px; font-weight: 700; letter-spacing: 0.6px;
 }
-/* El grupo reúne las filas de una sección; las separa una línea fina. */
+/* A section's group; rows are separated by a thin line. */
 QFrame#setGroup {
     background: %6;
     border: 1px solid %2;
     border-radius: 11px;
 }
 QFrame#setDivider { background: %2; border: none; }
-/* Control segmentado: una pista hundida y la opción elegida en el acento. */
+/* Segmented control: a sunken track with the chosen option in the accent. */
 QFrame#segTrack {
     background: rgba(0,0,0,0.22);
     border: 1px solid %2;
@@ -713,11 +689,11 @@ QToolButton#segOption:hover { color: %3; background: %7; }
 QToolButton#segOption[chosen="true"] {
     color: %5; background: %8; border: 1px solid %9;
 }
-/* Filas: QWidget lisos, así que necesitan WA_StyledBackground (settings.cpp). */
+/* Plain QWidget rows: they need WA_StyledBackground (settings.cpp). */
 QWidget#setRow { background: transparent; border-radius: 8px; }
 QWidget#setRow:hover { background: %7; }
-/* Grupos de un solo elegido (idioma) y los botones de las tarjetas. El elegido
-   va teñido del acento, igual que la píldora de "Hoy" del calendario. */
+/* Action buttons, and single-choice groups in the planner and timers. The
+   chosen one is tinted with the accent. */
 QToolButton#segButton {
     color: %4; background: %6;
     border: 1px solid %2; border-radius: 8px;
@@ -733,8 +709,8 @@ QFrame#setCard {
     border: 1px solid %2;
     border-radius: 10px;
 }
-/* Salir va en rojo y con borde, no relleno: es el final de la página y no
-   compite con el acento, pero tampoco se pulsa sin querer. */
+/* Quit is red and outlined, not filled: it does not compete with the accent,
+   but is not clicked by accident either. */
 QToolButton#quitBtn {
     color: #ff7a6b; background: transparent;
     border: 1px solid rgba(255,122,107,0.35); border-radius: 8px;
@@ -742,7 +718,7 @@ QToolButton#quitBtn {
 }
 QToolButton#quitBtn:hover { background: rgba(255,122,107,0.14); }
 
-/* --- popups propios (nueva nota, menú de tarjeta, fecha, copias) ---------- */
+/* Popups */
 QFrame#popupShell {
     background: %1;
     border: 1px solid %2;
@@ -754,8 +730,8 @@ QLabel#popupHeader {
     padding: 2px 8px;
 }
 QLabel#popupText { color: %4; font-size: 11px; }
-/* Renombrar un área en su propia pestaña: sin caja, con la letra de la
-   pestaña, para que el nombre no dé un salto al entrar en edición. */
+/* Renaming an area in its own tab, with the tab's font so the name does not
+   jump. */
 QLineEdit#areaRename {
     background: %6; border: 1px solid %5; border-radius: 6px;
     padding: 1px 5px; font-size: 12px; font-weight: 600; color: %3;
@@ -765,9 +741,8 @@ QLineEdit#popupEdit {
     padding: 6px 9px; font-size: 11.5px; color: %3;
 }
 QLineEdit#popupEdit:focus { border: 1px solid %5; }
-/* Horas sueltas del selector de recordatorio: cinco filas de menú medían más
-   que el propio calendario, y el popup acababa tapándolo. En chips caben en
-   dos líneas y el menú abre entero por debajo. */
+/* Popup chips: small buttons in rows, so a list of options stays shorter than
+   the widget that opens it. */
 QToolButton#popupChip {
     color: %3; background: %6;
     border: 1px solid %2; border-radius: 8px;
@@ -776,18 +751,15 @@ QToolButton#popupChip {
 }
 QToolButton#popupChip:hover { color: %5; border: 1px solid %5; background: %8; }
 QToolButton#popupChip[past="true"] { color: %4; }
-/* El elegido de un grupo de opciones: teñido del acento, como la píldora de
-   "Hoy" del calendario y el botón de la página activa. Así una fila de chips
-   dice a la vez qué se puede elegir y qué está puesto. */
+/* The chosen chip of a group: tinted with the accent, so a row of chips says
+   both what can be picked and what is set. */
 QToolButton#popupChip[chosen="true"] {
     color: %5; background: %8; border: 1px solid %9;
 }
-/* --- foco del teclado ------------------------------------------------------
-   Lo que se alcanza con Tab lleva un borde cuando tiene el foco y le llegó
-   con el teclado ([kbfocus], lo apunta ui/keynav.hpp): es el :focus-visible
-   de la web. Sin esa condición el anillo salía también cuando Qt movía el foco
-   por su cuenta al esconder una página. Va al final de la hoja para ganar a
-   las reglas de cada objeto, que también fijan su borde. */
+/* Keyboard focus. Tab-reachable widgets get a border when focused *by the
+   keyboard* ([kbfocus], set by ui/keynav.hpp), like the web's :focus-visible;
+   without that condition the ring also showed when Qt moved the focus itself
+   on hiding a page. Last in the sheet so it wins over per-object borders. */
 QToolButton[kbfocus="true"]:focus,
 QToolButton#segButton[kbfocus="true"]:focus, QToolButton#segOption[kbfocus="true"]:focus,
 QToolButton#popupChip[kbfocus="true"]:focus,
@@ -798,8 +770,8 @@ QToolButton#alarmBtn[kbfocus="true"]:focus, QToolButton#footerTimer[kbfocus="tru
 QToolButton#dragHandle[kbfocus="true"]:focus {
     border: 1px solid %5;
 }
-/* Los que ya van en el acento cuando están elegidos necesitan otro color para
-   que el foco se distinga: el del texto. */
+/* Widgets already in the accent when chosen need another focus colour: the
+   text colour. */
 QToolButton#segButton[chosen="true"][kbfocus="true"]:focus,
 QToolButton#segOption[chosen="true"][kbfocus="true"]:focus,
 QToolButton#popupChip[chosen="true"][kbfocus="true"]:focus,
@@ -829,12 +801,12 @@ QLabel#chip[kbfocus="true"]:focus { border: 1px solid %3; }
         .arg(acc)         // %5
         .arg(sunk())      // %6
         .arg(hover())     // %7
-        .arg(accentRgba(0.14))    // %8  relleno teñido
-        .arg(accentRgba(0.38))    // %9  borde teñido
-        .arg(accentRgba(0.24));   // %10 relleno al pasar por encima
+        .arg(accentRgba(0.14))    // %8  tinted fill
+        .arg(accentRgba(0.38))    // %9  tinted border
+        .arg(accentRgba(0.24));   // %10 hover fill
 
-    // Los tamaños del contenido van marcados y se escalan aquí, de atrás
-    // adelante para que cada sustitución no desplace las que faltan.
+    // Content sizes are marked and scaled here, back to front so each replacement
+    // does not shift the ones still pending.
     static const QRegularExpression mark(R"(\{fs:([\d.]+)\})");
     QList<QRegularExpressionMatch> found;
     for (auto it = mark.globalMatch(out); it.hasNext();) found.append(it.next());

@@ -46,25 +46,18 @@
 
 namespace {
 
-// --- la fecha escrita a mano -----------------------------------------------
-//
-// El campo se precarga con lo que ya tiene el recordatorio, y tiene que
-// hacerlo en el mismo formato que sabe leer. Cargarlo con 'due' -- la etiqueta
-// que enseña el chip, "mar 25 ago 09:00" -- convertía el gesto natural
-// (abrirlo, retocar la hora, aceptar) en texto que el lector no entiende: el
-// aviso se quedaba sin instante, y como el calendario solo coloca los que lo
-// tienen (Note::isScheduled), desaparecía de la rejilla y de la cuenta del pie
-// aunque el chip siguiera enseñando una fecha. De ahí sale el formato, no de
-// la etiqueta.
+/// Text to prefill the date field with, in the format parseDue() reads.
+/// Prefilling it with @c due (the chip label, "Tue 25 Aug 09:00") turned
+/// "open, tweak the time, accept" into unparseable text: the reminder lost its
+/// instant and vanished from the planner while the chip still showed a date.
 QString dueFieldText(const Note *n) {
     return n->dueAtMs > 0 ? n->dueAt().toString("dd/MM HH:mm") : n->due;
 }
 
-// dd/MM HH:mm, con el año opcional detrás del mes. La fecha se arma por piezas
-// en vez de dejársela a QDateTime::fromString(): sin año esa función ancla en
-// 1900, que no es bisiesto, así que un 29 de febrero no se podía escribir de
-// ninguna manera. El año que falta es el actual, y así el 29 solo vale en los
-// años que de verdad lo tienen -- para los demás está 29/02/2028.
+/// Parses dd/MM HH:mm with an optional year after the month. Built piece by
+/// piece rather than with QDateTime::fromString(), which anchors a missing
+/// year at 1900 (not a leap year), so 29 February could never be typed. The
+/// missing year is the current one.
 QDateTime parseDue(const QString &text) {
     static const QRegularExpression re(
         R"(^\s*(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(\d{4}))?[\s,]+(\d{1,2})\s*:\s*(\d{2})\s*$)");
@@ -78,24 +71,23 @@ QDateTime parseDue(const QString &text) {
     return date.isValid() && time.isValid() ? QDateTime(date, time) : QDateTime();
 }
 
-// Editor de cuerpo que crece con su contenido: sin barras de scroll propias,
-// la altura sigue al documento entre un mínimo y un máximo.
+/// A body editor that grows with its content: no scrollbars of its own, the
+/// height follows the document between a minimum and a maximum.
 void autoGrow(QTextEdit *e, const QString &placeholder) {
-    // Sin el menú nativo de cortar/pegar: el clic derecho es para el menú de
-    // la nota. Los atajos de teclado siguen funcionando igual.
+    // No native cut/paste menu: right click is the note's menu. Shortcuts still
+    // work.
     e->setContextMenuPolicy(Qt::NoContextMenu);
     e->setPlaceholderText(placeholder);
-    // Tab sale del editor en vez de escribir un tabulador: si no, navegar con
-    // el teclado se quedaba atrapado en la primera nota de texto.
+    // Tab leaves the editor instead of typing a tab, or keyboard navigation got
+    // stuck in the first text note.
     e->setTabChangesFocus(true);
     e->setAcceptRichText(false);
     e->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     e->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     e->setFixedHeight(46);
-    // Fijar la altura no basta: la política de un QTextEdit sigue siendo
-    // Expanding, y el layout de la tarjeta la propaga hacia arriba. La lista
-    // le daba entonces el hueco sobrante de una ventana alta, y como el editor
-    // no puede crecer, se lo quedaba la etiqueta de abajo en forma de hueco.
+    // A fixed height is not enough: a QTextEdit's policy is still Expanding, which
+    // the card's layout propagates upwards; in a tall window the spare height
+    // ended up as a gap under the type label (see *Fixed height* in CLAUDE.md).
     e->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     QObject::connect(e->document()->documentLayout(),
@@ -105,14 +97,10 @@ void autoGrow(QTextEdit *e, const QString &placeholder) {
                      });
 }
 
-// --- Markdown ---------------------------------------------------------------
-//
-// En CommonMark un salto de línea suelto no parte el párrafo: "leche\npan" se
-// lee "leche pan". Para Markdown escrito como documento es lo correcto, pero en
-// una nota rápida cada línea es una línea, y así las venía viendo todo el que
-// ya tenía notas. Se marcan como saltos duros (dos espacios al final) salvo
-// cuando la línea siguiente ya empieza un bloque propio, o dentro de un bloque
-// de código, donde las líneas se respetan solas.
+/// In CommonMark a single line break does not split a paragraph ("milk\nbread"
+/// reads "milk bread"). In a quick note every line is a line, as existing
+/// notes were written. Marks them as hard breaks (two trailing spaces) unless
+/// the next line starts a block of its own, and never inside a code fence.
 QString hardBreaks(const QString &source) {
     static const QRegularExpression blockStart(
         R"(^\s*([-*+]\s|\d+[.)]\s|#{1,6}\s|>|```|~~~))");
@@ -132,20 +120,17 @@ QString hardBreaks(const QString &source) {
     return out.join('\n');
 }
 
-// Cuerpo de una nota con Markdown. En reposo enseña el texto ya formateado;
-// al entrar (con el ratón o con Tab) pasa al texto tal cual para editarlo, y al
-// salir vuelve a formatearse. Es un solo editor y no dos widgets que se
-// turnan, así el alto, el foco y el orden de tabulación no cambian de dueño.
-//
-// Lo que se guarda es siempre el texto fuente: 'm_source' manda, y lo que haya
-// en el documento mientras se ve formateado no se escribe nunca en la nota.
+/// A note body with Markdown: rendered at rest, source while focused. One
+/// editor, not two widgets taking turns, so height, focus and tab order never
+/// change owner. @c m_source is the truth: the rendered document is never
+/// written to the note.
 class MarkdownEdit : public QTextEdit {
 public:
-    std::function<void(const QString &)> edited;   // el texto fuente cambió
+    std::function<void(const QString &)> edited;   ///< The source text changed.
 
     MarkdownEdit(const QString &source, const QColor &accent) : m_source(source) {
-        // Los enlaces en el acento, como los adjuntos de la tarjeta. La hoja de
-        // estilos no toca este rol, así que la paleta del propio widget manda.
+        // Links in the accent. The stylesheet does not touch this role, so the
+        // widget's palette decides.
         QPalette pal = palette();
         pal.setColor(QPalette::Link, accent);
         setPalette(pal);
@@ -179,9 +164,8 @@ public:
     }
 
 protected:
-    // Los títulos se calculan sobre la letra del editor, y esa letra la pone la
-    // hoja de estilos al pulir el widget -- después del constructor -- y otra
-    // vez al cambiar el tamaño de texto en ajustes. Se reformatea entonces.
+    // Headings are sized from the editor's font, which the stylesheet sets when
+    // polishing (after the constructor) and again when the text size changes.
     void changeEvent(QEvent *e) override {
         QTextEdit::changeEvent(e);
         if (e->type() == QEvent::FontChange && !m_editing) render();
@@ -189,8 +173,8 @@ protected:
 
     void focusInEvent(QFocusEvent *e) override {
         QTextEdit::focusInEvent(e);
-        // Con el ratón se espera a soltar: el clic puede ser sobre un enlace, y
-        // entonces lo que se quiere es abrirlo, no editar la nota.
+        // With the mouse, wait for the release: the click may be on a link, which
+        // should open instead of editing.
         if (e->reason() == Qt::MouseFocusReason && !m_editing) m_clickPending = true;
         else beginEdit();
     }
@@ -198,7 +182,7 @@ protected:
     void focusOutEvent(QFocusEvent *e) override {
         QTextEdit::focusOutEvent(e);
         m_clickPending = false;
-        // Cambiar de ventana o abrir un menú no es terminar de escribir.
+        // Switching window or opening a menu is not finishing the edit.
         if (e->reason() == Qt::ActiveWindowFocusReason || e->reason() == Qt::PopupFocusReason)
             return;
         endEdit();
@@ -206,10 +190,10 @@ protected:
 
     void keyPressEvent(QKeyEvent *e) override {
         if (e->key() == Qt::Key_Escape && m_editing) {
-            clearFocus();   // focusOut formatea
+            clearFocus();   // focusOut renders
             return;
         }
-        if (!m_editing) beginEdit();   // llegó sin foco de ratón ni de Tab
+        if (!m_editing) beginEdit();   // focus arrived neither by mouse nor by Tab
         QTextEdit::keyPressEvent(e);
     }
 
@@ -230,8 +214,8 @@ protected:
                 clearFocus();
                 return;
             }
-            // El sitio del clic en el texto formateado no es el mismo en el
-            // fuente, pero cae cerca: mejor que mandar el cursor al final.
+            // The click position in the rendered text is not the same in the source, but
+            // it is close: better than sending the cursor to the end.
             beginEdit();
             setTextCursor(cursorForPosition(at));
             viewport()->setCursor(Qt::IBeamCursor);
@@ -244,7 +228,7 @@ private:
     void render() {
         m_internal = true;
         if (m_source.trimmed().isEmpty()) {
-            clear();   // así se ve el texto de ayuda
+            clear();   // so the placeholder shows
         } else {
             setMarkdown(hardBreaks(m_source));
             tidy();
@@ -252,9 +236,9 @@ private:
         m_internal = false;
     }
 
-    // El importador formatea para un documento, no para una tarjeta de 300 px:
-    // un # salía al doble del texto, una lista sangraba 40 px y los enlaces
-    // iban en el azul de la paleta de la aplicación en vez del acento.
+    /// Reshapes what Qt's importer produces for a document into something for a
+    /// 300px card: a "#" came out at twice the text size, lists indented 40px and
+    /// links used the application palette's blue instead of the accent.
     void tidy() {
         QTextDocument *doc = document();
         doc->setIndentWidth(14);
@@ -267,12 +251,10 @@ private:
         for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
             QTextBlockFormat f = b.blockFormat();
             const int level = f.headingLevel();
-            // 12 px entre cada línea hacían de una lista de la compra una
-            // columna el doble de alta que en texto plano.
+            // 12px between lines made a shopping list twice as tall as plain text.
             f.setTopMargin(level > 0 && b != doc->begin() ? 6 : 0);
             f.setBottomMargin(level > 0 ? 2 : 1);
-            // Una cita sangraba 40 px por cada lado; en una tarjeta estrecha eso
-            // es media línea.
+            // A quote was indented 40px on each side: half a line in a narrow card.
             const bool quote = f.hasProperty(QTextFormat::BlockQuoteLevel);
             if (quote) {
                 f.setLeftMargin(10);
@@ -286,9 +268,8 @@ private:
                 QTextCharFormat cf = frag.charFormat();
                 bool touched = false;
                 if (level > 0) {
-                    // El ajuste relativo del importador hay que quitarlo, no
-                    // ponerlo a cero: mientras la propiedad exista, manda sobre
-                    // el tamaño en píxeles y el título sale del tamaño del texto.
+                    // The importer's relative size must be cleared, not set to 0: while the
+                    // property exists it wins over the pixel size and the heading stays body-sized.
                     cf.clearProperty(QTextFormat::FontSizeAdjustment);
                     cf.clearProperty(QTextFormat::FontPointSize);
                     cf.setProperty(QTextFormat::FontPixelSize,
@@ -320,12 +301,12 @@ private:
 
     QString m_source;
     bool m_editing = false;
-    bool m_internal = false;       // cambios del propio editor, no del usuario
+    bool m_internal = false;       ///< The editor's own changes, not the user's.
     bool m_clickPending = false;
 };
 
-// El chip de fecha es pulsable: cambiar el recordatorio no debería obligar a
-// buscar la opción en el menú contextual.
+/// The date chip is clickable: changing a reminder should not require the
+/// context menu.
 class ClickableLabel : public QLabel {
 public:
     ClickableLabel(const QString &text, std::function<void(const QPoint &)> onClick)
@@ -333,8 +314,8 @@ public:
         setCursor(Qt::PointingHandCursor);
     }
 
-    // Con el teclado el menú sale pegado a la propia etiqueta, que es donde
-    // habría caído el clic.
+    // With the keyboard the menu opens at the label itself, where a click would
+    // have landed.
     void makeKeyboardReachable() {
         keynav::activatable(this, [this] {
             if (m_click) m_click(mapToGlobal(QPoint(0, height())));
@@ -351,16 +332,16 @@ private:
     std::function<void(const QPoint &)> m_click;
 };
 
-// Tachado de un elemento hecho. Va en la etiqueta, no en la casilla, desde
-// que el texto dejó de vivir dentro del QCheckBox.
+/// Strike-through of a done item, on the label since the text left the
+/// QCheckBox.
 void strikeOut(QLabel *label, bool on) {
     QFont f = label->font();
     f.setStrikeOut(on);
     label->setFont(f);
 }
 
-// Fila de un enlace: clic izquierdo abre, clic derecho da sus opciones. El
-// menú se atiende aquí para que no salte el de la tarjeta entera.
+/// A link row: left click opens, right click shows its options. The menu is
+/// handled here so the whole card's menu does not answer instead.
 class LinkRow : public QWidget {
 public:
     explicit LinkRow(QWidget *parent = nullptr) : QWidget(parent) {
@@ -387,16 +368,16 @@ protected:
     }
 };
 
-// Una dirección sin esquema es lo que la gente teclea; se completa para que
-// QDesktopServices sepa qué hacer con ella.
+/// An address without a scheme is what people type; it is completed so
+/// QDesktopServices knows what to do with it.
 QString normalizedUrl(const QString &raw) {
     const QString text = raw.trimmed();
     if (text.isEmpty()) return text;
     return QUrl(text).scheme().isEmpty() ? "https://" + text : text;
 }
 
-// Lo que se ve del enlace cuando no tiene nombre: sin esquema ni barra final,
-// que es ruido en una tarjeta estrecha.
+/// What a link shows when unnamed: without scheme or trailing slash, which is
+/// noise in a narrow card.
 QString prettyUrl(const QString &url) {
     QString text = url;
     for (const QString &prefix : {"https://", "http://"})
@@ -424,12 +405,10 @@ QString typeLabel(Note::Type t) {
     }
 }
 
-// Asidero para reordenar la tarjeta. No arrastra la ventana como DragBar ni
-// pide nada al compositor: el movimiento se queda dentro de la lista, así que
-// solo reparte las posiciones del ratón y quien manda es el panel.
-//
-// El arrastre no empieza hasta pasar startDragDistance, para que un clic torpe
-// sobre el asidero no reordene nada.
+/// Grip to reorder a card or an item. Unlike DragBar it never asks the
+/// compositor for anything: the movement stays inside the list, so it only
+/// reports positions. The drag starts past startDragDistance, so a clumsy
+/// click reorders nothing.
 class DragHandle : public QToolButton {
 public:
     std::function<void()> start;
@@ -444,7 +423,7 @@ protected:
         }
         m_press = e->globalPosition().toPoint();
         m_active = false;
-        e->accept();     // Qt agarra el ratón: los movimientos siguen llegando aquí
+        e->accept();     // Qt grabs the mouse: the moves keep arriving here
     }
 
     void mouseMoveEvent(QMouseEvent *e) override {
@@ -455,8 +434,8 @@ protected:
             return;
         if (!m_active) {
             m_active = true;
-            setDown(false);       // si no, se queda hundido al soltar
-            setCursor(Qt::ClosedHandCursor);   // la mano se cierra al agarrar
+            setDown(false);       // otherwise it stays pressed on release
+            setCursor(Qt::ClosedHandCursor);   // the hand closes while grabbing
             if (start) start();
         }
         if (moved) moved(at);
@@ -490,8 +469,6 @@ QToolButton *roundButton(const QString &kind, const QColor &color, const QString
 
 } // namespace
 
-// ---------------------------------------------------------------------------
-
 NoteCard::NoteCard(Note *note, const Theme &theme, QWidget *parent)
     : QFrame(parent), m_note(note), m_theme(theme) {
     setObjectName("card");
@@ -519,18 +496,17 @@ void NoteCard::build() {
     m_linksLayout->setContentsMargins(0, 0, 0, 0);
     m_linksLayout->setSpacing(1);
 
-    // Al final de la tarjeta, pero por encima del rótulo del tipo cuando lo
-    // hay: el pie es lo último que se lee. En recordatorio y lista el rótulo
-    // no es hijo directo de este layout, así que ahí van los últimos.
+    // At the end of the card but above the type label when there is one: the
+    // footer is read last. For reminders and checklists the label is not a direct
+    // child of this layout, so the links go last there.
     const int at = m_meta ? l->indexOf(m_meta) : -1;
     if (at >= 0) l->insertWidget(at, m_linksBox);
     else l->addWidget(m_linksBox);
     refreshLinks();
 }
 
-// Título editable y, a su derecha, el asidero para reordenar. El asidero se
-// pinta apagado y solo se enciende al pasar por encima: está siempre, pero no
-// compite con el título.
+/// Editable title with the reorder grip on its right. The grip is dimmed and
+/// lights up only on hover, so it does not compete with the title.
 void NoteCard::buildTitleRow(QVBoxLayout *l) {
     auto *row = new QHBoxLayout;
     row->setContentsMargins(0, 0, 0, 0);
@@ -551,13 +527,12 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
     handle->setIcon(paintIcon("grip", QColor(Theme::muted()), 13));
     handle->setIconSize(QSize(13, 13));
     handle->setFixedSize(20, 20);
-    // Mano abierta, no la flecha de redimensionar: SizeVerCursor es el cursor
-    // de estirar un borde y prometía cambiar el alto de la tarjeta.
+    // An open hand, not the resize arrow: SizeVerCursor promised to change the
+    // card's height.
     handle->setCursor(Qt::OpenHandCursor);
     handle->setToolTip(L("Arrastra para reordenar"));
-    // Fuera del orden de tabulación: con el teclado se reordena desde el menú
-    // de la tarjeta (Subir / Bajar), y pasar por un asidero en cada nota solo
-    // alarga el camino.
+    // Out of the tab order: with the keyboard, reordering is Move up / Move down
+    // in the card menu.
     handle->setFocusPolicy(Qt::NoFocus);
     handle->start = [this] { emit dragStarted(); };
     handle->moved = [this](const QPoint &at) { emit dragMoved(at); };
@@ -586,8 +561,7 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(7);
 
-    // Icono de reloj/campana junto a la fecha: el estado se ve de un vistazo
-    // sin tener que leer la etiqueta.
+    // Clock/bell icon next to the date: the state is visible at a glance.
     m_dueIcon = new QLabel;
     m_dueIcon->setFixedSize(14, 14);
     row->addWidget(m_dueIcon, 0, Qt::AlignVCenter);
@@ -599,19 +573,17 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     static_cast<ClickableLabel *>(m_chip)->makeKeyboardReachable();
     row->addWidget(m_chip);
 
-    // Marca de repetición al lado de la fecha. Es un icono y no un chip con el
-    // texto ("Cada semana") porque la fila ya va justa: con el chip, un
-    // recordatorio semanal vencido pedía 296 px de ancho mínimo y la lista solo
-    // tiene 284 con el panel en su tamaño mínimo -- y una tarjeta que pide de
-    // más ensancha la lista entera y recorta a todas por la derecha (ver
-    // CLAUDE.md). El rótulo de la derecha ya dice CADA SEMANA con todas sus
-    // letras cuando no hay nada más urgente que contar.
+    // A repeat icon rather than a chip with text ("Every week"): with the chip a
+    // weekly overdue reminder asked for 296px of minimum width against the 284
+    // the list gets at minimum size, and one card too wide clips every card (see
+    // *Card widths*). The type label on the right spells it out when there is
+    // nothing more urgent to say.
     m_repeatChip = new ClickableLabel(QString(), [this](const QPoint &p) { openDuePopup(p); });
     m_repeatChip->setFixedSize(12, 12);
     row->addWidget(m_repeatChip, 0, Qt::AlignVCenter);
     refreshRepeat();
 
-    // Solo aparece mientras suena la alarma; es la forma de callarla.
+    // Only shown while the alarm rings: it is how to silence it.
     m_dueBtn = roundButton("stop", QColor("#ff7a6b"), L("Detener aviso"));
     m_dueBtn->setObjectName("dueBtn");
     m_dueBtn->hide();
@@ -626,8 +598,8 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     row->addWidget(m_meta);
     l->addLayout(row);
 
-    // Sin detalles escritos, la tarjeta es su fecha y nada más: el editor
-    // vacío ocupaba 46 px de nada en cada recordatorio de la lista.
+    // Without details the card is just its date: an empty editor took 46px of
+    // nothing on every reminder.
     m_detailSlot = new QWidget;
     m_detailLayout = new QVBoxLayout(m_detailSlot);
     m_detailLayout->setContentsMargins(0, 0, 0, 0);
@@ -638,10 +610,10 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     else showDetailsEditor(false);
 }
 
-// Lo que se ve en el hueco de detalles cuando no hay ninguno: una sola línea
-// apagada que los pide. Vaciar el editor no vuelve aquí mientras se escribe
-// -- el cursor se quedaría sin sitio a media frase --; se vuelve al salir de
-// él, que es lo que da manera de cerrar un editor abierto por error.
+/// The single dimmed line shown when there are no details. Emptying the
+/// editor does not come back here while typing (the cursor would be yanked
+/// mid-sentence); it does on leaving, which is how an editor opened by
+/// mistake gets closed.
 void NoteCard::showDetailsGhost() {
     if (!m_detailLayout) return;
     m_detailBody = nullptr;
@@ -684,14 +656,11 @@ void NoteCard::showDetailsEditor(bool focus) {
     if (focus) body->setFocus(Qt::OtherFocusReason);
 }
 
-// Un editor de detalles abierto y vacío no tenía puerta de salida: ocupaba su
-// hueco hasta reconstruir la tarjeta. Al perder el foco (o con Escape) se
-// recoge y vuelve la línea de "+ Añadir detalles".
-//
-// El cierre va diferido: aquí todavía se está despachando un evento del propio
-// editor, y showDetailsGhost() lo destruye.
+/// An empty details editor closes itself on focus-out (or Escape) and the
+/// "+ Add details" line returns. The close is deferred: an event of the
+/// editor itself is still being dispatched and showDetailsGhost() destroys it.
 bool NoteCard::eventFilter(QObject *watched, QEvent *event) {
-    // Alt+↑ / Alt+↓ sobre la casilla de un elemento lo sube o lo baja.
+    // Alt+Up / Alt+Down on an item's checkbox moves it.
     if (event->type() == QEvent::KeyPress && qobject_cast<QCheckBox *>(watched) &&
         watched->property("itemIndex").isValid()) {
         auto *k = static_cast<QKeyEvent *>(event);
@@ -702,9 +671,8 @@ bool NoteCard::eventFilter(QObject *watched, QEvent *event) {
             return true;
         }
     }
-    // Escape deja el elemento como estaba. Al soltar el foco salta además
-    // editingFinished, pero para entonces ya no hay fila en edición y el
-    // guardado se descarta solo.
+    // Escape leaves the item as it was. Losing focus then fires editingFinished,
+    // but by then no row is being edited and the commit does nothing.
     if (watched == m_itemEdit && m_itemEdit && event->type() == QEvent::KeyPress &&
         static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
         cancelItemEdit();
@@ -716,8 +684,8 @@ bool NoteCard::eventFilter(QObject *watched, QEvent *event) {
         const bool leaving = event->type() == QEvent::FocusOut;
         const bool escape = event->type() == QEvent::KeyPress &&
                             static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape;
-        // El cuerpo de la nota y no toPlainText(): formateado, el documento no
-        // es el texto que se guarda.
+        // The note's body, not toPlainText(): rendered, the document is not the text
+        // that gets saved.
         if ((leaving || escape) && m_note->body.trimmed().isEmpty()) {
             if (escape) m_detailBody->clearFocus();
             QTimer::singleShot(0, this, [this] {
@@ -737,8 +705,8 @@ void NoteCard::buildCheck(QVBoxLayout *l) {
     l->addLayout(m_itemsLayout);
     rebuildItems();
 
-    // Fila de alta: una casilla punteada (aún no existe) y un campo sin caja,
-    // para que se lea como un elemento más de la lista y no como un formulario.
+    // Add row: a dotted checkbox (the item does not exist yet) and a borderless
+    // field, so it reads as one more item rather than a form.
     auto *addRow = new QWidget;
     auto *al = new QHBoxLayout(addRow);
     al->setContentsMargins(0, 0, 0, 0);
@@ -771,8 +739,8 @@ void NoteCard::buildCheck(QVBoxLayout *l) {
 
     m_bar = new QProgressBar;
     m_bar->setTextVisible(false);
-    // El acento llega por constructor, así que se aplica en línea: la hoja
-    // global no se regenera al cambiar de color sin reconstruir las tarjetas.
+    // The accent arrives through the constructor, so it is applied inline: the
+    // global sheet is not regenerated for it without rebuilding the cards.
     m_bar->setStyleSheet(QString("QProgressBar::chunk { background:%1; border-radius:2px; }")
                              .arg(m_theme.accent.name()));
     foot->addWidget(m_bar, 1);
@@ -782,9 +750,8 @@ void NoteCard::buildCheck(QVBoxLayout *l) {
     foot->addWidget(m_progress);
     l->addLayout(foot);
 
-    // Fila propia, no al lado del contador: el botón lleva texto y una fila de
-    // anchos fijos es justo lo que estrecha la lista entera (ver el comentario
-    // de addCheckRow). Solo aparece con la lista terminada.
+    // A row of its own, not beside the counter: the button carries text and a row
+    // of fixed widths narrows the whole list. Only shown when the list is done.
     auto *doneRow = new QHBoxLayout;
     doneRow->setContentsMargins(0, 0, 0, 0);
     doneRow->addStretch();
@@ -811,51 +778,46 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     const CheckItem &item = m_note->items.at(index);
 
     auto *row = new QWidget;
-    // Su índice en items, para leer el orden de las filas al soltar un
-    // arrastre: durante él las filas cambian de sitio y el índice que
-    // capturaron las lambdas deja de ser su posición.
+    // Its index in items, to read the row order on drop: during a drag rows move
+    // and the index captured by the lambdas no longer matches their position.
     row->setProperty("itemIndex", index);
     auto *rl = new QHBoxLayout(row);
     rl->setContentsMargins(0, 0, 0, 0);
     rl->setSpacing(6);
 
-    // El texto va en una etiqueta aparte y no dentro del QCheckBox: con el
-    // texto dentro, el sizeHint de la casilla es el ancho de la frase entera,
-    // ese ancho se convierte en el mínimo de la tarjeta y el QScrollArea
-    // ensancha toda la lista por encima del viewport. Como la barra horizontal
-    // está desactivada, los elementos largos simplemente desaparecían por la
-    // derecha. Con la etiqueta suelta y wordWrap, se parten en varias líneas.
+    // The text lives in a separate label, not in the QCheckBox: with the text
+    // inside, the checkbox's size hint is the whole phrase, which became the
+    // card's minimum width and pushed long items off the right edge.
     auto *box = new QCheckBox;
     box->setContextMenuPolicy(Qt::NoContextMenu);
-    // Solo por Tab: con el foco por clic, marcar con el ratón dejaba el anillo
-    // del teclado puesto en la casilla.
+    // Tab focus only: with click focus, ticking with the mouse left the keyboard
+    // ring on the checkbox.
     box->setFocusPolicy(Qt::TabFocus);
     box->setChecked(item.done);
     box->setCursor(Qt::PointingHandCursor);
     box->setProperty("itemIndex", index);
-    box->installEventFilter(this);   // Alt+↑ / Alt+↓ lo mueven; ver eventFilter
+    box->installEventFilter(this);   // Alt+Up / Alt+Down move it; see eventFilter()
     rl->addWidget(box, 0, Qt::AlignTop);
 
-    // En edición la fila enseña un campo en lugar de la etiqueta. Es un
-    // QLineEdit y no la etiqueta hecha editable porque un QLineEdit no pide el
-    // ancho de su texto —ya lo hacen el título de la tarjeta y la fila de
-    // añadir—, así que renombrar no puede reventar el ancho de la lista.
+    // While editing, the row shows a QLineEdit instead of the label. A QLineEdit
+    // does not demand the width of its text, so renaming cannot blow up the
+    // list's width.
     QLabel *text = nullptr;
     if (index == m_editingItem) {
         auto *edit = new QLineEdit(item.text);
         edit->setObjectName("checkTextEdit");
         edit->setContextMenuPolicy(Qt::NoContextMenu);
-        edit->installEventFilter(this);   // Escape cancela; ver eventFilter
+        edit->installEventFilter(this);   // Escape cancels; see eventFilter()
         m_itemEdit = edit;
         connect(edit, &QLineEdit::editingFinished, this, [this, index, edit] {
-            // editingFinished salta con Enter y también al perder el foco, así
-            // que llega dos veces seguidas; la segunda ya no hay nada que hacer.
+            // editingFinished fires on Enter and again on focus-out; the second call finds
+            // nothing to do.
             if (m_editingItem != index) return;
             commitItemEdit(index, edit->text());
         });
         rl->addWidget(edit, 1);
-        // Diferido: quien lo construye es rebuildItems(), y pedir el foco en
-        // mitad de ese reparto lo pierde al terminar de colocar las filas.
+        // Deferred: rebuildItems() is the caller, and focus requested mid-rebuild is
+        // lost once the rows are laid out.
         QTimer::singleShot(0, edit, [edit] {
             edit->setFocus();
             edit->selectAll();
@@ -865,15 +827,10 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
         text->setObjectName("checkText");
         text->setContextMenuPolicy(Qt::NoContextMenu);
         text->setWordWrap(true);
-        // wordWrap parte por los espacios, no por dentro de una palabra: un
-        // elemento que sea una sola palabra larga —una contraseña, un nombre de
-        // fichero sin separadores— pedía como mínimo el ancho de esa palabra
-        // (medido: 335 px contra los 284 que tiene la lista), y ese mínimo se
-        // convierte en el de la tarjeta y recorta TODAS las de la lista, no
-        // solo esta. Con el mínimo acotado, la palabra se corta por el borde de
-        // su propia fila y las demás tarjetas se quedan como estaban; el texto
-        // entero sigue estando en la ayuda emergente y en el campo al
-        // renombrar. Es la misma regla que aplica ElidedLabel.
+        // Word wrap breaks at spaces, so a single long word (a password, a file name)
+        // demanded its full width as minimum: measured 335px against the list's 284,
+        // which clipped EVERY card. With a bounded minimum the word is cut at its own
+        // row's edge; the full text stays in the tooltip and the rename field.
         text->setMinimumWidth(24);
         text->setToolTip(item.text);
         strikeOut(text, item.done);
@@ -888,9 +845,8 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
         emit dirty();
     });
 
-    // Renombrar. Va en un botón propio y no en el clic sobre el texto: ahí ya
-    // hay un gesto —marcar el elemento— y quitárselo para meter este cambiaría
-    // algo que funciona por añadir algo que falta.
+    // Renaming has its own button rather than a click on the text: that gesture
+    // already ticks the item.
     auto *rename = new QToolButton;
     rename->setIcon(paintIcon("pencil", QColor(Theme::muted()), 12));
     rename->setIconSize(QSize(12, 12));
@@ -914,11 +870,10 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
         refreshProgress();
         emit dirty();
     });
-    rl->addWidget(del, 0, Qt::AlignTop);   // a la altura de la primera línea
+    rl->addWidget(del, 0, Qt::AlignTop);   // level with the first line
 
-    // El mismo asidero que el de la tarjeta, al final de la fila como aquel lo
-    // está del título. A la izquierda descuadraba la casilla con la punteada
-    // de la fila de añadir.
+    // The same grip as the card's, at the end of the row as that one is at the
+    // end of the title. On the left it misaligned the checkbox with the add row.
     auto *handle = new DragHandle;
     handle->setObjectName("dragHandle");
     handle->setIcon(paintIcon("grip", QColor(Theme::muted()), 11));
@@ -926,7 +881,7 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     handle->setFixedSize(14, 18);
     handle->setCursor(Qt::OpenHandCursor);
     handle->setToolTip(L("Arrastra para reordenar"));
-    // Con el teclado se mueve con Alt+↑ / Alt+↓ desde la casilla.
+    // With the keyboard, Alt+Up / Alt+Down from the checkbox.
     handle->setFocusPolicy(Qt::NoFocus);
     handle->start = [this] { m_itemsMoved = false; };
     handle->moved = [this, row](const QPoint &at) { dragItemTo(row, at); };
@@ -936,14 +891,14 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     l->addWidget(row);
 }
 
-// Como Panel::dragCardTo, pero dentro de la tarjeta: la fila cambia de sitio
-// en cuanto cruza el centro de otra, para que se vea dónde va a caer. items no
-// se toca hasta soltar; entretanto manda el orden del layout.
+/// Like Panel::dragCardTo(), inside the card: the row moves as soon as it
+/// crosses another's centre. items is untouched until the drop; meanwhile the
+/// layout order rules.
 void NoteCard::dragItemTo(QWidget *row, const QPoint &globalPos) {
     if (!row || !m_itemsLayout) return;
 
-    // Una lista larga puede salirse de lo visible: la lista de notas acompaña
-    // cerca de sus bordes, igual que al arrastrar tarjetas.
+    // A long list may leave the visible area: scroll near the edges, as when
+    // dragging cards.
     for (QWidget *w = parentWidget(); w; w = w->parentWidget()) {
         if (auto *area = qobject_cast<QScrollArea *>(w)) {
             const int y = area->viewport()->mapFromGlobal(globalPos).y();
@@ -977,8 +932,8 @@ void NoteCard::dragItemTo(QWidget *row, const QPoint &globalPos) {
     m_itemsMoved = true;
 }
 
-// Al soltar, el orden de las filas pasa a items y las filas se rehacen, porque
-// sus lambdas capturaron el índice de antes.
+/// On drop the row order is written to items and the rows are rebuilt, since
+/// their lambdas captured the old indices.
 void NoteCard::endItemDrag() {
     if (!m_itemsMoved || !m_itemsLayout) return;
     m_itemsMoved = false;
@@ -989,7 +944,7 @@ void NoteCard::endItemDrag() {
         QWidget *w = m_itemsLayout->itemAt(i)->widget();
         if (!w) continue;
         const int was = w->property("itemIndex").toInt();
-        if (was < 0 || was >= m_note->items.size()) return;   // filas viejas: no fiarse
+        if (was < 0 || was >= m_note->items.size()) return;   // stale rows: do not trust them
         if (was == m_editingItem) editing = int(order.size());
         order.append(m_note->items.at(was));
     }
@@ -997,13 +952,13 @@ void NoteCard::endItemDrag() {
 
     m_note->items = order;
     m_editingItem = editing;
-    // Diferido: quien llama es el asidero de una de las filas que se destruyen.
+    // Deferred: the caller is the grip of one of the rows being destroyed.
     QTimer::singleShot(0, this, [this] { rebuildItems(); });
     emit dirty();
 }
 
-// Un paso arriba o abajo desde el teclado. El foco vuelve a la casilla del
-// elemento en su nuevo sitio, para poder seguir moviéndolo.
+/// One step up or down from the keyboard. The focus returns to the item's
+/// checkbox at its new place, so it can keep moving.
 void NoteCard::moveItem(int index, int steps) {
     const int to = index + steps;
     if (index < 0 || index >= m_note->items.size() || to < 0 || to >= m_note->items.size())
@@ -1017,20 +972,20 @@ void NoteCard::moveItem(int index, int steps) {
         QLayoutItem *it = m_itemsLayout->itemAt(to);
         if (QWidget *row = it ? it->widget() : nullptr)
             if (auto *box = row->findChild<QCheckBox *>())
-                box->setFocus(Qt::TabFocusReason);   // con anillo: se llegó por teclado
+                box->setFocus(Qt::TabFocusReason);   // with a ring: it arrived by keyboard
     });
 }
 
-// El campo de edición se cierra solo al perder el foco, así que basta con
-// apuntar cuál es la fila y rehacerlas.
+/// The edit field closes itself on focus-out, so recording the row and
+/// rebuilding is enough.
 void NoteCard::beginItemEdit(int index) {
     if (index < 0 || index >= m_note->items.size()) return;
     m_editingItem = index;
     rebuildItems();
 }
 
-// Un texto vacío no borra el elemento: para eso está el botón de quitar, y
-// vaciarlo sin querer no puede costar la línea. Se deja como estaba.
+/// An empty text does not delete the item (the minus button does): clearing
+/// the field by accident must not cost the line.
 void NoteCard::commitItemEdit(int index, const QString &text) {
     m_editingItem = -1;
     if (index < 0 || index >= m_note->items.size()) {
@@ -1042,8 +997,8 @@ void NoteCard::commitItemEdit(int index, const QString &text) {
     const bool changed = !clean.isEmpty() && clean != m_note->items.at(index).text;
     if (changed) m_note->items[index].text = clean;
 
-    // Diferido: quien llama es el propio campo, desde su editingFinished, y
-    // rebuildItems() lo destruye en mitad de su propia señal.
+    // Deferred: the caller is the field itself, from its editingFinished, and
+    // rebuildItems() destroys it mid-signal.
     QTimer::singleShot(0, this, [this] { rebuildItems(); });
     if (changed) emit dirty();
 }
@@ -1055,10 +1010,10 @@ void NoteCard::cancelItemEdit() {
 }
 
 void NoteCard::rebuildItems() {
-    m_itemEdit = nullptr;   // lo que hubiera muere en este mismo barrido
-    // Las filas capturan su índice, así que al borrar una hay que rehacerlas.
-    // Se ocultan antes de borrarlas: hasta que corre deleteLater() siguen
-    // pintadas donde estaban y siguen aceptando eventos.
+    m_itemEdit = nullptr;   // whatever was there dies in this same sweep
+    // Rows capture their index, so they are rebuilt after a structural change.
+    // Hidden before deleting: until deleteLater() runs they stay painted and
+    // keep accepting events.
     while (QLayoutItem *it = m_itemsLayout->takeAt(0)) {
         if (QWidget *w = it->widget()) {
             w->hide();
@@ -1078,11 +1033,9 @@ void NoteCard::refreshProgress() {
     m_bar->setRange(0, total > 0 ? total : 1);
     m_bar->setValue(done);
     if (m_progress) m_progress->setText(QString("%1/%2").arg(done).arg(total));
-    // Una lista vacía no está terminada, está sin empezar.
+    // An empty list is not finished, it is unstarted.
     if (m_clearBtn) m_clearBtn->setVisible(total > 0 && done == total);
 }
-
-// --- recordatorio ----------------------------------------------------------
 
 void NoteCard::openDuePopup(const QPoint &globalPos) {
     auto *menu = new Popup(m_theme, this);
@@ -1099,7 +1052,7 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
         {L("Mañana 09:00"), QDateTime(now.date().addDays(1), QTime(9, 0))},
     };
 
-    // Los presets guardan el instante real: es lo que dispara el aviso.
+    // Presets store the real instant: that is what makes it ring.
     for (const auto &[label, when] : presets) {
         menu->addItem("clock", label, Lang::locale().toString(when, "ddd d MMM HH:mm"),
                       [this, when] {
@@ -1111,18 +1064,16 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
     menu->addSeparator();
     menu->addHeader(L("A mano · dd/MM HH:mm"));
     menu->addEditor(L("p. ej. 24/12 20:30"), dueFieldText(m_note), [this](const QString &value) {
-        // Si el texto se puede interpretar como fecha, además suena; si no,
-        // se queda como etiqueta suelta (comportamiento de siempre). Cuando sí
-        // se entiende se guarda la etiqueta normal, la misma que ponen los
-        // presets, y no lo tecleado: así el chip dice lo de siempre y el campo
-        // vuelve a abrirse en su formato.
+        // Text that parses as a date also rings; otherwise it stays a free label.
+        // When it parses, the standard label is stored rather than what was typed, so
+        // the chip reads as usual and the field reopens in its format.
         const QDateTime parsed = parseDue(value);
         applyDue(parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0,
                  parsed.isValid() ? Lang::locale().toString(parsed, "ddd d MMM HH:mm") : value);
     });
 
-    // La repetición vive aquí y no en un menú propio: es parte de "cuándo
-    // suena esto", igual que la fecha, y con fecha libre no significa nada.
+    // The repetition lives here: it is part of "when does this ring", and means
+    // nothing with a free-text date.
     if (m_note->isScheduled()) {
         menu->addSeparator();
         menu->addHeader(L("Repetir"));
@@ -1145,8 +1096,8 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
     menu->showAt(globalPos);
 }
 
-// El chip de repetición y el rótulo del tipo dicen lo mismo por dos caminos;
-// el rótulo lo escribe refreshDue(), que también sabe si está sonando.
+/// The repeat icon and the type label say the same thing two ways; the label
+/// is written by refreshDue(), which also knows whether it is ringing.
 void NoteCard::refreshRepeat() {
     if (!m_repeatChip) return;
     m_repeatChip->setPixmap(paintIcon("repeat", m_theme.accent, 12).pixmap(12, 12));
@@ -1156,12 +1107,10 @@ void NoteCard::refreshRepeat() {
     m_repeatChip->setVisible(m_note->repeats());
 }
 
-// Mover la fecha de un aviso es también enterarse de él: aplazar no es
-// ignorar, así que deja de sonar. Sin esto la nota se llevaba el 'ringing' a
-// su fecha nueva -- el tono seguía sonando, el dock seguía rojo y el
-// calendario pintaba de rojo, con su botón de parar, un día que aún no ha
-// llegado. 'fired' se limpia porque el instante es otro y todavía no ha
-// avisado de este.
+/// Moving a reminder's date also acknowledges it: postponing is not ignoring,
+/// so it stops ringing. Otherwise the note carried @c ringing to its new date
+/// and the tone, the red dock and the planner all kept ringing for a day not
+/// yet come. @c fired is cleared because the instant is new.
 void NoteCard::applyDue(qint64 whenMs, const QString &label) {
     const bool wasRinging = m_note->ringing;
 
@@ -1174,19 +1123,17 @@ void NoteCard::applyDue(qint64 whenMs, const QString &label) {
     refreshRepeat();
     refreshDue();
 
-    // Primero el aviso de que ya no suena: el panel mira el estado de todas
-    // las notas y esta ya está puesta al día.
+    // First report that it no longer rings: the panel checks every note's state,
+    // and this one is already up to date.
     if (wasRinging) emit rescheduled(m_note);
     emit dirty();
 }
 
 void NoteCard::setRepeat(Note::Repeat repeat) {
     m_note->repeat = repeat;
-    // Un recordatorio que vuelve no puede quedarse marcado como ya avisado: si
-    // no, la próxima vuelta no sonaría. Se recoloca en su siguiente fecha
-    // cuando la que tiene ya pasó, y eso es un cambio de fecha como cualquier
-    // otro. Dejar de repetirse no lo es: ahí 'fired' se respeta, o un aviso ya
-    // dado volvería a sonar por haber tocado el menú.
+    // A repeating reminder cannot stay marked as fired or its next turn would not
+    // ring; it moves to its next date when the current one has passed. Stopping
+    // the repetition keeps @c fired, or an alarm already given would ring again.
     if (m_note->repeats()) {
         const qint64 now = QDateTime::currentMSecsSinceEpoch();
         applyDue(m_note->dueAtMs <= now ? m_note->nextOccurrenceAfter(now) : m_note->dueAtMs,
@@ -1205,19 +1152,16 @@ void NoteCard::focusTitle() {
     m_title->selectAll();
 }
 
-// --- imágenes adjuntas -----------------------------------------------------
-
-// Cabecera plegable y debajo la tira de miniaturas. Cualquier tipo de nota
-// puede llevar imágenes, igual que enlaces, así que esto se monta en build()
-// y no dentro de una de las ramas por tipo.
+/// Foldable header with the thumbnail strip below. Any note type can carry
+/// images, like links, so this is built in build() and not in a type branch.
 void NoteCard::buildImages(QVBoxLayout *l) {
     m_imagesBox = new QWidget;
     auto *col = new QVBoxLayout(m_imagesBox);
     col->setContentsMargins(0, 0, 0, 0);
     col->setSpacing(5);
 
-    // LinkRow ya es una fila pulsable con menú propio y fondo de hoja de
-    // estilos; aquí solo cambia el nombre con el que la pinta el tema.
+    // LinkRow is already a clickable row with its own menu and styled background;
+    // only the object name the theme paints it by changes.
     auto *header = new LinkRow;
     header->setObjectName("imgHeader");
     header->activate = [this] { toggleImages(); };
@@ -1259,8 +1203,8 @@ void NoteCard::buildImages(QVBoxLayout *l) {
 void NoteCard::refreshImages() {
     if (!m_imagesLayout) return;
 
-    // Ocultar antes de borrar: fuera del layout siguen pintadas hasta que
-    // corre deleteLater(), y una miniatura es muy visible.
+    // Hide before deleting: out of the layout they stay painted until
+    // deleteLater() runs, and a thumbnail is very visible.
     while (QLayoutItem *it = m_imagesLayout->takeAt(0)) {
         if (QWidget *w = it->widget()) {
             w->hide();
@@ -1279,8 +1223,8 @@ void NoteCard::refreshImages() {
                                       QColor(Theme::muted()), 12));
     m_imagesToggle->setToolTip(hidden ? L("Mostrar imágenes") : L("Ocultar imágenes"));
 
-    // Plegadas, ni siquiera se construyen: una tarjeta cerrada no tiene por
-    // qué cargar en memoria las capturas que no se ven.
+    // Folded, thumbnails are not even built: a closed card has no reason to load
+    // screenshots nobody sees.
     m_imagesStrip->setVisible(!hidden);
     if (hidden) return;
 
@@ -1292,8 +1236,8 @@ void NoteCard::refreshImages() {
                     QUrl::fromLocalFile(Note::imagePath(m_note->images.at(i))));
         };
         thumb->menu = [this, i](const QPoint &at) { openImageMenu(i, at); };
-        // La miniatura tiene un tamaño propio: pegada a la izquierda, no
-        // centrada en un hueco que ya no llena.
+        // The thumbnail has its own size: left-aligned, not centred in a gap it no
+        // longer fills.
         m_imagesLayout->addWidget(thumb, 0, Qt::AlignLeft);
     }
 }
@@ -1305,9 +1249,8 @@ void NoteCard::toggleImages() {
     emit dirty();
 }
 
-// Las imágenes se copian a la carpeta de datos, no se enlazan: una nota tiene
-// que seguir enseñando su captura aunque el original se mueva o se borre, y al
-// cambiar de carpeta de guardado los adjuntos viajan con las notas.
+/// Images are copied into the data folder, not linked: the note keeps its
+/// picture if the original moves, and attachments travel with the notes.
 void NoteCard::addImages() {
     const QStringList picked = QFileDialog::getOpenFileNames(
         this, L("Elegir imágenes"), QDir::homePath(),
@@ -1318,8 +1261,8 @@ void NoteCard::addImages() {
     for (const QString &source : picked) {
         const QFileInfo info(source);
         const QString suffix = info.suffix().isEmpty() ? "png" : info.suffix().toLower();
-        // El nombre lleva la nota y un sello de tiempo: dos ficheros con el
-        // mismo nombre de origen no pueden pisarse.
+        // The name carries the note and a timestamp: two sources with the same name
+        // cannot overwrite each other.
         const QString name = QString("%1-%2.%3")
                                  .arg(m_note->id)
                                  .arg(QDateTime::currentMSecsSinceEpoch() +
@@ -1331,7 +1274,7 @@ void NoteCard::addImages() {
     }
     if (!added) return;
 
-    m_note->imagesHidden = false;   // se acaba de añadir: enseñarla
+    m_note->imagesHidden = false;   // just added: show it
     refreshImages();
     emit dirty();
 }
@@ -1355,8 +1298,7 @@ void NoteCard::openImageMenu(int index, const QPoint &globalPos) {
         });
         menu->addItem("trash", L("Quitar imagen"), QString(), [this, index] {
             if (index >= m_note->images.size()) return;
-            // El fichero es una copia nuestra: al quitarlo de la nota no queda
-            // nadie que lo mire, así que se borra en vez de acumularse.
+            // The file is our copy: once removed from the note nobody refers to it.
             QFile::remove(Note::imagePath(m_note->images.at(index)));
             m_note->images.removeAt(index);
             refreshImages();
@@ -1366,13 +1308,11 @@ void NoteCard::openImageMenu(int index, const QPoint &globalPos) {
     menu->showAt(globalPos);
 }
 
-// --- enlaces adjuntos ------------------------------------------------------
-
 void NoteCard::refreshLinks() {
     if (!m_linksLayout) return;
 
-    // Ocultar antes de borrar: una fila fuera del layout sigue pintada donde
-    // estaba, y viva, hasta que corre deleteLater().
+    // Hide before deleting: out of the layout a row stays painted, and alive,
+    // until deleteLater() runs.
     while (QLayoutItem *it = m_linksLayout->takeAt(0)) {
         if (QWidget *w = it->widget()) {
             w->hide();
@@ -1424,7 +1364,7 @@ void NoteCard::openLinkEditor(int index, const QPoint &globalPos) {
                     {current.url, current.label},
                     [this, index, isNew](const QStringList &values) {
                         const QString url = normalizedUrl(values.value(0));
-                        if (url.isEmpty()) return;          // sin dirección no hay enlace
+                        if (url.isEmpty()) return;          // no address, no link
 
                         Link link{url, values.value(1)};
                         if (isNew) m_note->links.append(link);
@@ -1471,27 +1411,24 @@ void NoteCard::refreshDue() {
                                  .pixmap(14, 14));
     if (m_dueBtn) m_dueBtn->setVisible(ringing);
     if (m_chip) {
-        // El texto se vuelve a leer de la nota: callar un recordatorio que se
-        // repite lo adelanta a su siguiente vuelta, y el chip tiene que
-        // enseñar la nueva fecha sin reconstruir la tarjeta.
+        // Re-read from the note: silencing a repeating reminder moves it to its next
+        // turn, and the chip must show the new date without rebuilding the card.
         const QString label = m_note->dueLabel();
         m_chip->setText(label.isEmpty() ? L("Sin fecha") : label);
         m_chip->setProperty("state", ringing ? "ringing" : (overdue ? "overdue" : ""));
-        // Cambiar una propiedad dinámica no repinta solo: hay que repolish.
+        // A dynamic property does not repaint by itself: repolish.
         m_chip->style()->unpolish(m_chip);
         m_chip->style()->polish(m_chip);
     }
     if (m_meta) {
-        // En reposo el rótulo dice cada cuánto vuelve, que es más útil que
-        // repetir "RECORDATORIO" al lado de un icono de reloj.
+        // At rest the label says how often it repeats, more useful than "REMINDER"
+        // next to a clock icon.
         const QString idle = m_note->repeats() ? m_note->repeatLabel().toUpper()
                                                : L("RECORDATORIO");
         m_meta->setText(ringing ? L("¡AHORA!") : (overdue ? L("VENCIDO") : idle));
     }
     refreshRepeat();
 }
-
-// --- nota de voz -----------------------------------------------------------
 
 void NoteCard::buildVoice(QVBoxLayout *l) {
     auto *row = new QHBoxLayout;
@@ -1528,10 +1465,9 @@ void NoteCard::buildVoice(QVBoxLayout *l) {
     m_wave->setPeaks(m_note->peaks);
     refreshVoice();
 
-    // Onda ya guardada; si falta (nota de una versión anterior), se calcula
-    // leyendo el fichero una sola vez y se persiste. Se aplaza al siguiente
-    // ciclo porque dirty() todavía no está conectado durante el constructor
-    // —y así construir la lista no se queda leyendo ficheros de disco.
+    // Peaks already stored; if missing (older note) the file is scanned once and
+    // the result saved. Deferred because dirty() is not connected yet during the
+    // constructor, and so building the list does not read files from disk.
     if (m_note->peaks.isEmpty() && !m_note->audio.isEmpty()) {
         QTimer::singleShot(0, this, [this] {
             const WaveScan scan = scanWave(m_note->audioPath());
@@ -1563,8 +1499,8 @@ void NoteCard::ensureAudio() {
                 m_wave->setLive(false);
                 m_wave->setPeaks(m_note->peaks);
             }
-            // Regrabar reescribe el mismo fichero: si no se suelta la fuente,
-            // el reproductor sigue sirviendo la toma anterior.
+            // Re-recording overwrites the same file: unless the source is released, the
+            // player keeps serving the previous take.
             if (m_player) m_player->setSource(QUrl());
             emit dirty();
         }
@@ -1602,7 +1538,7 @@ void NoteCard::toggleRecord() {
         m_wave->setLive(true);
         m_wave->setPeaks({});
     }
-    // Un fichero por nota: volver a grabar sustituye la toma anterior.
+    // One file per note: recording again replaces the previous take.
     m_recorder->start(audioDir() + "/" + m_note->id + ".wav");
     refreshVoice();
 }
@@ -1645,15 +1581,13 @@ void NoteCard::refreshVoice() {
         const QString err = m_recorder ? m_recorder->errorText() : QString();
         m_meta->setText(err.isEmpty() ? L("VOZ · SIN GRABAR") : err.toUpper());
     } else if (m_note->isSilentTake()) {
-        // La toma existe pero no tiene señal audible; sin decirlo, el usuario
-        // solo ve una nota que "no suena".
+        // The take exists but has no audible signal; without saying so the user just
+        // sees a note that "does not play".
         m_meta->setText(L("VOZ · SIN SEÑAL, REVISA EL MICRÓFONO"));
     } else {
         m_meta->setText(L("VOZ"));
     }
 }
-
-// ---------------------------------------------------------------------------
 
 void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
     auto *menu = new Popup(m_theme, this);
@@ -1702,9 +1636,8 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
                       m_note->imagesHidden ? L("Mostrar imágenes") : L("Ocultar imágenes"),
                       QString(), [this] { toggleImages(); });
 
-    // Reordenar también desde aquí: arrastrar por el asidero es lo cómodo con
-    // el ratón, pero con la lista larga (o sin ganas de arrastrar) un paso
-    // cada vez llega más lejos sin pelearse con el scroll.
+    // Reordering from here too: a step at a time reaches far in a long list
+    // without fighting the scroll.
     menu->addSeparator();
     menu->addHeader(L("Orden"));
     menu->addItem("chevronUp", L("Subir"), QString(),

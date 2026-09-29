@@ -20,9 +20,8 @@ namespace {
 
 const QColor kRed("#ff7a6b");
 
-// mm:ss, o h:mm:ss a partir de una hora. Redondea hacia arriba: un
-// temporizador que enseña 00:00 tiene que haber terminado ya, no estar a
-// punto.
+/// mm:ss, or h:mm:ss from one hour on. Rounds up: a timer showing 00:00 must
+/// already have finished, not be about to.
 QString clock(qint64 ms) {
     const qint64 total = (ms + 999) / 1000;
     const qint64 h = total / 3600, m = (total / 60) % 60, s = total % 60;
@@ -37,9 +36,8 @@ QColor stateColor(const Timer *t, const QColor &accent) {
     return QColor(Theme::muted());
 }
 
-// Anillo de progreso: lo que queda, en el color del estado, sobre una pista
-// apagada. En grande lleva dentro la hora y el estado, pintados aquí mismo
-// para que tick() solo tenga que pedir un repintado.
+/// Progress ring: time left in the state's colour over a dim track. The large
+/// one draws the time and state inside, so tick() only requests a repaint.
 class Ring : public QWidget {
 public:
     Ring(int size, qreal thickness, QWidget *parent = nullptr)
@@ -71,7 +69,7 @@ protected:
         p.drawEllipse(r);
         if (m_fraction > 0) {
             p.setPen(QPen(m_color, m_thick, Qt::SolidLine, Qt::RoundCap));
-            // Desde las doce, en el sentido de las agujas: lo que queda.
+            // From twelve o'clock, clockwise: what is left.
             p.drawArc(r, 90 * 16, -int(360 * 16 * m_fraction));
         }
         if (m_big.isEmpty()) return;
@@ -102,8 +100,8 @@ private:
     qreal m_bigPx = 28;
 };
 
-// Fila pulsable: abrir el temporizador en grande. Los botones de dentro se
-// quedan con su propio clic.
+/// Clickable row that opens the timer large; the buttons inside keep their
+/// own clicks.
 class TimerRow : public QWidget {
 public:
     explicit TimerRow(std::function<void()> onClick, QWidget *parent = nullptr)
@@ -148,8 +146,6 @@ QLineEdit *durationField(const QString &placeholder, int max) {
 
 }  // namespace
 
-// ---------------------------------------------------------------------------
-
 TimerView::TimerView(const Theme &theme, QWidget *parent) : QWidget(parent), m_theme(theme) {
     setObjectName("timers");
 
@@ -164,8 +160,8 @@ TimerView::TimerView(const Theme &theme, QWidget *parent) : QWidget(parent), m_t
     m_layout->setSpacing(4);
     m_layout->addStretch();
 
-    // Todo dentro del desplazamiento, como en ajustes y cumpleaños: el alto
-    // mínimo de la página no depende de cuántos temporizadores haya.
+    // Everything scrolls, as in settings and birthdays, so the page's minimum
+    // height does not depend on how many timers there are.
     auto *scroll = new QScrollArea;
     scroll->setWidget(host);
     scroll->setWidgetResizable(true);
@@ -213,13 +209,13 @@ QString TimerView::subtitle(const Timer *t) const {
 
 void TimerView::refresh() {
     m_live.clear();
-    // Todo menos el formulario de alta y el stretch final.
+    // Everything but the creation form and the trailing stretch.
     for (int i = m_layout->count() - 1; i >= 0; --i) {
         QLayoutItem *item = m_layout->itemAt(i);
         QWidget *w = item->widget();
         if (!w || w == m_creator) continue;
         m_layout->takeAt(i);
-        w->hide();          // ver *Removing rows*: quitarla del layout no la borra
+        w->hide();          // see *Removing rows*: taking it out of the layout does not delete it
         w->deleteLater();
         delete item;
     }
@@ -245,7 +241,7 @@ void TimerView::refresh() {
         auto *empty = new QLabel(L("Todavía no hay temporizadores. Crea uno abajo o elige un tiempo rápido."));
         empty->setObjectName("meta");
         empty->setWordWrap(true);
-        empty->setMinimumWidth(24);   // ver *Card widths*
+        empty->setMinimumWidth(24);   // see *Card widths*
         empty->setContentsMargins(4, 6, 4, 6);
         m_layout->insertWidget(m_layout->indexOf(m_creator), empty);
     }
@@ -341,7 +337,7 @@ void TimerView::addFocusCard(Timer *t) {
     name->setObjectName("timerFocusName");
     name->setAlignment(Qt::AlignCenter);
     name->setWordWrap(true);
-    name->setMinimumWidth(24);   // ver *Card widths*
+    name->setMinimumWidth(24);   // see *Card widths*
     col->addWidget(name);
 
     auto *buttons = new QHBoxLayout;
@@ -372,8 +368,8 @@ void TimerView::addFocusCard(Timer *t) {
     m_layout->insertWidget(m_layout->indexOf(m_creator), card);
 }
 
-// El formulario se monta una sola vez: sobrevive a refresh() para que lo que
-// se esté escribiendo no se pierda cuando otro temporizador cambia de estado.
+/// Built once: it survives refresh() so what is being typed is not lost when
+/// another timer changes state.
 void TimerView::addCreator() {
     m_creator = new QWidget;
     auto *outer = new QVBoxLayout(m_creator);
@@ -419,8 +415,8 @@ void TimerView::addCreator() {
     connect(create, &QPushButton::clicked, this, submit);
     for (QLineEdit *e : {m_name, m_h, m_m, m_s}) connect(e, &QLineEdit::returnPressed, this, submit);
 
-    // Tiempos rápidos: rellenan los campos, no lanzan nada. Así se puede
-    // poner nombre antes de crear, que es lo que pide un "Pomodoro".
+    // Quick durations fill the fields without starting anything, so the timer
+    // can be named first.
     auto *quick = new QHBoxLayout;
     quick->setSpacing(4);
     for (int minutes : {1, 5, 10, 25}) {

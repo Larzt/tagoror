@@ -37,23 +37,20 @@
 namespace {
 
 constexpr auto kScope = "https://www.googleapis.com/auth/drive.file";
-// Los de Google Calendar, solo si este equipo lo tiene encendido: son
-// permisos "sensibles" y no tiene sentido pedírselos a quien solo quiere Drive.
-// calendar.events para leer y escribir eventos; la lista de calendarios pide
-// uno aparte, y el de solo lectura basta.
+/// Google Calendar scopes, requested only when this machine enables it: they
+/// are "sensitive" and pointless for someone who only wants Drive. The
+/// calendar list needs a scope of its own; read-only is enough.
 constexpr auto kCalendarScope = "https://www.googleapis.com/auth/calendar.events";
 constexpr auto kCalendarListScope = "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
 constexpr auto kFolderMime = "application/vnd.google-apps.folder";
 constexpr auto kRootFolder = "Tagoror";
 constexpr int kTimeoutMs = 60000;
-// Lo que se deja para autorizar en el navegador antes de dar el intento por
-// perdido y soltar el puerto.
+/// How long the browser authorisation may take before the port is released.
 constexpr int kAuthorizeMs = 5 * 60 * 1000;
 
-// Lo que se sincroniza, relativo a la carpeta de datos. Las copias de
-// seguridad no: son de cada equipo, y subir diez versiones del mismo fichero es
-// gastar la cuota del usuario en nada. El orden importa: es el de los objetos
-// que recibe Store::mergeRemote.
+/// What is synced, relative to the data folder. Backups are not: they belong
+/// to each machine. The order matters: it is the order of the objects passed
+/// to Store::mergeRemote().
 const QStringList &jsonFiles() {
     static const QStringList files{"notes.json", "birthdays.json", "events.json"};
     return files;
@@ -81,7 +78,7 @@ QString fileMd5(const QString &path) {
     return QString::fromLatin1(h.result().toHex());
 }
 
-// Una cadena para una consulta de Drive: comillas y barras escapadas.
+/// A string for a Drive query, with quotes and backslashes escaped.
 QString quoted(const QString &s) {
     QString out = s;
     out.replace('\\', "\\\\").replace('\'', "\\'");
@@ -125,9 +122,9 @@ void DriveSync::saveSettings() {
     QSettings s;
     s.beginGroup("drive");
     if (m_refresh.isEmpty()) {
-        // Con la cuenta se olvida también qué se había mezclado de ella: otra
-        // cuenta es otra carpeta, y hay que leerla entera.
-        s.remove("");   // todo el grupo: desconectar no deja nada atrás
+        // Forgetting the account also forgets what was merged from it: another account
+        // is another folder and must be read in full.
+        s.remove("");   // the whole group: disconnecting leaves nothing behind
     } else {
         s.setValue("refreshToken", m_refresh);
         s.setValue("scopes", m_scopes);
@@ -150,23 +147,21 @@ void DriveSync::fail(const QString &why) {
     setState(connected() ? Failed : Disconnected);
 }
 
-// --- autorización -------------------------------------------------------------
-
 void DriveSync::connectAccount() {
     if (!configured() || m_state == Authorizing) return;
 
     delete m_server;
     m_server = new QTcpServer(this);
-    // Solo la interfaz local: el código de autorización no tiene por qué
-    // poder llegar desde fuera del equipo.
+    // Loopback only: the authorisation code has no reason to be reachable from
+    // outside the machine.
     if (!m_server->listen(QHostAddress::LocalHost, 0)) {
         fail(L("No se pudo abrir un puerto local para la autorización."));
         return;
     }
     connect(m_server, &QTcpServer::newConnection, this, &DriveSync::onRedirect);
 
-    // PKCE: el código que devuelve Google solo sirve junto a este secreto de
-    // un solo uso, que nunca pasa por el navegador.
+    // PKCE: Google's code is only valid together with this one-time secret, which
+    // never goes through the browser.
     m_authorized = false;
     m_verifier = randomToken(64);
     m_stateToken = randomToken(24);
@@ -183,13 +178,13 @@ void DriveSync::connectAccount() {
     QString scope = kScope;
     if (m_calendar->enabled()) scope += QString(" %1 %2").arg(kCalendarScope, kCalendarListScope);
     q.addQueryItem("scope", scope);
-    // Volver a autorizar para añadir Calendar no quita lo que ya se tenía.
+    // Re-authorising to add Calendar keeps what was already granted.
     q.addQueryItem("include_granted_scopes", "true");
     q.addQueryItem("code_challenge", QString::fromLatin1(challenge));
     q.addQueryItem("code_challenge_method", "S256");
     q.addQueryItem("state", m_stateToken);
-    // offline + consent: sin ellos Google no siempre devuelve el token de
-    // refresco, y sin él habría que volver a autorizar cada hora.
+    // offline + consent: without them Google does not always return a refresh
+    // token, and authorisation would be needed every hour.
     q.addQueryItem("access_type", "offline");
     q.addQueryItem("prompt", "consent");
     url.setQuery(q);
@@ -220,12 +215,12 @@ void DriveSync::onRedirect() {
     while (m_server && m_server->hasPendingConnections()) {
         QTcpSocket *socket = m_server->nextPendingConnection();
         connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
-        // La petición puede llegar en varios trozos; basta con la primera línea.
+        // The request may arrive in several chunks; the first line is enough.
         auto buffer = std::make_shared<QByteArray>();
         connect(socket, &QTcpSocket::readyRead, this, [this, socket, buffer] {
             buffer->append(socket->readAll());
             if (!buffer->contains("\r\n")) return;
-            // Una sola respuesta por conexión, aunque lleguen más trozos.
+            // One answer per connection, whatever else arrives.
             QObject::disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
             answerBrowser(socket, *buffer);
         });
@@ -249,7 +244,7 @@ void DriveSync::answerBrowser(QTcpSocket *socket, const QByteArray &request) {
         socket->disconnectFromHost();
     };
 
-    // El navegador pide también /favicon.ico y cosas así: no son la respuesta.
+    // The browser also asks for /favicon.ico and the like.
     if (target.path() != "/") {
         reply(404, QString());
         return;
@@ -273,10 +268,9 @@ void DriveSync::answerBrowser(QTcpSocket *socket, const QByteArray &request) {
         return;
     }
     reply(200, L("Listo: Tagoror ya puede sincronizar con tu Drive. Puedes cerrar esta pestaña."));
-    // El puerto no se cierra en seco: el navegador puede volver a pedir la
-    // página (recargar, una segunda petición suya) y con el puerto cerrado
-    // enseña "conexión rechazada", que parece un fallo cuando todo ha ido bien.
-    // Un minuto más contestando lo mismo, y después se suelta.
+    // The port keeps answering for a minute: the browser may request the page
+    // again, and a closed port shows "connection refused", which looks like a
+    // failure after a successful login.
     m_stateToken.clear();
     m_authorized = true;
     if (QTcpServer *server = m_server) {
@@ -331,8 +325,8 @@ void DriveSync::exchangeCode(const QString &code) {
     });
 }
 
-// A qué cuenta se ha conectado, para poder decirlo en ajustes. drive.file no
-// da acceso al perfil, pero la API de Drive sí dice de quién es la unidad.
+/// Which account was connected, to show it in settings. drive.file gives no
+/// profile access, but the Drive API says who owns the drive.
 void DriveSync::fetchAccount() {
     QUrl url(endpoints().api + "/about");
     url.setQuery("fields=user(emailAddress,displayName)");
@@ -342,15 +336,15 @@ void DriveSync::fetchAccount() {
         m_account = user["emailAddress"].toString(user["displayName"].toString());
         saveSettings();
         setState(Idle);
-        syncNow();   // la primera copia, ya
+        syncNow();   // the first sync, right away
     });
 }
 
 void DriveSync::disconnectAccount() {
     cancel();
-    // Se le pide a Google que retire el permiso, pero no se espera: aunque
-    // falle (sin red), aquí se olvida el token igual, y eso es lo que el
-    // usuario ha pedido. Los ficheros ya subidos se quedan en su Drive.
+    // Google is asked to revoke the grant, without waiting: even if that fails
+    // (no network) the token is forgotten here, which is what the user asked for.
+    // Files already uploaded stay in their Drive.
     if (!m_refresh.isEmpty()) {
         QNetworkRequest req{QUrl(endpoints().revoke)};
         req.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
@@ -370,8 +364,6 @@ void DriveSync::disconnectAccount() {
     setState(configured() ? Disconnected : Unavailable);
 }
 
-// --- peticiones ---------------------------------------------------------------
-
 void DriveSync::withToken(std::function<void()> next) {
     if (!m_access.isEmpty() && QDateTime::currentDateTime().secsTo(m_accessUntil) > 60) {
         next();
@@ -390,8 +382,8 @@ void DriveSync::withToken(std::function<void()> next) {
         r->deleteLater();
         const QJsonObject o = QJsonDocument::fromJson(r->readAll()).object();
         if (o["error"].toString() == "invalid_grant") {
-            // El usuario retiró el permiso desde su cuenta de Google, o el
-            // token caducó: ya no sirve y hay que volver a conectar.
+            // The grant was revoked from the Google account, or the token expired: it is
+            // useless now and the account must be reconnected.
             m_refresh.clear();
             m_access.clear();
             saveSettings();
@@ -404,8 +396,8 @@ void DriveSync::withToken(std::function<void()> next) {
         }
         m_access = o["access_token"].toString();
         m_accessUntil = QDateTime::currentDateTime().addSecs(o["expires_in"].toInt(3600));
-        // Google dice en cada renovación qué permisos siguen dados: así se sabe
-        // también en una cuenta conectada antes de que se guardaran.
+        // Google reports the granted scopes on every refresh, which also covers
+        // accounts connected before they were stored.
         if (const QString scopes = o["scope"].toString(); !scopes.isEmpty() && scopes != m_scopes) {
             m_scopes = scopes;
             saveSettings();
@@ -425,7 +417,7 @@ void DriveSync::api(const QByteArray &verb, const QUrl &url, const QByteArray &b
             r->deleteLater();
             const int status = r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             if (status == 401 && !retried) {
-                m_access.clear();   // caducado antes de tiempo: se renueva y se repite
+                m_access.clear();   // expired early: refresh and retry
                 api(verb, url, body, contentType, done, true);
                 return;
             }
@@ -451,8 +443,6 @@ bool DriveSync::ok(QNetworkReply *r) {
     return false;
 }
 
-// --- sincronización -------------------------------------------------------------
-
 QString DriveSync::seenMd5(const QString &name) const {
     return QSettings().value("drive/seen/" + name).toString();
 }
@@ -467,9 +457,8 @@ void DriveSync::syncNow() {
         m_again = true;
         return;
     }
-    // Una carpeta de datos ausente (el pendrive sin montar) no se sincroniza:
-    // lo que hay en memoria entonces no son las notas, y mezclar con ello o
-    // subirlo sería repartir un vacío a todos los equipos.
+    // A missing data folder is never synced: what is in memory then is not the
+    // notes, and merging or uploading it would spread emptiness to every machine.
     if (!m_store->available() || !dataDirAvailable()) return;
 
     m_error.clear();
@@ -486,8 +475,8 @@ void DriveSync::syncNow() {
     });
 }
 
-// Baja los JSON de fuera que hayan cambiado desde la última mezcla. Uno que
-// sigue igual no trae nada nuevo: se deja vacío y la mezcla no lo toca.
+/// Downloads the remote JSON files that changed since the last merge. An
+/// unchanged one brings nothing new: it stays empty and the merge skips it.
 void DriveSync::fetchRemoteJson(int index) {
     if (m_state != Syncing) return;
     if (index >= jsonFiles().size()) {
@@ -507,7 +496,7 @@ void DriveSync::fetchRemoteJson(int index) {
         if (!ok(r)) return;
         QJsonParseError err;
         const QJsonDocument doc = QJsonDocument::fromJson(r->readAll(), &err);
-        // Uno que no se entiende no se mezcla: vacío, como si no hubiera nada.
+        // Unparseable: treated as empty, i.e. not merged.
         m_remoteJson.append(err.error == QJsonParseError::NoError ? doc.object() : QJsonObject());
         fetchRemoteJson(index + 1);
     });
@@ -518,37 +507,36 @@ void DriveSync::mergeAndPlan() {
     for (const QJsonObject &o : m_remoteJson) anything |= !o.isEmpty();
 
     if (anything) {
-        // Mezclar rehace la lista: con el usuario escribiendo, se espera.
+        // Merging rebuilds the list: wait while the user is typing.
         if (canApply && !canApply()) {
             m_remoteJson.clear();
             setState(Idle);
             emit deferred();
             return;
         }
-        if (!m_store->available()) {   // el pendrive se fue a mitad de pasada
+        if (!m_store->available()) {   // the drive went away mid-pass
             fail(L("La carpeta de notas no está disponible."));
             return;
         }
         const Store::MergeResult merged =
             m_store->mergeRemote(m_remoteJson.value(0), m_remoteJson.value(1), m_remoteJson.value(2));
         m_pull = merged.pull;
-        // Lo de fuera ya está dentro: la próxima vez, si no ha cambiado, no se
-        // vuelve a bajar.
+        // Merged: next time it is not downloaded again unless it changed.
         for (int i = 0; i < jsonFiles().size(); ++i)
             if (!m_remoteJson.value(i).isEmpty())
                 setSeenMd5(jsonFiles().at(i), m_rootFiles.value(jsonFiles().at(i)).md5);
     }
 
-    // Google Calendar va entre la mezcla y la subida: así lo que traiga de
-    // allí sale hacia los otros equipos en esta misma pasada.
+    // Calendar runs between the merge and the upload, so what it brings reaches
+    // the other machines in this same pass.
     m_calendar->run([this] {
         if (m_state == Syncing) planUploads();
     });
 }
 
 void DriveSync::planUploads() {
-    // Y lo de aquí, ya mezclado, sube si difiere de lo que hay allí. Lo que
-    // sube es lo compartido (Store::syncPayload), no el fichero local.
+    // The merged local data is uploaded if it differs from Drive's. What goes up
+    // is the shared payload (Store::syncPayload()), not the local file.
     for (const QString &name : m_store->syncableFiles()) {
         const QByteArray payload = m_store->syncPayload(name);
         const QString md5 =
@@ -560,8 +548,8 @@ void DriveSync::planUploads() {
     planAttachments(0);
 }
 
-// Los adjuntos que usan las notas, carpeta por carpeta. Los que no usa
-// ninguna nota no se tocan en ningún lado: allí se quedan como estaban.
+/// Plans the attachments the notes use, folder by folder. Files no note uses
+/// are left alone on both sides.
 void DriveSync::planAttachments(int index) {
     if (m_state != Syncing) return;
     if (index >= subdirs().size()) {
@@ -572,7 +560,7 @@ void DriveSync::planAttachments(int index) {
     QStringList wanted;
     for (const QString &ref : m_store->attachments())
         if (ref.startsWith(dir + "/")) wanted << ref.mid(dir.size() + 1);
-    if (wanted.isEmpty()) {   // sin adjuntos de ese tipo, ni se crea la carpeta
+    if (wanted.isEmpty()) {   // no attachments of this kind: do not even create the folder
         planAttachments(index + 1);
         return;
     }
@@ -585,13 +573,13 @@ void DriveSync::planAttachments(int index) {
                 const QString path = base + "/" + name;
                 const Remote there = remote->value(name);
                 const bool here = QFileInfo::exists(path);
-                if (!here && there.id.isEmpty()) continue;   // no está en ningún sitio
+                if (!here && there.id.isEmpty()) continue;   // nowhere
                 if (!here) {
                     m_queue.append({true, path, name, folderId, there.id});
                     continue;
                 }
                 if (!there.id.isEmpty() && there.md5 == fileMd5(path)) continue;
-                // Distintos: manda de dónde vino la versión buena de su nota.
+                // Both exist and differ: the side the note's winning version came from wins.
                 if (!there.id.isEmpty() && m_pull.contains(dir + "/" + name))
                     m_queue.append({true, path, name, folderId, there.id});
                 else
@@ -603,11 +591,11 @@ void DriveSync::planAttachments(int index) {
     });
 }
 
-// Una transferencia detrás de otra. Las subidas son siempre reanudables: la
-// sencilla (multipart) se queda en 5 MB, y una nota de voz larga los pasa.
-// Son dos peticiones: una abre la sesión y la otra manda el contenido.
+/// Runs the transfers one after another. Uploads are always resumable
+/// (multipart stops at 5 MB and a long voice note exceeds it): one request
+/// opens the session, another sends the content.
 void DriveSync::transferNext() {
-    if (m_state != Syncing) return;   // falló por el camino
+    if (m_state != Syncing) return;   // failed along the way
     if (m_queue.isEmpty()) {
         finishSync();
         return;
@@ -619,8 +607,8 @@ void DriveSync::transferNext() {
         url.setQuery("alt=media");
         api("GET", url, {}, {}, [this, t](QNetworkReply *r) {
             if (!ok(r)) return;
-            // Crea la subcarpeta (y solo esa: la raíz ya existe, si no no se
-            // habría llegado aquí) y escribe entero o nada.
+            // Creates the subfolder (the root exists, or we would not be here) and writes
+            // all or nothing.
             QDir().mkpath(QFileInfo(t.path).path());
             QSaveFile f(t.path);
             const QByteArray data = r->readAll();
@@ -638,7 +626,7 @@ void DriveSync::transferNext() {
     QByteArray content = t.data;
     if (content.isEmpty()) {
         QFile f(t.path);
-        if (!f.open(QIODevice::ReadOnly)) {   // se borró entre medias: no es un error
+        if (!f.open(QIODevice::ReadOnly)) {   // deleted meanwhile: not an error
             m_queue.removeFirst();
             transferNext();
             return;
@@ -670,8 +658,8 @@ void DriveSync::transferNext() {
             connect(pr, &QNetworkReply::finished, this, [this, pr, t, content] {
                 pr->deleteLater();
                 if (!ok(pr)) return;
-                // Lo que se acaba de subir ya está mezclado: no hay que bajarlo
-                // en la próxima pasada solo porque haya cambiado su MD5 allí.
+                // What was just uploaded is already merged: do not download it next pass just
+                // because its MD5 changed there.
                 if (jsonFiles().contains(t.name) && t.folderId == m_rootId)
                     setSeenMd5(t.name, QString::fromLatin1(
                                            QCryptographicHash::hash(content, QCryptographicHash::Md5)
@@ -683,10 +671,10 @@ void DriveSync::transferNext() {
     });
 }
 
-// Busca la carpeta y la crea si no está. Con drive.file solo se ven las que
-// ha creado la propia aplicación, así que una "Tagoror" hecha a mano por el
-// usuario no se confunde con la nuestra; y como el permiso es de la aplicación
-// y no del equipo, todos los equipos de la misma cuenta ven la misma.
+/// Finds the folder, creating it if missing. With drive.file only folders the
+/// app created are visible, so a hand-made "Tagoror" is never confused with
+/// ours; and since the grant is per app, every machine on the account sees
+/// the same one.
 void DriveSync::findFolder(const QString &name, const QString &parent,
                            std::function<void(const QString &)> next) {
     QUrl url(endpoints().api + "/files");

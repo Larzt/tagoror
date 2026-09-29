@@ -13,6 +13,7 @@
 #include "ui/popup.hpp"
 #include "ui/workarea.hpp"
 
+#include "core/calendarsync.hpp"
 #include "core/drivesync.hpp"
 #include "core/lang.hpp"
 #include "core/updater.hpp"
@@ -54,14 +55,12 @@
 
 namespace {
 
-constexpr int kShadowMargin = 22;   // hueco alrededor del marco para la sombra
+constexpr int kShadowMargin = 22;   // room around the frame for the shadow
 constexpr int kShellMinWidth = 300;
-constexpr int kShellMinHeight = 340;   // el calendario necesita más alto que la lista
+constexpr int kShellMinHeight = 340;   // the planner needs more height than the list
 
-// Las rutas de datos son largas y la fila del menú las corta por la mitad;
-// bajo el home se muestran con ~ para que se lea la parte que importa.
-// Cada cuánto se puede pedir la copia. El cero es "solo a mano" y va primero
-// porque es el interruptor: quien no quiere programación lo apaga ahí.
+/// Backup frequencies offered. Zero ("manual only") goes first because it is
+/// the switch: whoever wants no schedule turns it off there.
 const QList<int> kBackupPeriods{0, 1, 3, 7, 15, 30};
 
 QString prettyPath(const QString &path) {
@@ -77,14 +76,13 @@ QToolButton *iconButton(const QString &kind, const QString &tip) {
     b->setCursor(Qt::PointingHandCursor);
     b->setToolTip(L(tip));
     b->setProperty("iconKind", kind);
-    // El rótulo en español se guarda tal cual: es la clave con la que
-    // retranslate() lo vuelve a traducir sin rehacer la cabecera.
+    // The Spanish label is stored as is: it is the key retranslate() uses to
+    // translate it again without rebuilding the header.
     b->setProperty("tip", tip);
     return b;
 }
 
-// mm:ss (o h:mm:ss) de lo que le queda a un temporizador, redondeado hacia
-// arriba: 00:00 tiene que querer decir que ya ha terminado.
+/// mm:ss (or h:mm:ss) left on a timer, rounded up: 00:00 must mean finished.
 QString timerClock(qint64 ms) {
     const qint64 total = (ms + 999) / 1000;
     const qint64 h = total / 3600, m = (total / 60) % 60, sec = total % 60;
@@ -93,14 +91,14 @@ QString timerClock(qint64 ms) {
     return QString("%1:%2").arg(m, 2, 10, QChar('0')).arg(sec, 2, 10, QChar('0'));
 }
 
-// Etiqueta que ve el usuario para un instante concreto.
+/// The label shown for an instant.
 QString dueLabel(const QDateTime &when) {
     return Lang::locale().toString(when, "ddd d MMM HH:mm");
 }
 
-// El icono de la bandeja cuando hay un aviso sonando. Se compone a varios
-// tamaños porque la bandeja elige el suyo según el panel y la escala, y un
-// solo mapa de bits se ve borroso en cuanto no coincide.
+/// Tray icon while something rings, built at several sizes: the tray picks
+/// its own by panel and scale, and a single bitmap blurs when it does not
+/// match.
 QIcon alertIcon() {
     QIcon icon;
     for (int px : {16, 22, 24, 32, 48})
@@ -108,16 +106,14 @@ QIcon alertIcon() {
     return icon;
 }
 
-// Un eje del anclaje. La ventana crece y encoge dejando quieta su esquina
-// superior izquierda, que es lo que espera cualquiera; solo cuando por ahí no
-// cabe se ancla el extremo contrario, y entonces el panel se abre hacia atrás:
-// con el dock pegado al borde derecho, hacia la izquierda; pegado al inferior,
-// hacia arriba. Si no cabe de ninguna de las dos maneras, se recorta.
-//
-// Que la primera opción sea "no moverse" es lo que hace que plegar no mueva el
-// dock ni un píxel y que desplegar devuelva el panel justo donde estaba: si el
-// panel cabía ahí, el dock que sale de su esquina también, y al revés.
-// `end` es el primer punto que ya queda fuera.
+/// One axis of the anchoring. The window keeps its top-left corner; only when
+/// growing from there would not fit is the opposite edge anchored, so it
+/// opens backwards (leftwards against the right edge, upwards against the
+/// bottom). If neither fits it is clamped.
+///
+/// "Do not move" being the first choice is what makes a fold/unfold round
+/// trip exact: if the panel fitted there, so does the dock coming out of its
+/// corner, and vice versa. @p end is the first point already outside.
 int anchorAxis(int pos, int len, int newLen, int lo, int end) {
     const int keepStart = pos;
     const int keepEnd = pos + len - newLen;
@@ -126,16 +122,15 @@ int anchorAxis(int pos, int len, int newLen, int lo, int end) {
     return qBound(lo, keepStart, qMax(lo, end - newLen));
 }
 
-// Empuja un rectángulo adentro del sitio donde se admite colocarlo.
+/// Pushes a rectangle inside the area where it may be placed.
 QPoint clampInto(QPoint pos, const QSize &size, const QRect &area) {
     if (!area.isValid()) return pos;
     return {qBound(area.left(), pos.x(), qMax(area.left(), area.right() + 1 - size.width())),
             qBound(area.top(), pos.y(), qMax(area.top(), area.bottom() + 1 - size.height()))};
 }
 
-// Tira pulsable bajo la cabecera. Es un QWidget liso, así que necesita
-// WA_StyledBackground para que la hoja de estilos le pinte el fondo, igual que
-// las filas del calendario y de los cumpleaños.
+/// Clickable strip under the header. A plain QWidget, so it needs
+/// WA_StyledBackground for the stylesheet to paint its background.
 class ClickableBar : public QWidget {
 public:
     explicit ClickableBar(std::function<void()> onClick, QWidget *parent = nullptr)
@@ -158,15 +153,13 @@ private:
 
 }  // namespace
 
-// ---------------------------------------------------------------------------
-
 Panel::Panel() {
     setAttribute(Qt::WA_TranslucentBackground);
-    // Intro pulsa el botón que tenga el foco, no solo la barra espaciadora.
+    // Enter clicks the focused button, not only Space.
     keynav::installButtonEnter();
 
-    // El Store resuelve la carpeta de datos y las migraciones en su
-    // constructor, antes de que nadie toque disco.
+    // The Store resolved the data folder and the migrations in its constructor,
+    // before any disk access.
     m_store.load();
     m_theme.accent = m_store.prefs().accent;
     m_theme.opacity = m_store.prefs().opacity;
@@ -181,17 +174,15 @@ Panel::Panel() {
     m_dueTimer = new QTimer(this);
     m_dueTimer->setInterval(5000);
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::checkReminders);
-    // El mismo latido vigila la carpeta de datos: mirar si existe es una
-    // llamada a stat, y es lo que hace que un pendrive montado a los diez
-    // minutos se recoja solo en vez de quedarse el panel vacío.
+    // The same heartbeat watches the data folder (a stat call), so a drive
+    // mounted ten minutes later is picked up on its own.
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollDataDir);
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollBackup);
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::pollUpdates);
     m_dueTimer->start();
 
-    // Los temporizadores necesitan más que el latido de 5 s: enseñan segundos.
-    // Medio segundo y no uno, para que la cuenta no se salte ninguno por el
-    // desfase entre este reloj y el de la pared. Solo corre si algo cuenta.
+    // Timers show seconds, so the 5 s heartbeat is too coarse. Half a second, not
+    // one, so drift never skips a second. Runs only while something counts.
     m_tick = new QTimer(this);
     m_tick->setInterval(500);
     connect(m_tick, &QTimer::timeout, this, &Panel::tickTimers);
@@ -199,7 +190,7 @@ Panel::Panel() {
     m_updater = new Updater(this);
     connect(m_updater, &Updater::finished, this, &Panel::onUpdateChecked);
 
-    // Antes de buildShell: la página de ajustes la enseña.
+    // Before buildShell(): the settings page shows it.
     m_drive = new DriveSync(&m_store, this);
     m_drive->canApply = [this] { return userIdle(); };
     connect(m_drive, &DriveSync::openUrl, this, [](const QUrl &url) { QDesktopServices::openUrl(url); });
@@ -207,19 +198,30 @@ Panel::Panel() {
     m_driveTimer->setSingleShot(true);
     m_driveTimer->setInterval(20 * 1000);
     connect(m_driveTimer, &QTimer::timeout, this, [this] {
-        // Nunca con la carpeta ausente: lo que hay en memoria no son las notas.
+        // Never with the folder missing: what is in memory is not the notes.
         if (m_store.available()) m_drive->syncNow();
     });
     connect(&m_store, &Store::saved, this, [this] {
         if (m_drive->connected() && m_drive->state() != DriveSync::Syncing) m_driveTimer->start();
     });
-    // Mientras se escribe no se mezcla: se vuelve a intentar al poco.
+    // No merging while typing: retry shortly.
     connect(m_drive, &DriveSync::deferred, this, [this] { m_driveTimer->start(); });
     connect(m_drive, &DriveSync::attachmentsArrived, this, [this] {
-        // Las tarjetas se construyeron sin esas imágenes o esa grabación.
+        // The cards were built without those images or that recording.
         if (userIdle()) rebuildList();
     });
     connect(&m_store, &Store::merged, this, &Panel::onStoreMerged);
+    // Google Calendar only touches events: no need to rebuild the cards (and take
+    // the cursor from someone typing); the planner and the alarms suffice. What
+    // was deleted there may be what was ringing here.
+    connect(m_drive->calendar(), &CalendarSync::eventsChanged, this, [this] {
+        if (!anyRinging()) m_alarm->stop();
+        refreshAlarmBar();
+        applyBadgeAlert();
+        refreshPlanner();
+        refreshFooter();
+        checkReminders();
+    });
     m_drivePoll = new QTimer(this);
     m_drivePoll->setInterval(90 * 1000);
     connect(m_drivePoll, &QTimer::timeout, this, [this] {
@@ -233,9 +235,9 @@ Panel::Panel() {
     rebuildList();
     applyTheme();
     refreshDataWarning();
-    refreshUpdateBanner();   // con lo que se supiera de la última comprobación
-    checkReminders();   // puede haber vencido algo con la app cerrada
-    tickTimers();       // y un temporizador puede haber llegado a cero
+    refreshUpdateBanner();   // with what the last check found
+    checkReminders();   // something may have come due while the app was closed
+    tickTimers();       // and a timer may have reached zero
 
     if (!m_expandedSize.isValid())
         m_expandedSize = QSize(352 + shadowMargin() * 2, 560);
@@ -243,21 +245,20 @@ Panel::Panel() {
     resize(m_expandedSize);
     showPage(m_shell);
     applyWindowFlags();
-    // Después de applyWindowFlags: cambiar de flags destruye la ventana nativa,
-    // y colocarla antes de eso es colocar una ventana que se va a rehacer.
+    // After applyWindowFlags(): changing flags destroys the native window, and
+    // placing it before that places a window about to be recreated.
     restoreWindowPos();
 
-    // Lo que se cambiara con la app cerrada, o una subida que falló la última
-    // vez: se sube poco después de arrancar.
+    // Changes made while the app was closed, or an upload that failed last time,
+    // go up shortly after startup.
     if (m_drive->connected()) m_driveTimer->start();
 }
 
 Panel::~Panel() {
-    // El Store guarda al morir y avisa con saved(), y para entonces esta
-    // parte del panel ya no existe: nadie debe contestar a esa señal.
+    // The Store saves on destruction and emits saved(); by then this part of the
+    // panel is gone, so nobody may answer that signal.
     disconnect(&m_store, nullptr, this, nullptr);
-    // El Store vuelve a guardar al destruirse, y para entonces este panel ya
-    // no existe: se le quita el gancho antes de que pueda llamarlo.
+    // Same for the hook: the Store would call it after the panel is gone.
     m_store.beforeSave = nullptr;
     syncPrefs();
     m_store.save();
@@ -273,13 +274,12 @@ void Panel::buildShell() {
     m_stack = new QStackedWidget;
     outer->addWidget(m_stack);
 
-    // ---- panel expandido --------------------------------------------------
     m_shell = new QFrame;
     m_shell->setObjectName("shell");
-    m_shell->setMinimumWidth(kShellMinWidth);   // ya no es fijo: se redimensiona
+    m_shell->setMinimumWidth(kShellMinWidth);   // no longer fixed: resizable
 
-    // La sombra se pone en applyAppModeChrome(): en modo aplicación la
-    // dibuja el gestor de ventanas y aquí no hay sitio para ella.
+    // The shadow is set in applyAppModeChrome(): in app mode the window manager
+    // draws it and there is no room for it here.
 
     auto *col = new QVBoxLayout(m_shell);
     col->setContentsMargins(0, 0, 0, 0);
@@ -287,8 +287,8 @@ void Panel::buildShell() {
 
     col->addWidget(buildHeader());
 
-    // Las áreas de trabajo, pegadas a la cabecera como en el diseño. Solo con
-    // la lista delante: en el planificador o en ajustes no significan nada.
+    // Workspace areas, attached to the header. Only while the list is shown: on
+    // the other pages they mean nothing.
     m_areaTabs = new AreaTabs(&m_theme);
     m_areaTabs->activated = [this](const QString &id) { switchArea(id); };
     m_areaTabs->addRequested = [this] { newArea(); };
@@ -311,7 +311,7 @@ void Panel::buildShell() {
     };
     col->addWidget(m_areaTabs);
 
-    // Atajos de las áreas, desde cualquier sitio del panel.
+    // Area shortcuts, from anywhere in the panel.
     auto *newAreaKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_T), this);
     connect(newAreaKey, &QShortcut::activated, this, &Panel::newArea);
     for (int i = 1; i <= 9; ++i) {
@@ -323,17 +323,16 @@ void Panel::buildShell() {
         });
     }
 
-    // Aviso de carpeta ausente. Va aquí arriba, no en el pie, porque no es un
-    // detalle: mientras esté puesto, escribir en el panel no guarda nada.
+    // Missing-folder warning. Up here and not in the footer: while it shows,
+    // nothing typed is saved.
     m_dataWarn = new QLabel;
     m_dataWarn->setObjectName("warnBanner");
-    m_dataWarn->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
+    m_dataWarn->setWordWrap(true);   // see *Card widths*: it must not demand its width
     m_dataWarn->hide();
     col->addWidget(m_dataWarn);
 
-    // Aviso de versión nueva. Es una tira pulsable y no un diálogo: enterarse
-    // no debería interrumpir a nadie, y quien no quiera saber nada lo apaga en
-    // ajustes.
+    // New-version notice: a clickable strip, not a dialog. Finding out should not
+    // interrupt anyone, and it can be turned off in settings.
     auto *bar = new ClickableBar([this] { openLatestRelease(); });
     bar->setObjectName("updateBanner");
     auto *ul = new QHBoxLayout(bar);
@@ -341,15 +340,14 @@ void Panel::buildShell() {
     ul->setSpacing(7);
     m_updateText = new QLabel;
     m_updateText->setObjectName("updateBannerText");
-    m_updateText->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
+    m_updateText->setWordWrap(true);   // see *Card widths*: it must not demand its width
     ul->addWidget(m_updateText, 1);
     m_updateBar = bar;
     m_updateBar->hide();
     col->addWidget(m_updateBar);
 
-    // Temporizador cumplido o evento que empieza: rojo como un recordatorio
-    // vencido, con su propio botón de parar porque no tienen tarjeta en la
-    // lista donde ponerlo.
+    // Finished timer or starting event: red like an overdue reminder, with its
+    // own stop button since they have no card in the list to put one on.
     m_alarmBar = new QWidget;
     m_alarmBar->setObjectName("alarmBar");
     m_alarmBar->setAttribute(Qt::WA_StyledBackground, true);
@@ -361,7 +359,7 @@ void Panel::buildShell() {
     al->addWidget(bell);
     m_alarmText = new QLabel;
     m_alarmText->setObjectName("alarmBarText");
-    m_alarmText->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
+    m_alarmText->setWordWrap(true);   // see *Card widths*: it must not demand its width
     m_alarmText->setMinimumWidth(24);
     al->addWidget(m_alarmText, 1);
     m_alarmPlus = new QToolButton;
@@ -386,7 +384,7 @@ void Panel::buildShell() {
     m_alarmBar->hide();
     col->addWidget(m_alarmBar);
 
-    // barra de búsqueda (oculta por defecto)
+    // search bar (hidden by default)
     m_searchBar = new QWidget;
     auto *sl = new QHBoxLayout(m_searchBar);
     sl->setContentsMargins(10, 8, 10, 8);
@@ -401,7 +399,6 @@ void Panel::buildShell() {
     col->addWidget(buildFooter());
     m_stack->addWidget(m_shell);
 
-    // ---- icono plegado ----------------------------------------------------
     m_badge = buildBadge();
     m_stack->addWidget(m_badge);
 
@@ -417,9 +414,9 @@ QFrame *Panel::buildHeader() {
     l->setContentsMargins(12, 8, 10, 8);
     l->setSpacing(4);
 
-    // Recortable: con siete botones en la cabecera, "Temporizadores" ya no
-    // cabe entero en el ancho mínimo, y una etiqueta que pide su ancho
-    // ensancharía la ventana entera (ver *Card widths*).
+    // Elidable: with seven header buttons "Temporizadores" no longer fits at the
+    // minimum width, and a label demanding its width would widen the whole window
+    // (see *Card widths*).
     m_titleLabel = new ElidedLabel(L("Tagoror"), QColor(Theme::fg()));
     m_titleLabel->setObjectName("title");
     l->addWidget(m_titleLabel);
@@ -437,20 +434,18 @@ QFrame *Panel::buildHeader() {
 
     connect(search, &QToolButton::clicked, this, &Panel::toggleSearch);
     connect(min, &QToolButton::clicked, this, [this] {
-        // Una ventana normal se minimiza a la barra de tareas; el dock es
-        // cosa del widget.
+        // A normal window minimises to the taskbar; the dock is the widget's thing.
         if (appMode()) showMinimized();
         else collapse();
     });
     connect(add, &QToolButton::clicked, this, [this, add] { openNewNoteMenu(add); });
-    // Las páginas se conectan en buildBody(), que es donde existen.
+    // The page buttons are connected in buildBody(), where the pages exist.
 
     for (QToolButton *b : m_headerButtons) l->addWidget(b);
     return header;
 }
 
 QWidget *Panel::buildBody() {
-    // ---- lista de notas ---------------------------------------------------
     m_listHost = new QWidget;
     m_listHost->setObjectName("listHost");
     m_listLayout = new QVBoxLayout(m_listHost);
@@ -458,8 +453,8 @@ QWidget *Panel::buildBody() {
     m_listLayout->setSpacing(7);
     m_listLayout->addStretch();
 
-    // Cartel para cuando no queda ninguna nota: con la lista vacía el panel
-    // no ofrecía ninguna pista de por dónde empezar.
+    // Placeholder for when no note is left: an empty list gave no hint of where
+    // to start.
     m_empty = new QWidget;
     auto *el = new QVBoxLayout(m_empty);
     el->setContentsMargins(0, 34, 0, 34);
@@ -477,7 +472,7 @@ QWidget *Panel::buildBody() {
 
     m_emptyBtn = new QPushButton(L("Crear la primera"));
     m_emptyBtn->setCursor(Qt::PointingHandCursor);
-    m_emptyBtn->setFocusPolicy(Qt::TabFocus);   // el anillo, solo con el teclado
+    m_emptyBtn->setFocusPolicy(Qt::TabFocus);   // ring only with the keyboard
     connect(m_emptyBtn, &QPushButton::clicked, this, [this] { openNewNoteMenu(m_emptyBtn); });
 
     auto *btnRow = new QHBoxLayout;
@@ -493,47 +488,39 @@ QWidget *Panel::buildBody() {
     m_scroll->setWidget(m_listHost);
     m_scroll->setWidgetResizable(true);
     m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_scroll->setMinimumHeight(150);   // sin tope máximo: crece con la ventana
+    m_scroll->setMinimumHeight(150);   // no maximum: grows with the window
     m_scroll->viewport()->setAutoFillBackground(false);
-    // Con selector, no sin él: una regla suelta se hereda por todos los hijos
-    // y les pisa el fondo (dejaba el botón de "lista vacía" sin relleno).
+    // With a selector: a bare rule is inherited by every child and overrides
+    // their background (it left the empty-state button without its fill).
     m_scroll->viewport()->setObjectName("scrollViewport");
 
-    // ---- planificador -----------------------------------------------------
     m_planner = new PlannerView(m_theme);
     m_planner->setView(PlannerView::View(m_store.prefs().plannerView));
     m_planner->setHidden(m_store.prefs().plannerHidden);
     m_planner->setSources(&m_store.events(), &m_store.notes(), &m_store.birthdays(),
                           &m_store.categories());
     connect(m_planner, &PlannerView::categoryCreated, this, [this](Event::Category *c) {
-        m_store.addCategory(c);   // el Store se queda con ella y la guarda
+        m_store.addCategory(c);   // the Store takes ownership and saves it
     });
     connect(m_planner, &PlannerView::categoryChanged, this, [this](Event::Category *) { save(); });
-    connect(m_planner, &PlannerView::categoryDeleted, this, [this](Event::Category *c) {
-        const QString id = c->id;
-        const bool wasHidden = m_planner->hidden().contains(id);
-        m_store.removeCategory(c);   // la libera: a partir de aquí solo vale el id
-        // Si estaba escondida, que el id no se quede colgando en las preferencias.
-        if (wasHidden) {
-            QStringList hidden = m_planner->hidden();
-            hidden.removeAll(id);
-            m_planner->setHidden(hidden);
-            m_store.prefs().plannerHidden = hidden;
-            scheduleSave();
-        }
-    });
+    connect(m_planner, &PlannerView::categoryDeleted, this, &Panel::removeCategory);
     connect(m_planner, &PlannerView::eventCreated, this, [this](Event *e) {
-        m_store.addEvent(e);   // el Store se queda con él y lo guarda
+        m_store.addEvent(e);   // the Store takes ownership and saves it
         refreshPlanner();
         refreshFooter();
-        checkReminders();      // uno que empieza ya tiene que sonar ya
+        checkReminders();      // one starting right now must ring right now
     });
     connect(m_planner, &PlannerView::eventChanged, this, [this](Event *) {
+        // One dragged to another time stops ringing (moveItem() clears ringingMs): if
+        // it was the only one, the tone and the red go with it.
+        if (!anyRinging()) m_alarm->stop();
+        refreshAlarmBar();
+        applyBadgeAlert();
         save();
         checkReminders();
     });
     connect(m_planner, &PlannerView::eventDeleted, this, [this](Event *e) {
-        // Igual que una nota: si sonaba y era lo único, el tono se apaga.
+        // As with a note: if it was the only thing ringing, the tone stops.
         const bool wasRinging = e->ringingMs != 0;
         m_store.removeEvent(e);
         if (wasRinging && !anyRinging()) m_alarm->stop();
@@ -543,6 +530,20 @@ QWidget *Panel::buildBody() {
         refreshFooter();
     });
     connect(m_planner, &PlannerView::reminderCreated, this, &Panel::createReminder);
+    // Dragged in the planner: the same as changing the date on its card
+    // (NoteCard::applyDue()), postponing included.
+    connect(m_planner, &PlannerView::reminderMoved, this, [this](Note *n, qint64 dueAtMs) {
+        n->dueAtMs = dueAtMs;
+        n->due = dueLabel(n->dueAt());
+        n->fired = false;
+        n->ringing = false;
+        if (!anyRinging()) m_alarm->stop();
+        refreshDueCards();
+        refreshAlarmBar();
+        applyBadgeAlert();
+        save();
+        checkReminders();
+    });
     connect(m_planner, &PlannerView::noteActivated, this, &Panel::revealNote);
     connect(m_planner, &PlannerView::birthdayActivated, this, [this](Birthday *) {
         togglePage(m_birthdays);
@@ -556,7 +557,6 @@ QWidget *Panel::buildBody() {
         scheduleSave();
     });
 
-    // ---- temporizadores ---------------------------------------------------
     m_timerView = new TimerView(m_theme);
     m_timerView->setSource(&m_store.timers());
     connect(m_timerView, &TimerView::createRequested, this, &Panel::createTimer);
@@ -564,7 +564,6 @@ QWidget *Panel::buildBody() {
     connect(m_timerView, &TimerView::resetRequested, this, &Panel::resetTimer);
     connect(m_timerView, &TimerView::removeRequested, this, &Panel::removeTimer);
 
-    // ---- cumpleaños -------------------------------------------------------
     m_birthdays = new BirthdayView(m_theme);
     m_birthdays->setByMonth(m_store.prefs().birthdaysByMonth);
     m_birthdays->setSource(&m_store.birthdays());
@@ -579,14 +578,13 @@ QWidget *Panel::buildBody() {
         save();
     });
 
-    // ---- ajustes ----------------------------------------------------------
     m_settings = new SettingsView(m_theme);
     m_settings->setSource(&m_store);
     connect(m_settings, &SettingsView::accentPicked, this, [this](const QColor &c) {
         m_theme.accent = c;
         m_store.prefs().accent = c;
         applyTheme();
-        rebuildList();   // las tarjetas llevan el acento pintado en línea
+        rebuildList();   // the cards carry the accent inline
         save();
     });
     connect(m_settings, &SettingsView::accentEditorRequested, this, &Panel::openAccentEditor);
@@ -601,10 +599,10 @@ QWidget *Panel::buildBody() {
         if (percent == m_theme.textScale) return;
         m_theme.textScale = percent;
         m_store.prefs().textScale = percent;
-        // La hoja cambia sola en todo lo que la hereda; lo que se pinta a mano
-        // (el planificador, los temporizadores) lo recoge en setTheme().
+        // The sheet updates everything that inherits it; what is painted by hand
+        // (planner, timers) picks it up in setTheme().
         applyTheme();
-        refreshSettings();   // el botón elegido y la muestra
+        refreshSettings();   // the chosen button and the sample
         save();
     });
     connect(m_settings, &SettingsView::appModeToggled, this, &Panel::setAppMode);
@@ -616,16 +614,15 @@ QWidget *Panel::buildBody() {
     });
     connect(m_settings, &SettingsView::sizePerPageToggled, this, [this](bool on) {
         if (on) {
-            // El de la lista sale de la regla de antes (sin el ensanche del
-            // planificador ni el estirón), y la página abierta, que son los
-            // ajustes, se queda con el que tiene ahora.
+            // The list's size comes from the old rule (without the planner's widening or
+            // the stretch), and the open page, settings, keeps its current one.
             syncPrefs();
             m_listSize = m_store.prefs().windowSize;
             m_store.prefs().sizePerPage = true;
             rememberPageSize(m_body->currentWidget());
             m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
         } else {
-            // Los tamaños apuntados se quedan: volver a encenderlo los recupera.
+            // The recorded sizes are kept: turning it back on restores them.
             m_store.prefs().sizePerPage = false;
         }
         refreshSettings();
@@ -647,7 +644,7 @@ QWidget *Panel::buildBody() {
         m_store.prefs().updateCheck = on;
         refreshSettings();
         save();
-        if (on) pollUpdates();   // si tocaba, se mira ya
+        if (on) pollUpdates();   // if a check was due, it happens now
     });
     connect(m_settings, &SettingsView::checkUpdatesRequested, this, &Panel::checkUpdatesNow);
     connect(m_settings, &SettingsView::openLatestRequested, this, &Panel::openLatestRelease);
@@ -657,10 +654,30 @@ QWidget *Panel::buildBody() {
     connect(m_settings, &SettingsView::driveConnectRequested, m_drive, &DriveSync::connectAccount);
     connect(m_settings, &SettingsView::driveCancelRequested, m_drive, &DriveSync::cancel);
     connect(m_settings, &SettingsView::driveDisconnectRequested, m_drive, &DriveSync::disconnectAccount);
+    connect(m_drive->calendar(), &CalendarSync::changed, m_settings, &SettingsView::refreshDrive);
+    connect(m_settings, &SettingsView::calendarToggled, this, [this](bool on) {
+        m_drive->calendar()->setEnabled(on);
+        // Without the scope, enabling it means re-authorising the account.
+        if (on && !m_drive->hasCalendarScope()) m_drive->connectAccount();
+        else if (on && m_store.available()) m_drive->syncNow();
+    });
+    connect(m_settings, &SettingsView::calendarGrantRequested, m_drive, &DriveSync::connectAccount);
+    connect(m_settings, &SettingsView::calendarFollowToggled, this,
+            [this](const QString &calId, bool on) {
+        CalendarSync *cal = m_drive->calendar();
+        if (on) {
+            cal->follow(calId);
+            refreshPlanner();
+            if (m_store.available()) m_drive->syncNow();
+        } else if (Event::Category *c = cal->categoryFor(calId)) {
+            removeCategory(c);
+        }
+    });
+    connect(m_settings, &SettingsView::calendarTargetRequested, this, &Panel::openCalendarTarget);
     connect(m_settings, &SettingsView::driveSyncRequested, this, [this] {
         if (!m_store.available()) return;
-        save();                 // lo último escrito, antes de subir
-        m_driveTimer->stop();   // ya se sube ahora
+        save();                 // the latest edits, before uploading
+        m_driveTimer->stop();   // uploading now
         m_drive->syncNow();
     });
 
@@ -673,8 +690,8 @@ QWidget *Panel::buildBody() {
 
     for (const Page &p : pages())
         connect(p.button, &QToolButton::clicked, this, [this, page = p.page] { togglePage(page); });
-    // Desde el principio, no solo al cambiar de página: el calendario pide más
-    // alto que la lista y, sin esto, se lo impondría a la ventana ya al nacer.
+    // From the start, not only on page switches: the planner needs more height
+    // than the list and would impose it on the window from birth.
     showBodyPage(m_scroll);
     return m_body;
 }
@@ -700,9 +717,8 @@ QFrame *Panel::buildFooter() {
     m_footerHint->setObjectName("meta");
     l->addWidget(m_footerHint);
 
-    // Lo que le queda al temporizador en marcha, a la vista desde cualquier
-    // página. Ocupa el sitio de la pista mientras cuenta: las dos juntas no
-    // caben en el ancho mínimo.
+    // Time left on the running timer, visible from any page. It takes the hint's
+    // place while counting: both do not fit at the minimum width.
     m_footerTimer = new QToolButton;
     m_footerTimer->setObjectName("footerTimer");
     m_footerTimer->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -750,20 +766,17 @@ QWidget *Panel::buildBadge() {
     m_badgeCount->setFixedSize(20, 20);
     m_badgeCount->move(40, -2);
 
-    // Arriba a la izquierda: la ventana plegada mide exactamente lo que el
-    // dock, así que aquí no sobra sitio, y de la esquina de la pantalla por la
-    // que se pliega y se abre ya se encarga anchoredTopLeft.
+    // Top-left: the folded window measures exactly the dock, so there is no room
+    // to spare, and anchoredTopLeft() handles which screen corner it folds to.
     hl->addWidget(btn, 0, Qt::AlignTop | Qt::AlignLeft);
     hl->addStretch();
     return host;
 }
 
-// ---------------------------------------------------------------------------
-
 void Panel::applyTheme() {
     setStyleSheet(m_theme.sheet());
 
-    // El de la página en la que se está va en el acento; los demás, en gris.
+    // The open page's button in the accent, the rest grey.
     for (QToolButton *b : m_headerButtons)
         b->setIcon(paintIcon(b->property("iconKind").toString(),
                              b->property("active").toBool() ? m_theme.accent
@@ -772,12 +785,12 @@ void Panel::applyTheme() {
     if (m_planner) m_planner->setTheme(m_theme);
     if (m_timerView) m_timerView->setTheme(m_theme);
     if (m_birthdays) m_birthdays->setTheme(m_theme);
-    // El de ajustes no se rehace: repinta lo que lleva el acento y deja en pie
-    // el deslizador de la opacidad, que es quien acaba de llamar aquí.
+    // Settings is not rebuilt: it repaints what carries the accent and keeps the
+    // opacity slider alive, which is what just called here.
     if (m_settings) m_settings->setTheme(m_theme);
     applyBadgeAlert();
 
-    // El dock se pinta en línea porque su fondo depende de la opacidad actual.
+    // The dock is styled inline because its background depends on the opacity.
     if (auto *badge = m_badge->findChild<QToolButton *>("badge"))
         badge->setStyleSheet(QString("QToolButton#badge { background:%1; border:1px solid %2;"
                                      "border-radius:18px; }"
@@ -793,9 +806,8 @@ void Panel::setLanguage(Lang::Code code) {
     save();
 }
 
-// Los textos fijos de la ventana se vuelven a poner uno a uno; las tarjetas y
-// el calendario se rehacen enteros, que sale más simple que ir buscando cada
-// etiqueta dentro de ellos y aquí no hay nada que perder salvo el foco.
+/// The window's fixed texts are set again one by one; cards and planner are
+/// rebuilt whole, simpler than hunting each label inside them.
 void Panel::retranslate() {
     m_search->setPlaceholderText(L("Filtrar notas…"));
     m_emptyText->setText(L("Todavía no hay notas"));
@@ -805,8 +817,7 @@ void Panel::retranslate() {
 
     for (QToolButton *b : m_headerButtons)
         b->setToolTip(L(b->property("tip").toString()));
-    // Los de las páginas además dicen en cuál estás, así que se rehacen por su
-    // propio camino.
+    // The page buttons also say which page is open, so they go their own way.
     refreshPageButtons();
     m_alarmPlus->setText(L("+1 min"));
     for (auto *b : m_alarmBar->findChildren<QToolButton *>())
@@ -814,23 +825,23 @@ void Panel::retranslate() {
     refreshAlarmBar();
 
     buildTrayMenu();
-    applyBadgeAlert();   // la ayuda del icono de la bandeja lleva texto
+    applyBadgeAlert();   // the tray tooltip carries text
     if (m_planner) {
-        // Tras recargar el Store la vista y el filtro guardados son otros.
+        // After a Store reload the saved view and filter are different.
         m_planner->setView(PlannerView::View(m_store.prefs().plannerView));
         m_planner->setHidden(m_store.prefs().plannerHidden);
         m_planner->retranslate();
     }
     if (m_timerView) m_timerView->retranslate();
     if (m_birthdays) {
-        // Tras recargar el Store las preferencias son otras, y el orden de la
-        // lista es una de ellas; retranslate() repinta la página de todas formas.
+        // After a Store reload the preferences differ, and the list order is one of
+        // them; retranslate() repaints the page anyway.
         m_birthdays->setByMonth(m_store.prefs().birthdaysByMonth);
         m_birthdays->retranslate();
     }
     if (m_settings) m_settings->retranslate();
     refreshTitle();
-    // Rehace las tarjetas y, de paso, el pie, el calendario y el dock.
+    // Rebuilds the cards and with them the footer, the planner and the dock.
     rebuildList();
 }
 
@@ -843,13 +854,13 @@ QList<NoteCard *> Panel::cards() const {
 }
 
 void Panel::rebuildList() {
-    // limpiar tarjetas existentes (el cartel de vacío y el stretch se quedan)
+    // clear the existing cards (the empty-state placeholder and the stretch stay)
     for (int i = m_listLayout->count() - 1; i >= 0; --i) {
         QWidget *w = m_listLayout->itemAt(i)->widget();
         if (!qobject_cast<NoteCard *>(w)) continue;
         delete m_listLayout->takeAt(i);
-        // Oculta antes de soltarla: hasta que corra el borrado diferido seguiría
-        // pintada encima de la lista nueva (al cambiar de área se nota).
+        // Hidden before release: until the deferred delete runs it would stay painted
+        // over the new list (visible when switching areas).
         w->hide();
         w->deleteLater();
     }
@@ -872,7 +883,8 @@ void Panel::rebuildList() {
     }
 
     m_empty->setVisible(shown.isEmpty());
-    // Con una sola área es el cartel de siempre; con varias, dice cuál está vacía.
+    // With a single area it is the usual message; with several it names the
+    // empty one.
     if (m_store.areas().size() > 1) {
         const Area *a = m_store.area(currentArea());
         m_emptyText->setText(L("Aún no hay notas en %1").arg(a ? a->name : QString()));
@@ -888,8 +900,8 @@ void Panel::rebuildList() {
         applyFilter(m_search->text());
 }
 
-// La pista del pie depende de dónde estés: en la lista, el menú de la tarjeta;
-// en cualquier otra página, cómo se sale de ella.
+/// The footer hint depends on where you are: on the list, the card menu; on
+/// any other page, how to leave it.
 void Panel::refreshFooterHint() {
     if (!m_footerHint) return;
     const bool onList = !m_body || m_body->currentWidget() == m_scroll;
@@ -916,8 +928,8 @@ void Panel::refreshFooter() {
         m_footerText->setText(L("AJUSTES"));
         return;
     }
-    // El nombre del área va recortado: la etiqueta del pie no puede pedir su
-    // ancho (ver *Card widths*), y el nombre lo escribe el usuario.
+    // The area name is elided: the footer label must not demand its width (see
+    // *Card widths*), and the user writes the name.
     const Area *a = m_store.area(currentArea());
     const QString name = QFontMetrics(m_footerText->font())
                              .elidedText(a ? a->name.toUpper() : QString(), Qt::ElideRight, 90);
@@ -932,8 +944,8 @@ void Panel::addNote(Note::Type type) {
              : type == Note::Voice    ? L("Nota de voz")
                                       : L("Nueva nota");
     if (type == Note::Reminder) {
-        // Con instante real desde el principio: así el recordatorio recién
-        // creado suena y además aparece en el calendario.
+        // A real instant from the start, so the new reminder rings and appears in the
+        // planner.
         QDateTime when(QDate::currentDate(), QTime(18, 0));
         if (when <= QDateTime::currentDateTime()) when = when.addDays(1);
         n->dueAtMs = when.toMSecsSinceEpoch();
@@ -945,17 +957,14 @@ void Panel::addNote(Note::Type type) {
 }
 
 void Panel::removeNote(Note *n) {
-    // Igual que con los cumpleaños: si la nota estaba sonando y era la única,
-    // el tono se quedaba puesto sin nada en la lista que lo explicara ni botón
-    // con el que pararlo. Se pregunta antes de borrarla, porque después ya no
-    // hay a quién.
+    // If the note was ringing and was the only one, the tone kept going with
+    // nothing on screen to explain or stop it. Asked before deleting, since
+    // afterwards there is no one to ask.
     const bool wasRinging = n->ringing;
     m_store.remove(n);
     if (wasRinging && !anyRinging()) m_alarm->stop();
-    rebuildList();   // de paso repinta el dock y la bandeja
+    rebuildList();   // also repaints the dock and the tray
 }
-
-// --- áreas de trabajo -------------------------------------------------------
 
 QString Panel::currentArea() const {
     const QString id = m_store.prefs().activeArea;
@@ -966,7 +975,7 @@ QString Panel::currentArea() const {
 
 void Panel::switchArea(const QString &id) {
     if (!m_store.area(id)) return;
-    showNotes();   // Ctrl+1…9 también desde otra página
+    showNotes();   // Ctrl+1…9 also from another page
     if (id == currentArea()) {
         refreshAreaTabs();
         return;
@@ -989,8 +998,8 @@ void Panel::refreshAreaTabs() {
     m_areaTabs->setTabs(tabs, currentArea());
 }
 
-// Ctrl+T o «+»: el área se crea ya, con el nombre en edición. Intro lo
-// confirma y Escape deja el de serie, que siempre se puede cambiar luego.
+/// Ctrl+T or "+": the area is created at once with its name being edited.
+/// Enter confirms; Escape keeps the default name, which can be changed later.
 void Panel::newArea() {
     showNotes();
     Area *a = m_store.addArea(L("Área nueva"));
@@ -1044,7 +1053,7 @@ void Panel::openAreaMenu(const QString &id, const QPoint &globalPos) {
     menu->showAt(globalPos);
 }
 
-// «+N»: todas las áreas, con cuántas notas tiene cada una.
+/// "+N": every area, with how many notes each holds.
 void Panel::openAreaOverflow(const QPoint &globalPos) {
     auto *menu = new Popup(m_theme, m_areaTabs);
     menu->addHeader(L("Áreas · %1").arg(m_store.areas().size()));
@@ -1067,7 +1076,7 @@ void Panel::openAreaOverflow(const QPoint &globalPos) {
 
 void Panel::confirmDeleteArea(const QString &id) {
     Area *a = m_store.area(id);
-    // La última no se borra: la lista siempre está en alguna.
+    // The last area cannot be deleted: the list always lives in one.
     if (!a || m_store.areas().size() < 2) return;
 
     const QList<Note *> own = m_store.notesIn(id);
@@ -1079,7 +1088,7 @@ void Panel::confirmDeleteArea(const QString &id) {
         Area *area = m_store.area(id);
         if (!area) return;
         m_store.removeArea(area, moveTo);
-        // Si se han borrado notas que sonaban, el tono no puede quedarse solo.
+        // If deleted notes were ringing, the tone must not keep going alone.
         if (!anyRinging()) m_alarm->stop();
         if (!moveTo.isEmpty()) m_store.prefs().activeArea = moveTo;
         rebuildList();
@@ -1135,19 +1144,17 @@ void Panel::openMoveNoteMenu(Note *n, const QPoint &globalPos) {
 }
 
 void Panel::moveNoteToArea(Note *n, const QString &areaId) {
-    // El menú se abrió antes: la nota puede haberse borrado entre medias (una
-    // sincronización), y el área también.
+    // The menu was opened earlier: the note (or the area) may have been deleted
+    // meanwhile by a sync.
     if (!m_store.notes().contains(n) || !m_store.area(areaId)) return;
     m_store.setNoteArea(n, areaId);
     save();
     rebuildList();
 }
 
-// --- reordenar --------------------------------------------------------------
-
 void Panel::moveNote(Note *n, int steps) {
-    // Un paso dentro de su área: la vecina que cuenta es la de la misma
-    // pestaña, no la que esté al lado en la lista de todas.
+    // One step within its area: the neighbour that counts is the one on the same
+    // tab, not the next one in the global list.
     const QList<Note *> area = m_store.notesIn(m_store.areaOf(n));
     const int at = int(area.indexOf(n));
     if (at < 0 || at + steps < 0 || at + steps >= area.size()) return;
@@ -1162,27 +1169,26 @@ void Panel::moveNote(Note *n, int steps) {
 void Panel::beginCardDrag(NoteCard *card) {
     m_dragCard = card;
     card->setProperty("dragging", true);
-    // Una propiedad dinámica no repinta sola.
+    // A dynamic property does not repaint by itself.
     card->style()->unpolish(card);
     card->style()->polish(card);
     card->raise();
 }
 
-// Reordena en caliente mientras dura el arrastre: la tarjeta cambia de sitio
-// en el layout en cuanto cruza el centro de otra, y no al soltar, para que se
-// vea dónde va a caer.
+/// Reorders live during the drag: the card moves in the layout as soon as it
+/// crosses another's centre, not on release, so it is visible where it lands.
 void Panel::dragCardTo(NoteCard *card, const QPoint &globalPos) {
     if (!card || !m_listHost) return;
 
-    // Encima de la pestaña de otra área: se resalta, y al soltar la nota se
-    // muda allí. Mientras tanto la lista no se reordena.
+    // Over another area's tab: it is highlighted and the note moves there on
+    // release. Meanwhile the list is not reordered.
     const QString over = m_areaTabs ? m_areaTabs->areaAt(globalPos) : QString();
     m_dropArea = over == currentArea() ? QString() : over;
     if (m_areaTabs) m_areaTabs->setDropTarget(m_dropArea);
     if (!m_dropArea.isEmpty()) return;
 
-    // Cerca de los bordes, la lista acompaña: sin esto no se puede sacar una
-    // tarjeta del trozo visible sin soltarla antes.
+    // Near the edges the list scrolls along, or a card could not be dragged out
+    // of the visible part.
     if (m_scroll) {
         const int y = m_scroll->viewport()->mapFromGlobal(globalPos).y();
         const int edge = 26;
@@ -1191,8 +1197,8 @@ void Panel::dragCardTo(NoteCard *card, const QPoint &globalPos) {
         else if (y > m_scroll->viewport()->height() - edge) bar->setValue(bar->value() + 12);
     }
 
-    // Solo cuentan las visibles: con un filtro puesto, las escondidas siguen
-    // en el layout y arrastrar por encima de ellas no significa nada.
+    // Only visible cards count: with a filter the hidden ones are still in the
+    // layout, and dragging over them means nothing.
     QList<NoteCard *> visible;
     for (NoteCard *c : cards())
         if (c->isVisible()) visible.append(c);
@@ -1205,8 +1211,7 @@ void Panel::dragCardTo(NoteCard *card, const QPoint &globalPos) {
     for (int i = 0; i < visible.size(); ++i) {
         if (i == from) continue;
         const int center = visible.at(i)->geometry().center().y();
-        // Hacia arriba manda la primera que quede por debajo del cursor;
-        // hacia abajo, la última que quede por encima.
+        // Upwards the first card below the cursor wins; downwards, the last above it.
         if (i < from && y < center) { to = i; break; }
         if (i > from && y > center) to = i;
     }
@@ -1214,8 +1219,8 @@ void Panel::dragCardTo(NoteCard *card, const QPoint &globalPos) {
 
     QWidget *anchor = visible.at(to);
     m_listLayout->removeWidget(card);
-    // El índice del ancla se pregunta ya sin la tarjeta dentro; yendo hacia
-    // abajo, la tarjeta va detrás de ella.
+    // The anchor's index is taken with the card already out; going down, the
+    // card goes after it.
     int at = m_listLayout->indexOf(anchor);
     if (to > from) ++at;
     m_listLayout->insertWidget(at, card);
@@ -1229,8 +1234,8 @@ void Panel::endCardDrag(NoteCard *card) {
     if (m_areaTabs) m_areaTabs->setDropTarget(QString());
     if (!card) return;
     if (!dropArea.isEmpty()) {
-        // Rehace la lista, y con ella esta tarjeta: el borrado es diferido, así
-        // que el asidero que ha llamado aquí sigue vivo hasta volver.
+        // Rebuilds the list and this card with it: deletion is deferred, so the grip
+        // that called here stays alive until return.
         moveNoteToArea(card->note(), dropArea);
         return;
     }
@@ -1240,10 +1245,10 @@ void Panel::endCardDrag(NoteCard *card) {
     save();
 }
 
-// El orden que se ve es el que se guarda.
+/// The order on screen is the order saved.
 void Panel::commitOrder() {
-    // En pantalla solo están las del área abierta: ocupan los mismos huecos que
-    // tenían en la lista de todas, en el orden nuevo, y las demás no se mueven.
+    // Only the open area's notes are on screen: they take the same slots they
+    // had in the global list, in the new order, and the rest do not move.
     QList<Note *> onScreen;
     for (NoteCard *card : cards()) onScreen.append(card->note());
     QList<Note *> order = m_store.notes();
@@ -1256,7 +1261,7 @@ void Panel::commitOrder() {
 void Panel::toggleSearch() {
     m_searchBar->setVisible(!m_searchBar->isVisible());
     if (m_searchBar->isVisible()) {
-        showNotes();          // filtrar con el calendario delante no se ve
+        showNotes();          // filtering with the planner in front would not be visible
         m_search->setFocus();
     } else {
         m_search->clear();
@@ -1276,15 +1281,15 @@ void Panel::applyFilter(const QString &q) {
 }
 
 void Panel::bringToFront() {
-    // Una ventana normal ya abierta no se toca: expand() le repondría el
-    // tamaño guardado aunque el usuario la tenga maximizada.
+    // An open normal window is left alone: expand() would restore the saved size
+    // even if the user maximised it.
     if (!appMode() || m_stack->currentWidget() == m_badge) expand();
     showRestored();
 }
 
 void Panel::showRestored() {
-    // Minimizada sigue "visible" para Qt; hay que quitarle el estado o show()
-    // no la saca de la barra de tareas.
+    // Minimised still counts as "visible" to Qt; the state must be cleared or
+    // show() does not bring it back from the taskbar.
     setWindowState(windowState() & ~Qt::WindowMinimized);
     show();
     raise();
@@ -1295,13 +1300,13 @@ int Panel::shadowMargin() const { return appMode() ? 0 : kShadowMargin; }
 
 void Panel::setAppMode(bool on) {
     if (on == appMode()) return;
-    // El marco del sistema sustituye al hueco de la sombra: la ventana encoge o
-    // crece en esos márgenes para que el panel de dentro mida lo mismo.
+    // The system frame replaces the shadow margin: the window shrinks or grows by
+    // those margins so the panel inside keeps its size.
     const int delta = 2 * kShadowMargin * (on ? -1 : 1);
     m_store.prefs().appMode = on;
     applyAppModeChrome();
     applyWindowFlags();
-    // El mínimo primero: con el de antes puesto, encoger la ventana no cabe.
+    // The minimum first: with the old one in place, shrinking does not fit.
     syncShellMinimum();
     resize(size() + QSize(delta, delta));
     m_expandedSize += QSize(delta, delta);
@@ -1317,9 +1322,9 @@ void Panel::applyAppModeChrome() {
     const int m = shadowMargin();
     m_outer->setContentsMargins(m, m, m, m);
     if (appMode()) {
-        // La sombra y las esquinas redondas las pone el gestor de ventanas; las
-        // de aquí dejarían un hueco transparente entre su marco y el panel.
-        m_shell->setGraphicsEffect(nullptr);   // la borra
+        // The window manager draws shadow and rounded corners; ours would leave a
+        // transparent gap between its frame and the panel.
+        m_shell->setGraphicsEffect(nullptr);   // deletes it
         m_shellShadow = nullptr;
     } else if (!m_shellShadow) {
         m_shellShadow = new QGraphicsDropShadowEffect(m_shell);
@@ -1337,8 +1342,6 @@ void Panel::applyAppModeChrome() {
     m_minBtn->setToolTip(L(tip));
 }
 
-// --- páginas -----------------------------------------------------------------
-
 QList<Panel::Page> Panel::pages() const {
     return {{m_planner, m_calendarBtn, "Calendario"},
             {m_timerView, m_timersBtn, "Temporizadores"},
@@ -1346,8 +1349,8 @@ QList<Panel::Page> Panel::pages() const {
             {m_settings, m_settingsBtn, "Ajustes"}};
 }
 
-// Abre una página, o vuelve a las notas si ya estaba abierta: el mismo botón
-// entra y sale.
+/// Opens a page, or returns to the notes if it was already open: the same
+/// button enters and leaves.
 void Panel::togglePage(QWidget *page) {
     if (m_body->currentWidget() == page) {
         showNotes();
@@ -1373,12 +1376,10 @@ void Panel::showNotes() {
     refreshTitle();
 }
 
-// --- tamaño por página -----------------------------------------------------------
-
 bool Panel::sizePerPage() const { return m_store.prefs().sizePerPage; }
 
-// Nombres fijos y no los de pages(): esos están en español para traducirlos,
-// y estos se guardan en notes.json.
+/// Fixed names rather than those of pages(): those are Spanish for
+/// translation, and these are stored in notes.json.
 QString Panel::pageKey(const QWidget *page) const {
     if (page == m_planner) return "planner";
     if (page == m_timerView) return "timers";
@@ -1389,26 +1390,26 @@ QString Panel::pageKey(const QWidget *page) const {
 
 void Panel::rememberPageSize(QWidget *page) {
     if (!sizePerPage() || !m_stack || m_stack->currentWidget() != m_shell || !page) return;
-    // Antes de mapearse la ventana tiene el tamaño de serie de Qt, no uno que
-    // haya elegido nadie: un guardado en pleno arranque lo apuntaría.
+    // Before mapping, the window has Qt's default size, which nobody chose: a
+    // save during startup would record it.
     if (!m_posRestored) return;
     if (page == m_scroll) m_listSize = size();
     else if (const QString key = pageKey(page); !key.isEmpty()) m_store.prefs().pageSizes[key] = size();
 }
 
-// Una página que todavía no tiene tamaño abre con el de la lista, no con el de
-// la página de la que se viene: así una primera visita al planificador no
-// hereda los ajustes estirados, y el planificador se ensancha desde ahí.
+/// A page with no stored size opens with the list's, not the previous page's,
+/// so a first visit to the planner does not inherit a stretched settings
+/// page, and the planner widens from there.
 bool Panel::applyPageSize(QWidget *page) {
     const QSize stored = page == m_scroll ? m_listSize
                                           : m_store.prefs().pageSizes.value(pageKey(page));
     QSize target = stored.isValid() ? stored : m_listSize;
     if (target.isValid()) {
-        // Nunca por debajo de lo que pide la página (ver syncShellMinimum), y
-        // nunca más de lo que cabe: un tamaño apuntado en otro monitor.
+        // Never below what the page needs (see syncShellMinimum()), never more than
+        // fits: a size recorded on another monitor.
         target = target.expandedTo(minimumSize());
         if (const QRect area = placementArea(); area.isValid()) target = target.boundedTo(area.size());
-        // Desde la lista, no desde la página anterior: ver m_pageHome.
+        // From the list, not from the previous page: see m_pageHome.
         const QRect from = m_pageHome.isValid() ? m_pageHome : geometry();
         const QRect want(anchoredTopLeft(from, target), target);
         if (want != geometry()) {
@@ -1423,14 +1424,14 @@ bool Panel::applyPageSize(QWidget *page) {
 
 void Panel::syncPageHome(QWidget *from) {
     if (from == m_scroll || !m_pageHome.isValid() || !m_pagePlaced.isValid()) {
-        // Desde la lista, la lista es lo que hay. Sin apunte previo (recién
-        // encendido el modo), lo más parecido: la esquina de ahora.
+        // From the list, the list is what is there. With nothing recorded (the mode
+        // was just switched on), the closest thing: the current corner.
         const QSize list = from != m_scroll && m_listSize.isValid() ? m_listSize : size();
         m_pageHome = QRect(pos(), list);
         return;
     }
-    // Lo que el usuario haya arrastrado la página se lo lleva también la
-    // lista; si no la ha tocado, el desplazamiento es cero.
+    // However far the user dragged the page, the list goes too; untouched, the
+    // offset is zero.
     m_pageHome.translate(pos() - m_pagePlaced.topLeft());
 }
 
@@ -1438,14 +1439,14 @@ void Panel::switchBodyPage(QWidget *page) {
     QWidget *from = m_body->currentWidget();
     const bool perPage = sizePerPage() && m_stack && m_stack->currentWidget() == m_shell;
     if (perPage) {
-        // Cómo se deja esta página es su tamaño; los apuntes de ensanche y
-        // estirón son del modo de un solo tamaño y aquí no se devuelven.
+        // How the page is left is its size; the widen and stretch notes belong to the
+        // single-size mode and are not given back here.
         syncPageHome(from);
         rememberPageSize(from);
         m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
     } else if (from == m_planner) {
-        // Primero se devuelve el ancho: si no, la página que viene heredaría
-        // la ventana ensanchada para el planificador.
+        // The width goes back first, or the next page would inherit the window
+        // widened for the planner.
         leaveWide();
     }
 
@@ -1462,15 +1463,13 @@ void Panel::switchBodyPage(QWidget *page) {
     }
 }
 
-// El botón no cambia de icono al abrir su página: se queda encendido. Así el
-// icono siempre dice adónde lleva y el realce dice dónde estás.
 void Panel::setPageActive(QToolButton *button, bool on,
                           const QString &tipOn, const QString &tipOff) {
     button->setProperty("active", on);
     button->setToolTip(on ? tipOn : tipOff);
     button->setIcon(paintIcon(button->property("iconKind").toString(),
                               on ? m_theme.accent : QColor(Theme::muted())));
-    // Una propiedad dinámica no repinta sola.
+    // A dynamic property does not repaint by itself.
     button->style()->unpolish(button);
     button->style()->polish(button);
 }
@@ -1481,20 +1480,63 @@ void Panel::refreshPageButtons() {
         setPageActive(p.button, p.page == current, L("Ver notas"), L(p.name));
 }
 
-// El rótulo de la cabecera nombra la página abierta. En la lista vuelve a ser
-// el nombre de la aplicación, que es donde tiene sentido que esté.
+/// On the list the title is the app's name again.
 void Panel::refreshTitle() {
     if (!m_titleLabel || !m_body) return;
     QString title = L("Tagoror");
     for (const Page &p : pages())
         if (p.page == m_body->currentWidget()) title = L(p.name);
     m_titleLabel->setText(title);
-    m_titleLabel->update();   // ElidedLabel se pinta a mano
+    m_titleLabel->update();   // ElidedLabel paints itself
+}
+
+void Panel::removeCategory(Event::Category *c) {
+    const QString id = c->id;
+    const bool google = id.startsWith("gcal:");
+    const bool wasHidden = m_planner->hidden().contains(id);
+    m_store.removeCategory(c);   // frees it: from here on only the id is valid
+    // If it was hidden, the id must not linger in the preferences.
+    if (wasHidden) {
+        QStringList hidden = m_planner->hidden();
+        hidden.removeAll(id);
+        m_planner->setHidden(hidden);
+        m_store.prefs().plannerHidden = hidden;
+        scheduleSave();
+    }
+    if (google) {
+        if (!anyRinging()) m_alarm->stop();
+        refreshAlarmBar();
+        applyBadgeAlert();
+        refreshFooter();
+        refreshSettings();   // that calendar's switch
+    }
+    refreshPlanner();
+}
+
+void Panel::openCalendarTarget(QWidget *anchor) {
+    CalendarSync *cal = m_drive->calendar();
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Eventos nuevos de Tagoror"));
+    // Only followed, writable calendars: uploading to an unfollowed one would
+    // leave the event with nobody reading its changes back.
+    for (const CalendarSync::Calendar &c : cal->calendars()) {
+        if (!c.writable || !cal->isFollowed(c.id)) continue;
+        menu->addItem(c.id == cal->target() ? "check" : "calendar", c.name, QString(),
+                      [this, id = c.id] {
+            m_drive->calendar()->setTarget(id);
+            if (m_store.available()) m_drive->syncNow();
+        });
+    }
+    menu->addSeparator();
+    menu->addItem(cal->target().isEmpty() ? "check" : "minus", L("Ninguno"),
+                  L("Los eventos de Tagoror se quedan aquí"), [this] { m_drive->calendar()->setTarget(QString());
+    });
+    menu->showBelow(anchor);
 }
 
 void Panel::refreshPlanner() {
-    // Cada tecleo en una tarjeta pasa por aquí: si el planificador no está a
-    // la vista no hay nada que repintar, y al volver a él ya se refresca.
+    // Every keystroke in a card lands here: if the planner is not visible there is
+    // nothing to repaint, and it refreshes on return.
     if (m_planner && m_body->currentWidget() == m_planner) m_planner->refresh();
 }
 
@@ -1507,15 +1549,13 @@ void Panel::createReminder(const QString &title, const QDateTime &when) {
 
     m_store.add(n);
     rebuildList();
-    // Se queda en el planificador, sobre el día donde acaba de aparecer.
+    // Stays in the planner, on the day where it just appeared.
     m_planner->goTo(when.date());
     checkReminders();
 }
 
-// --- ancho del planificador ---------------------------------------------------
-
-// Se ensancha hacia donde quepa (anchoredTopLeft: hacia la izquierda si está
-// pegada al borde derecho) y se apunta cómo quedó, para poder devolverla.
+/// Widens towards where it fits (anchoredTopLeft(): leftwards against the
+/// right edge) and records the result so it can be given back.
 void Panel::enterWide() {
     if (!m_stack || m_stack->currentWidget() != m_shell) return;
     int target = PlannerView::kPreferredWidth + shadowMargin() * 2;
@@ -1530,8 +1570,8 @@ void Panel::enterWide() {
     m_wideGeom = geometry();
 }
 
-// Solo si la ventana sigue siendo la que dejó enterWide: si el usuario la ha
-// redimensionado entre medias, ese tamaño es suyo y se respeta.
+/// Only while the window is still what enterWide() left: if the user resized
+/// it meanwhile, that size is theirs.
 void Panel::leaveWide() {
     if (m_narrowGeom.isValid() && geometry() == m_wideGeom) {
         setGeometry(m_narrowGeom);
@@ -1541,14 +1581,12 @@ void Panel::leaveWide() {
     m_wideGeom = QRect();
 }
 
-// --- temporizadores -------------------------------------------------------------
-
 void Panel::createTimer(const QString &name, qint64 ms) {
     auto *t = new Timer;
     t->name = name.isEmpty() ? L("Temporizador %1").arg(timerClock(ms)) : name;
     t->totalMs = ms;
     t->leftMs = ms;
-    t->start();              // crear es lanzarlo: para guardarlo quieto está Reiniciar
+    t->start();              // creating starts it: Reset keeps it idle as a template
     m_store.addTimer(t);
     m_timerView->focusTimer(t);
     onTimersChanged();
@@ -1572,7 +1610,7 @@ void Panel::resetTimer(Timer *t) {
 }
 
 void Panel::removeTimer(Timer *t) {
-    // Como con las notas: borrar el que suena no puede dejar el tono puesto.
+    // As with notes: deleting the ringing one must not leave the tone on.
     const bool wasRinging = t->ringing();
     m_store.removeTimer(t);
     if (wasRinging && !anyRinging()) m_alarm->stop();
@@ -1614,7 +1652,7 @@ void Panel::tickTimers() {
 
 void Panel::refreshFooterTimer() {
     if (!m_footerTimer) return;
-    // El que antes acaba es el que interesa.
+    // The one that ends first is the interesting one.
     const Timer *next = nullptr;
     for (const Timer *t : m_store.timers())
         if (t->state == Timer::Running && (!next || t->endsAtMs < next->endsAtMs)) next = t;
@@ -1630,8 +1668,8 @@ void Panel::refreshFooterTimer() {
     m_footerHint->setVisible(!show);
 }
 
-// Lo primero que suena: un temporizador, o si no un evento. Con varios a la
-// vez se dice cuántos, y Detener los calla todos.
+/// The first thing ringing: a timer, or else an event. With several it says
+/// how many, and Stop silences them all.
 void Panel::refreshAlarmBar() {
     if (!m_alarmBar) return;
     QStringList what;
@@ -1643,8 +1681,7 @@ void Panel::refreshAlarmBar() {
         }
     for (Event *e : m_store.events())
         if (e->ringingMs) {
-            // Con antelación de horas o de un día, "a las 10:00" puede ser
-            // mañana: entonces se dice el día.
+            // With hours or a day of lead, "at 10:00" may be tomorrow: then say the day.
             const QDateTime at = QDateTime::fromMSecsSinceEpoch(e->ringingMs);
             const QString title = e->title.isEmpty() ? L("Sin título") : e->title;
             if (at.date() == QDate::currentDate())
@@ -1663,7 +1700,7 @@ void Panel::refreshAlarmBar() {
     }
     if (show == !m_alarmBar->isHidden()) return;
     m_alarmBar->setVisible(show);
-    syncShellMinimum();   // ocupa alto dentro del shell, como los otros avisos
+    syncShellMinimum();   // takes height inside the shell, like the other banners
 }
 
 void Panel::stopBarAlarms() {
@@ -1678,8 +1715,8 @@ void Panel::stopBarAlarms() {
 }
 
 void Panel::silenceEvent(Event *e) {
-    // Se apunta qué vuelta sonó, no un "ya avisado" a secas: la semana que
-    // viene la clase vuelve a avisar.
+    // Records which occurrence rang, not a bare "done": next week the class rings
+    // again.
     e->firedMs = e->ringingMs;
     e->ringingMs = 0;
 }
@@ -1689,29 +1726,27 @@ void Panel::revealNote(Note *n) {
     if (m_store.areaOf(n) != currentArea()) switchArea(m_store.areaOf(n));
     for (NoteCard *card : cards()) {
         if (card->note() != n) continue;
-        card->show();                       // pudo dejarlo oculto un filtro
+        card->show();                       // a filter may have hidden it
         m_scroll->ensureWidgetVisible(card);
         card->focusTitle();
         return;
     }
 }
 
-// --- cumpleaños -------------------------------------------------------------
-
-// La página de ajustes enseña cosas que cambian por fuera de ella (la carpeta
-// de datos, las copias, el micrófono), así que se repinta cuando pasa algo.
+/// The settings page shows things that change outside it (data folder,
+/// backups, microphone), so it is repainted when they do.
 void Panel::refreshSettings() {
     if (m_settings && m_body->currentWidget() == m_settings) m_settings->refresh();
 }
 
 void Panel::refreshBirthdays() {
-    // Igual que el calendario: cada tecleo en una tarjeta pasa por rebuildList,
-    // y si la página no está a la vista no hay nada que repintar.
+    // As with the planner: every keystroke in a card goes through rebuildList(),
+    // and if the page is not visible there is nothing to repaint.
     if (m_birthdays && m_body->currentWidget() == m_birthdays) m_birthdays->refresh();
 }
 
-// Alta y edición por el mismo sitio, con b nulo para lo primero: el formato de
-// la fecha y lo que se pide se escriben una sola vez, y así no pueden discrepar.
+/// Adding and editing share one path (null @p b for a new one), so the date
+/// format and the fields are written once and cannot disagree.
 void Panel::openBirthdayEditor(Birthday *b, QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(b ? L("Editar cumpleaños") : L("Nuevo cumpleaños"));
@@ -1730,11 +1765,11 @@ void Panel::openBirthdayEditor(Birthday *b, QWidget *anchor) {
                         target->month = m;
                         target->year = y;
                         target->relation = values.value(2).trimmed();
-                        // La marca de felicitado es de una fecha concreta: si
-                        // la fecha cambia, deja de querer decir nada.
+                        // The greeted mark belongs to a specific date: if the date changes it no
+                        // longer means anything.
                         if (!target->isToday()) target->greetedYear = 0;
-                        // Se da de alta ya relleno: apuntarlo antes dejaría un
-                        // "1 de enero" sin nombre escrito en disco.
+                        // Added only once filled: adding earlier would write a nameless 1 January to
+                        // disk.
                         if (!b) m_store.addBirthday(target);
                         m_birthdays->refresh();
                         refreshFooter();
@@ -1772,12 +1807,12 @@ void Panel::askBirthdayReminder(Birthday *b, QWidget *anchor) {
         times << QTime(h, 0);
         labels << times.last().toString("HH:mm");
     }
-    // addChoice y no addChips: la hora del aviso es un ajuste con estado, no
-    // una lista de acciones, y el menú tiene que enseñar cuál está puesta.
+    // addChoice() and not addChips(): the alarm time is a setting with state, and
+    // the menu must show which one is set.
     menu->addChoice(labels, int(times.indexOf(b->remindAt)), [this, b, times](int i) {
         b->remindAt = times.at(i);
-        // La hora nueva vuelve a armar el aviso de este año: cambiarla justo
-        // después de callarlo tiene que servir para algo.
+        // A new time re-arms this year's alarm: changing it right after silencing it
+        // must do something.
         b->firedYear = 0;
         m_birthdays->refresh();
         save();
@@ -1808,8 +1843,8 @@ void Panel::askBirthdayReminder(Birthday *b, QWidget *anchor) {
 }
 
 void Panel::removeBirthday(Birthday *b) {
-    // Puede estar sonando justo cuando se borra: el tono se queda colgado si
-    // nadie lo apaga antes de que desaparezca la única cosa que lo pedía.
+    // It may be ringing when deleted: the tone would hang if nobody stopped it
+    // before the only thing asking for it disappears.
     const bool wasRinging = b->ringing;
     m_store.removeBirthday(b);
     if (wasRinging && !anyRinging()) m_alarm->stop();
@@ -1820,7 +1855,7 @@ void Panel::removeBirthday(Birthday *b) {
 
 void Panel::toggleGreeted(Birthday *b) {
     b->greetedYear = b->greeted() ? 0 : QDate::currentDate().year();
-    // Felicitar es enterarse: no tiene sentido que siga sonando.
+    // Greeting is acknowledging: it makes no sense to keep ringing.
     if (b->ringing) {
         silenceBirthday(b);
         if (!anyRinging()) m_alarm->stop();
@@ -1832,8 +1867,8 @@ void Panel::toggleGreeted(Birthday *b) {
 
 void Panel::silenceBirthday(Birthday *b) {
     b->ringing = false;
-    // Se apunta el año, no un "ya sonó" a secas: la marca tiene que caducar
-    // sola para que el año que viene vuelva a avisar.
+    // The year is recorded, not a bare "rang": the mark must expire on its own so
+    // it rings again next year.
     b->firedYear = QDate::currentDate().year();
 }
 
@@ -1844,8 +1879,6 @@ void Panel::dismissBirthday(Birthday *b) {
     applyBadgeAlert();
     save();
 }
-
-// --- recordatorios ---------------------------------------------------------
 
 bool Panel::anyRinging() const {
     for (Note *n : m_store.notes())
@@ -1869,9 +1902,9 @@ void Panel::checkReminders() {
             started = true;
         }
     }
-    // Los cumpleaños con hora puesta suenan por el mismo latido y con el mismo
-    // tono: para quien lo oye es el mismo aviso, y duplicar la maquinaria solo
-    // daría dos maneras de que se quedara sonando.
+    // Birthdays with a time ring on the same heartbeat with the same tone: to
+    // whoever hears it, it is the same alarm, and a second mechanism would only
+    // be a second way for it to get stuck.
     const QDateTime nowAt = QDateTime::currentDateTime();
     for (Birthday *b : m_store.birthdays()) {
         if (b->alarmDue(nowAt) && !b->ringing) {
@@ -1879,8 +1912,7 @@ void Panel::checkReminders() {
             started = true;
         }
     }
-    // Los eventos del planificador con aviso, diez minutos antes. Mismo tono
-    // otra vez: para quien lo oye es un aviso más.
+    // Planner events with an alert, the same tone again.
     for (Event *e : m_store.events()) {
         const qint64 key = e->alarmDue(nowAt);
         if (key && e->ringingMs != key) {
@@ -1898,9 +1930,8 @@ void Panel::checkReminders() {
     applyBadgeAlert();
 }
 
-// Callar un aviso. Uno normal queda marcado como avisado y no vuelve; uno que
-// se repite salta a su siguiente vuelta, que es justamente lo que lo hará
-// sonar otra vez la semana o el año que viene.
+/// A normal reminder is marked as fired and does not come back; a repeating
+/// one moves to its next turn, which is what makes it ring again.
 void Panel::silence(Note *n) {
     n->ringing = false;
     if (!n->repeats()) {
@@ -1920,10 +1951,9 @@ void Panel::dismissNote(Note *n) {
     save();
 }
 
-// Aplazar un aviso que estaba sonando. La tarjeta ya se ha quitado el
-// 'ringing' y se ha repintado sola; aquí se apaga lo que vive fuera de ella,
-// que es el tono y el rojo del dock, y se rehace el calendario -- que seguía
-// enseñando el aviso como si sonara, ahora sobre su día nuevo.
+/// Postpones a reminder that was ringing. The card already cleared its
+/// @c ringing and repainted; here goes what lives outside it (the tone, the
+/// red dock) and the planner, which still showed it ringing on its new day.
 void Panel::rescheduleNote(Note *) {
     if (!anyRinging()) m_alarm->stop();
     refreshPlanner();
@@ -1936,20 +1966,19 @@ void Panel::refreshDueCards() {
 
 void Panel::applyBadgeAlert() {
     const bool alert = anyRinging();
-    refreshAreaTabs();   // el punto rojo de cada área sale de aquí también
+    refreshAreaTabs();   // each area's red dot comes from here too
 
     auto *badge = m_badge->findChild<QToolButton *>("badge");
     if (badge) {
-        // Plegado, el dock es lo único que se ve: cambia de icono y de color
-        // para que se note que hay un aviso esperando.
+        // Folded, the dock is the only thing visible: it changes icon and colour so
+        // the waiting alarm shows.
         badge->setIcon(paintIcon(alert ? "bell" : "notes",
                                  QColor(alert ? "#ff7a6b" : Theme::fg()), 22));
         badge->setToolTip(alert ? L("Recordatorio vencido · clic para parar")
                                 : L("Abrir Tagoror · arrastra para mover"));
     }
     if (m_tray) {
-        // Escondida en la bandeja, el icono es la única señal de que algo ha
-        // vencido; el mismo cambio que hace el dock en el escritorio.
+        // Hidden in the tray, the icon is the only sign that something is due.
         m_tray->setIcon(alert ? alertIcon() : qApp->windowIcon());
         m_tray->setToolTip(alert ? L("Recordatorio vencido") : L("Tagoror"));
     }
@@ -1959,8 +1988,6 @@ void Panel::applyBadgeAlert() {
                     "font-size:11px; font-weight:600;")
                 .arg(alert ? QString("#ff7a6b") : m_theme.accent.name()));
 }
-
-// --- selectores ------------------------------------------------------------
 
 void Panel::openNewNoteMenu(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
@@ -1980,7 +2007,7 @@ void Panel::openAccentEditor(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(L("Color de acento"));
     menu->addEditor("#7c9cff", m_theme.accent.name(), [this](const QString &text) {
-        // QColor acepta también nombres ("teal"), no solo hexadecimal.
+        // QColor also accepts names ("teal"), not only hex.
         const QColor picked(text.trimmed());
         if (!picked.isValid()) return;
         m_theme.accent = picked;
@@ -1993,22 +2020,21 @@ void Panel::openAccentEditor(QWidget *anchor) {
 }
 
 void Panel::chooseDataFolder() {
-    // El diálogo abre donde estén los datos, salvo que ese sitio no exista
-    // ahora mismo: apuntar a una carpeta ausente deja el selector en blanco.
+    // The dialog opens where the data is, unless that place does not exist right
+    // now: pointing at a missing folder leaves the picker blank.
     const QString start = m_store.available() ? appDataDir() : QDir::homePath();
     const QString to =
         QFileDialog::getExistingDirectory(this, L("Carpeta donde guardar las notas"), start);
     if (to.isEmpty()) return;
 
-    // Si allí ya hay notas, hay que preguntar: llevarse las de aquí borra las
-    // de allí, y es justo lo que se hace al apuntar a un pendrive que ya las
-    // tiene. Si no las hay, no hay ambigüedad que resolver.
+    // If notes already live there, ask: taking these there would erase those,
+    // which is what happens when pointing at a USB stick that already has them.
     if (QFile::exists(to + "/notes.json")) {
         confirmDataFolder(to);
         return;
     }
     m_store.changeDataDir(to);
-    refreshSettings();   // la tarjeta enseña la ruta, y acaba de cambiar
+    refreshSettings();   // the card shows the path, which just changed
 }
 
 void Panel::confirmDataFolder(const QString &to) {
@@ -2040,10 +2066,10 @@ void Panel::openBackups(QWidget *anchor) {
     const Store::Prefs &prefs = m_store.prefs();
     const QList<Store::Backup> list = m_store.backups();
 
-    // --- a mano -------------------------------------------------------------
+    // Manual
     menu->addHeader(L("Copias de seguridad"));
     if (!m_store.available()) {
-        // Sin carpeta no hay dónde copiar, y ofrecerlo sería mentir.
+        // Without a folder there is nowhere to copy, and offering it would be a lie.
         menu->addItem("minus", L("Carpeta no disponible"),
                       L("No se puede copiar ahora mismo"), [] {});
         menu->showUnder(anchor);
@@ -2054,11 +2080,11 @@ void Panel::openBackups(QWidget *anchor) {
                   [this, anchor] {
                       m_store.makeBackup();
                       save();
-                      refreshSettings();     // la tarjeta lleva la cuenta
-                      openBackups(anchor);   // el menú se reabre con el estado nuevo
+                      refreshSettings();     // the card shows the count
+                      openBackups(anchor);   // the menu reopens with the new state
                   });
 
-    // --- cada cuánto --------------------------------------------------------
+    // Frequency
     menu->addSeparator();
     menu->addHeader(L("Cada cuánto"));
     QStringList periods;
@@ -2067,12 +2093,12 @@ void Panel::openBackups(QWidget *anchor) {
                     [this, anchor](int i) {
                         m_store.prefs().backupEveryDays = kBackupPeriods.at(i);
                         save();
-                        refreshSettings();   // la tarjeta dice cada cuánto
+                        refreshSettings();   // the card shows the frequency
                         openBackups(anchor);
                     });
 
-    // --- a qué hora ---------------------------------------------------------
-    // Solo cuando hay programación: una hora sin frecuencia no significa nada.
+    // Time of day: only with a schedule, since a time without a frequency means
+    // nothing.
     if (prefs.backupEveryDays > 0) {
         menu->addHeader(L("A qué hora"));
         QStringList hours;
@@ -2087,9 +2113,8 @@ void Panel::openBackups(QWidget *anchor) {
                             save();
                             openBackups(anchor);
                         });
-        // Vacío a propósito: la hora puesta ya la dice el chip encendido, y
-        // repetirla aquí solo sirve para que el campo abra con el texto
-        // seleccionado y parezca que hay algo que corregir.
+        // Empty on purpose: the lit chip already shows the time, and repeating it
+        // here opens the field with its text selected as if something needed fixing.
         menu->addEditor(L("otra hora · HH:mm"), QString(),
                         [this, anchor](const QString &value) {
                             const QTime t = QTime::fromString(value.trimmed(), "HH:mm");
@@ -2099,8 +2124,8 @@ void Panel::openBackups(QWidget *anchor) {
                             openBackups(anchor);
                         });
 
-        // Una programación que no dice cuándo va a actuar no se puede
-        // comprobar; y si la hora de hoy ya pasó, la siguiente es mañana.
+        // A schedule that does not say when it will act cannot be checked; if today's
+        // time has passed, the next is tomorrow.
         const QDateTime due = m_store.nextBackupDue();
         if (due.isValid())
             menu->addItem("clock", backupPeriodLabel(prefs.backupEveryDays),
@@ -2109,13 +2134,12 @@ void Panel::openBackups(QWidget *anchor) {
                           [] {});
     }
 
-    // --- volver a una -------------------------------------------------------
+    // Restore
     if (!list.isEmpty()) {
         menu->addSeparator();
         menu->addHeader(L("Volver a una copia"));
         for (const Store::Backup &b : list) {
-            // Nunca QLocale::system(): la fecha se escribe en el idioma
-            // elegido en ajustes, como todo lo demás.
+            // Never QLocale::system(): the date is in the language chosen in settings.
             const QString when = b.when.isValid()
                                      ? Lang::locale().toString(b.when, "d MMM yyyy · HH:mm")
                                      : QFileInfo(b.path).fileName();
@@ -2136,37 +2160,31 @@ void Panel::confirmRestore(const QString &file) {
     menu->showAt(mapToGlobal(rect().center()));
 }
 
-// --- carpeta de datos -------------------------------------------------------
-
 void Panel::pollBackup() {
-    // La copia programada la dispara esto cuando la app está abierta a esa
-    // hora; si estaba cerrada, la recoge Store::load() al arrancar.
-    if (m_store.backupIfDue()) scheduleSave();   // deja apuntada la fecha
+    // This triggers the scheduled backup while the app is open at that time;
+    // if it was closed, Store::load() catches up on launch.
+    if (m_store.backupIfDue()) scheduleSave();   // records the date
 }
 
-// --- actualizaciones --------------------------------------------------------
-
 bool Panel::updateAvailable() const {
-    // Sin saber la versión propia no se puede afirmar que haya otra más nueva:
-    // comparar contra una cadena vacía haría que cualquier número ganara y el
-    // aviso se quedaría puesto para siempre.
+    // Without knowing our own version no newer one can be claimed: comparing
+    // against an empty string makes any number win and the notice never leaves.
     const QString mia = Updater::current();
     const QString latest = m_store.prefs().latestSeen;
     if (mia.isEmpty() || latest.isEmpty()) return false;
     return Updater::compare(latest, mia) > 0;
 }
 
-// Una vez al día, sobre el mismo latido que los recordatorios y las copias.
-// Preguntar es una petición HTTP, así que la frecuencia la marca la fecha
-// guardada y no el temporizador.
+/// Once a day, on the same heartbeat as reminders and backups. Asking is an
+/// HTTP request, so the stored date sets the pace, not the timer.
 void Panel::pollUpdates() {
     if (!m_store.prefs().updateCheck || m_updater->busy()) return;
 
     constexpr qint64 kDayMs = 24LL * 3600 * 1000;
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const qint64 last = m_store.prefs().lastUpdateMs;
-    // Una fecha en el futuro (el reloj del equipo movido hacia atrás) valdría
-    // por "nunca más": se trata como si no hubiera ninguna.
+    // A date in the future (the clock moved back) would mean "never again": treat
+    // it as none.
     if (last > 0 && last <= now && now - last < kDayMs) return;
 
     m_updater->check();
@@ -2183,8 +2201,8 @@ void Panel::onUpdateChecked(const QString &version, const QString &url, const QS
     if (error.isEmpty()) {
         m_store.prefs().latestSeen = version;
         m_latestUrl = url;
-        // Solo cuenta como comprobada la que contestó: si falló, mañana se
-        // vuelve a intentar en vez de esperar un día entero.
+        // Only an answered check counts: after a failure it retries instead of
+        // waiting a whole day.
         m_store.prefs().lastUpdateMs = QDateTime::currentMSecsSinceEpoch();
         save();
     }
@@ -2193,8 +2211,8 @@ void Panel::onUpdateChecked(const QString &version, const QString &url, const QS
 }
 
 void Panel::openLatestRelease() {
-    // Sin URL guardada (la versión venía del fichero, no de esta sesión) se
-    // abre la página de releases, que lleva al mismo sitio.
+    // Without a stored URL (the version came from the file, not this session) the
+    // releases page leads to the same place.
     QDesktopServices::openUrl(QUrl(m_latestUrl.isEmpty()
                                        ? QStringLiteral("https://github.com/Larzt/tagoror/releases/latest")
                                        : m_latestUrl));
@@ -2207,18 +2225,18 @@ void Panel::refreshUpdateBanner() {
         m_updateText->setText(L("Tagoror %1 ya está disponible · pulsa para verla")
                                   .arg(m_store.prefs().latestSeen));
 
-    // isHidden(), no isVisible(): lo segundo también es falso con el panel
-    // escondido en la bandeja, y la tira se estaría rehaciendo cada vez.
+    // isHidden(), not isVisible(): the latter is also false while the panel is in
+    // the tray, and the strip would be rebuilt every time.
     if (show == !m_updateBar->isHidden()) return;
     m_updateBar->setVisible(show);
-    // Ocupa alto dentro del shell: con la ventana en su mínimo, aparecer sin
-    // rehacerlo la pintaría encima de la primera tarjeta.
+    // Takes height inside the shell: at minimum size, appearing without this
+    // would paint it over the first card.
     syncShellMinimum();
 }
 
 void Panel::pollDataDir() {
     if (m_store.available()) return;
-    m_store.retryLoad();   // emite reloaded() la vez que lo consigue
+    m_store.retryLoad();   // emits reloaded() the time it succeeds
 }
 
 void Panel::onStoreReloaded() {
@@ -2227,13 +2245,12 @@ void Panel::onStoreReloaded() {
     m_theme.textScale = m_store.prefs().textScale;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
     applyTheme();
-    // El idioma lo deja puesto Store::load(); retranslate() reescribe la
-    // ventana con él y rehace tarjetas, calendario y bandeja de una vez.
+    // Store::load() already set the language; retranslate() rewrites the window
+    // with it and rebuilds cards, planner and tray in one go.
     retranslate();
-    // El tamaño y la posición no se tocan a propósito: la ventana es donde el
-    // usuario la tiene ahora, no donde estaba cuando se guardó ese fichero.
-    // Las notas que sonaban ya no existen -- la lista es otra --, así que el
-    // tono se apaga antes de ver si en la nueva hay algo que deba sonar.
+    // Size and position are left alone on purpose: the window is where the user
+    // has it now. The notes that were ringing no longer exist, so the tone stops
+    // before checking whether anything in the new list should ring.
     if (!anyRinging()) m_alarm->stop();
     checkReminders();
     tickTimers();
@@ -2241,10 +2258,9 @@ void Panel::onStoreReloaded() {
 }
 
 bool Panel::userIdle() const {
-    // Con la ventana en segundo plano nadie está escribiendo en ella, aunque
-    // el foco se haya quedado dentro de un campo.
-    // Un menú abierto tampoco: sus acciones llevan dentro punteros a la nota o
-    // al cumpleaños sobre el que se abrió, y la mezcla podría borrarlos.
+    // With the window in the background nobody is typing in it, even if the focus
+    // stayed in a field. Not with a menu open either: its actions hold pointers
+    // to the note or birthday it was opened on, which the merge could delete.
     if (QApplication::activePopupWidget()) return false;
     if (!isActiveWindow()) return true;
     QWidget *f = QApplication::focusWidget();
@@ -2253,8 +2269,8 @@ bool Panel::userIdle() const {
 }
 
 void Panel::onStoreMerged() {
-    // Lo que sonaba aquí puede haberse callado en el otro equipo: la versión
-    // de fuera trae el "ya avisó", y entonces aquí también se calla.
+    // What was ringing here may have been silenced on the other machine: the
+    // remote version carries the "fired" mark, so it is silenced here too.
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const int year = QDate::currentDate().year();
     for (Note *n : m_store.notes())
@@ -2265,41 +2281,33 @@ void Panel::onStoreMerged() {
         if (e->ringingMs && e->firedMs >= e->ringingMs) e->ringingMs = 0;
     if (!anyRinging()) m_alarm->stop();
 
-    rebuildList();          // tarjetas, pie, planificador, cumpleaños y dock
+    rebuildList();          // cards, footer, planner, birthdays and dock
     if (m_birthdays) m_birthdays->refresh();
-    tickTimers();           // uno que llega en marcha tiene que empezar a contar
+    tickTimers();           // one arriving while running must start counting
     onTimersChanged();
     refreshAlarmBar();
-    checkReminders();       // y uno que llega vencido, a sonar
+    checkReminders();       // and one arriving overdue, ringing
 }
 
 void Panel::refreshDataWarning() {
-    refreshSettings();   // la página enseña la carpeta y si está disponible
+    refreshSettings();   // the page shows the folder and whether it is available
     if (!m_dataWarn) return;
     const bool missing = !m_store.available();
     if (missing) {
-        // La ruta va en la ayuda emergente, no en el texto: metida dentro, el
-        // cartel ocupa tres líneas de las que dos son una ruta que el usuario
-        // ya tiene en la fila de ajustes. No es la trampa de *Card widths*:
-        // medido, un cartel con la ruta pide 81px de mínimo, porque wordWrap
-        // sí parte una palabra larga cuando no le cabe entera.
+        // The path goes in the tooltip, not the text: inside, the banner took three
+        // lines, two of them a path already shown in settings.
         m_dataWarn->setText(
             L("La carpeta de notas no está disponible. Nada de lo que escribas se guardará."));
         m_dataWarn->setToolTip(appDataDir());
     }
-    // isHidden(), no isVisible(): lo segundo es falso también con el panel
-    // escondido en la bandeja, y el cartel se estaría rehaciendo cada vez.
+    // isHidden(), not isVisible(): the latter is also false while the panel is in
+    // the tray, and the banner would be rebuilt every time.
     if (missing == !m_dataWarn->isHidden()) return;
     m_dataWarn->setVisible(missing);
-    // El cartel ocupa alto dentro del shell: si la ventana está en su mínimo,
-    // aparecer sin rehacerlo lo pinta encima de la primera tarjeta. Ver
-    // *Window behavior*: el mínimo sale del layout, nunca de una constante.
+    // The banner takes height inside the shell: at minimum size, appearing without
+    // this paints it over the first card (see *Window behavior*).
     syncShellMinimum();
 }
-
-// --- plegado ---------------------------------------------------------------
-
-// --- bandeja del sistema ----------------------------------------------------
 
 void Panel::buildTray() {
     if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
@@ -2313,23 +2321,22 @@ void Panel::buildTray() {
                     toggleFromTray();
             });
     m_tray->show();
-    applyBadgeAlert();   // por si ya hay algo sonando al arrancar
+    applyBadgeAlert();   // in case something is already ringing at startup
 }
 
-// Aquí sí un QMenu, que es la excepción a la regla del resto de la aplicación:
-// el menú de la bandeja no lo pinta este proceso sobre el marco translúcido,
-// lo dibuja el escritorio (por DBusMenu en Plasma), y QSystemTrayIcon no
-// admite otra cosa.
+/// A QMenu here, the one exception to the rule: the tray menu is not painted by
+/// this process over the translucent frame but by the desktop (via DBusMenu on
+/// Plasma), and QSystemTrayIcon accepts nothing else.
 void Panel::buildTrayMenu() {
     if (!m_tray) return;
 
-    delete m_trayMenu;                 // al cambiar de idioma se rehace entero
-    m_trayMenu = new QMenu(this);      // con dueño: se va con el panel
+    delete m_trayMenu;                 // rebuilt whole on a language change
+    m_trayMenu = new QMenu(this);      // owned: it goes with the panel
 
     QAction *toggle = m_trayMenu->addAction(L("Mostrar"));
     connect(toggle, &QAction::triggered, this, &Panel::toggleFromTray);
-    // La etiqueta dice lo que va a pasar, y eso depende de cómo esté la
-    // ventana en el momento de abrir el menú.
+    // The label says what will happen, which depends on the window's state when
+    // the menu opens.
     connect(m_trayMenu, &QMenu::aboutToShow, this,
             [this, toggle] {
                 toggle->setText(isVisible() && !isMinimized() ? L("Ocultar") : L("Mostrar"));
@@ -2356,20 +2363,19 @@ void Panel::buildTrayMenu() {
 }
 
 void Panel::toggleFromTray() {
-    // Minimizada cuenta como escondida: el clic la trae, no la oculta.
+    // Minimised counts as hidden: the click brings it back.
     if (isVisible() && !isMinimized()) {
         hide();
         return;
     }
-    // Se vuelve tal como se dejó, plegada o desplegada: esconder no es lo
-    // mismo que plegar y no tiene por qué deshacerlo.
+    // It comes back as it was left, folded or not: hiding is not folding.
     showRestored();
 }
 
 void Panel::closeEvent(QCloseEvent *e) {
     if (!m_tray) {
-        // Sin icono en la bandeja no queda de dónde recuperarla, así que
-        // cerrar es salir (y el destructor guarda).
+        // Without a tray icon there is no way to get it back, so closing quits (and
+        // the destructor saves).
         e->accept();
         qApp->quit();
         return;
@@ -2380,15 +2386,14 @@ void Panel::closeEvent(QCloseEvent *e) {
 
 void Panel::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
-    // En modo aplicación sí va en la barra de tareas: la propiedad no se pone,
-    // y como cambiar de flags rehace la ventana nativa, tampoco queda la vieja.
+    // In app mode it does belong in the taskbar: the property is not set, and
+    // since changing flags recreates the native window, the old one is gone too.
     if (!appMode()) wmSkipTaskbar(winId());
 
-    // Al mapear la ventana por primera vez el gestor la coloca donde le parece
-    // y pisa la posición pedida antes de mostrarla -- la restauración de sesión
-    // de KDE, que es la que corre al reiniciar el equipo, hace justo eso. Se
-    // vuelve a pedir una sola vez, ya con ventana nativa; de ahí en adelante la
-    // ventana es del usuario y aquí no se toca más.
+    // On first map the window manager places the window wherever it likes,
+    // overriding the requested position (KDE session restore, which runs on
+    // reboot, does exactly that). It is asked again once, with a native window;
+    // after that the window belongs to the user.
     if (!m_posRestored) {
         m_posRestored = true;
         restoreWindowPos();
@@ -2396,14 +2401,12 @@ void Panel::showEvent(QShowEvent *e) {
 }
 
 void Panel::applyWindowFlags() {
-    // Por defecto el widget se queda en el escritorio, por debajo del resto de
-    // ventanas; "siempre encima" es opcional. En Wayland estos avisos son solo
-    // una sugerencia: manda el compositor.
+    // By default the widget stays on the desktop, below other windows; "always on
+    // top" is optional. On Wayland these hints are only a request.
     Qt::WindowFlags flags = Qt::FramelessWindowHint | Qt::Tool;
     flags |= m_store.prefs().onTop ? Qt::WindowStaysOnTopHint : Qt::WindowStaysOnBottomHint;
-    // Modo aplicación: la ventana de siempre, con su marco, en la barra de
-    // tareas y en Alt+Tab. Sin "siempre encima" se apila como cualquier otra,
-    // no por debajo: pegarla al escritorio es lo que hace el widget.
+    // App mode: an ordinary window with its frame, in the taskbar and Alt+Tab.
+    // Without "always on top" it stacks like any other, not below them.
     if (appMode()) {
         flags = Qt::Window;
         if (m_store.prefs().onTop) flags |= Qt::WindowStaysOnTopHint;
@@ -2411,34 +2414,31 @@ void Panel::applyWindowFlags() {
 
     const bool wasVisible = isVisible();
     setWindowFlags(flags);
-    if (wasVisible) show();   // setWindowFlags esconde la ventana
+    if (wasVisible) show();   // setWindowFlags() hides the window
 }
 
 void Panel::showPage(QWidget *page) {
-    // Las páginas ocultas de un QStackedWidget siguen contando para el
-    // sizeHint; ignorándolas, la ventana puede encoger hasta el dock.
+    // Hidden pages of a QStackedWidget still count for the size hint; ignoring
+    // them lets the window shrink to the dock.
     for (int i = 0; i < m_stack->count(); ++i) {
         QWidget *w = m_stack->widget(i);
         const auto policy = (w == page) ? QSizePolicy::Preferred : QSizePolicy::Ignored;
         w->setSizePolicy(policy, policy);
     }
-    // Con la política en Ignored no basta: un minimumSize explícito sigue
-    // sumando al mínimo del QStackedLayout, y el panel plegado se quedaba con
-    // una franja invisible de 300 px al lado del dock que se comía los clics.
+    // The Ignored policy is not enough: an explicit minimumSize still adds to the
+    // QStackedLayout's minimum, and the folded panel kept an invisible 300px
+    // strip next to the dock that swallowed clicks.
     m_shell->setMinimumWidth(page == m_shell ? kShellMinWidth : 0);
     m_stack->setCurrentWidget(page);
 }
 
-// Misma idea, un nivel más adentro. Un QStackedWidget pide el mínimo de la
-// mayor de sus páginas, así que sin esto el calendario -- que necesita bastante
-// más alto -- le impondría su mínimo a la lista de notas, que no lo necesita.
+/// Same idea one level in: a QStackedWidget takes the largest minimum of all
+/// its pages, so the planner would impose its height on the note list.
 void Panel::showBodyPage(QWidget *page) {
-    // Si el foco está en la página que se va, se deja antes en su botón de la
-    // cabecera. Esconder un widget con el foco hace que Qt se lo pase al
-    // siguiente de la cadena, y al volver a la lista ese era el título de la
-    // primera tarjeta: se quedaba seleccionado como si se fuera a editar. En
-    // el botón sigue sirviendo a quien navega con el teclado, y sin anillo,
-    // porque no ha llegado por Tab (ver keynav).
+    // If the focus is on the page being left, park it on that page's header button
+    // first. Hiding a focused widget makes Qt pass the focus down the chain, and
+    // on the way back to the list that was the first card's title, which then
+    // looked like it was being edited. No ring: it did not arrive by Tab.
     QWidget *leaving = m_body->currentWidget();
     QWidget *focus = QApplication::focusWidget();
     if (leaving && leaving != page && focus && leaving->isAncestorOf(focus)) {
@@ -2463,14 +2463,10 @@ int Panel::shellMinimumHeight() const {
     QLayout *l = m_shell ? m_shell->layout() : nullptr;
     if (!l) return kShellMinHeight;
 
-    // Hay que recalcular de dentro afuera, y a mano.
-    //
-    // Quien llama acaba de esconder o enseñar la lista del día, y lo que
-    // invalida el layout del calendario es un LayoutRequest *encolado*: sin
-    // esperarlo, minimumSize() contesta con el mínimo de antes. Plegar dejaba
-    // así el alto mínimo de cuando estaba abierta y la ventana no encogía.
-    // Invalidar solo el de fuera no basta: el de fuera pregunta al de dentro,
-    // que sigue con su valor cacheado hasta que le llega ese evento.
+    // Recompute inside out, by hand. Hiding a widget invalidates its parent's
+    // layout through a *posted* LayoutRequest: without flushing it, minimumSize()
+    // answers with the previous state. Invalidating only the outer layout is not
+    // enough: it asks the inner one, which keeps its cached value until then.
     if (QWidget *page = m_body ? m_body->currentWidget() : nullptr) page->updateGeometry();
     QCoreApplication::sendPostedEvents(nullptr, QEvent::LayoutRequest);
     l->invalidate();
@@ -2478,32 +2474,25 @@ int Panel::shellMinimumHeight() const {
     return qMax(kShellMinHeight, l->minimumSize().height() + shadowMargin() * 2);
 }
 
-// El mínimo de la ventana lo pide el layout, no una constante.
-//
-// Un setMinimumSize por debajo de lo que el layout necesita no encoge nada:
-// Qt reparte el alto que hay y las geometrías acaban solapándose. Así es como
-// la lista del día se dibujaba encima de la rejilla del mes -- el mínimo eran
-// 340 px fijos y el calendario, ya plegado, pedía más.
-//
-// Y al revés: abrir la lista del día en un panel pequeño ya no la mete a la
-// fuerza donde no cabe, sino que hace crecer la ventana hacia abajo, que es de
-// donde sale el sitio. Solo si por abajo se acaba el área de trabajo sube lo
-// justo, la misma regla que anchoredTopLeft.
+/// The window's minimum comes from the layout, never from a constant.
+///
+/// A setMinimumSize() below what the layout needs shrinks nothing: Qt hands
+/// out the height it has and the geometries overlap. The other way round, a
+/// page that needs more height grows the window downwards, and upwards only
+/// as far as the work area forces it (the same rule as anchoredTopLeft()).
 void Panel::syncShellMinimum() {
     if (!m_shell || !m_stack || m_stack->currentWidget() != m_shell) return;
 
-    // setMinimumSize ya estira la ventana por su cuenta si se queda corta, y lo
-    // hace dejando quieta la esquina superior izquierda: crece hacia abajo, que
-    // es justo lo que se quiere. Aquí solo queda apuntar que el estirón es
-    // nuestro y devolverla al área de trabajo si se ha salido por abajo.
+    // setMinimumSize() already stretches the window when short, keeping the
+    // top-left corner: it grows downwards, as wanted. What is left is to record
+    // that the stretch is ours and pull it back into the work area.
     const QRect before = geometry();
     const int minH = shellMinimumHeight();
     setMinimumSize(kShellMinWidth + shadowMargin() * 2, minH);
 
     if (height() > before.height()) {
-        // Solo se apunta el primer estirón: abrir la lista y cambiar de página
-        // son dos crecidas seguidas, y lo que hay que devolver es el tamaño de
-        // antes de la primera, no el de en medio.
+        // Only the first stretch is recorded: two growths in a row must give back the
+        // size from before the first, not the one in between.
         if (!m_grownFrom.isValid()) m_grownFrom = before;
         if (const QRect area = placementArea(); area.isValid())
             if (const QPoint p = clampInto(pos(), size(), area); p != pos()) move(p);
@@ -2511,18 +2500,14 @@ void Panel::syncShellMinimum() {
         return;
     }
 
-    // Cabe de sobra. Si la ventana está así de grande porque la estiramos
-    // nosotros, plegar la lista la devuelve a lo que medía: crecer para hacer
-    // sitio y no volver deja la ventana un poco más grande cada vez.
-    //
-    // El apunte solo vale mientras la ventana siga siendo la que dejamos: en
-    // cuanto el usuario la toca, el tamaño es suyo y aquí ya no se decide.
+    // It fits with room to spare. If the window is this big because we stretched
+    // it, give it back, or it would grow a little every time. The note only holds
+    // while the window is still what we left: once the user touches it, the size
+    // is theirs.
     if (m_grownFrom.isValid() && geometry() == m_grownTo) {
-        // Todavía no se puede devolver todo -- el plegado de la lista bajó el
-        // mínimo, pero el calendario sigue pidiendo más que el tamaño de
-        // partida --: se deja como está y el apunte sigue en pie, porque no ha
-        // dejado de ser verdad. Borrarlo aquí era lo que hacía que un refresco
-        // cualquiera por el medio se comiera la vuelta.
+        // Not everything can be given back yet (the page still needs more than the
+        // starting size): leave it and keep the note, which is still true. Dropping
+        // it here let an intermediate sync eat the return trip.
         if (m_grownFrom.height() < minH) return;
         setGeometry(m_grownFrom);
         keepOnScreen();
@@ -2532,12 +2517,10 @@ void Panel::syncShellMinimum() {
 }
 
 void Panel::collapse() {
-    // El tamaño que se guarda es el de siempre, no el ensanchado para el
-    // planificador: si no, desplegar el dock abriría la ventana ancha para
-    // cualquier página.
-    // Con tamaño por página el dock sale de la lista, no de la página abierta:
-    // si esa se abrió hacia la izquierda o hacia arriba, su esquina no es la
-    // del panel y el dock acabaría lejos de donde se dejó.
+    // The saved size is the normal one, not widened for the planner, or unfolding
+    // would open wide for any page. With size per page the dock comes out of the
+    // list, not the open page: if that opened leftwards or upwards, its corner is
+    // not the panel's and the dock would land far from where it was left.
     QRect panel = geometry();
     if (sizePerPage()) {
         syncPageHome(m_body->currentWidget());
@@ -2548,18 +2531,17 @@ void Panel::collapse() {
         panel = geometry();
     }
     m_expandedSize = size();
-    // El apunte de la crecida no sobrevive al dock: la geometría con la que se
-    // comparaba es la del panel abierto, que a partir de aquí ya no existe.
+    // The stretch note does not survive the dock: the geometry it compared
+    // against is the open panel's, which no longer exists.
     m_grownFrom = QRect();
     m_grownTo = QRect();
 
     setMinimumSize(0, 0);
     showPage(m_badge);
 
-    // El dock vuelve al sitio del que salió el panel, no a su esquina superior
-    // izquierda: si estaba abajo y el panel se abrió hacia arriba, plegar tiene
-    // que devolverlo abajo. Con m_dockOffset a cero -- nada más arrancar, sin
-    // ningún despliegue previo -- eso es la esquina superior izquierda.
+    // The dock goes back to where the panel came out of, not to its top-left: if
+    // it was at the bottom and the panel opened upwards, folding must return it
+    // there. With m_dockOffset at zero (no unfold yet) that is the top-left.
     const QSize dock = m_badge->sizeHint() + QSize(shadowMargin() * 2, shadowMargin() * 2);
     const QPoint inside(qBound(0, m_dockOffset.x(), qMax(0, panel.width() - dock.width())),
                         qBound(0, m_dockOffset.y(), qMax(0, panel.height() - dock.height())));
@@ -2568,12 +2550,12 @@ void Panel::collapse() {
 }
 
 void Panel::expand() {
-    // La geometría del dock, antes de tocar nada: setMinimumSize() más abajo
-    // ya estira la ventana por su cuenta, y entonces esta esquina deja de ser
-    // la del dock y el panel se abre desde donde no es.
+    // The dock's geometry before touching anything: setMinimumSize() below
+    // already stretches the window, after which this corner is no longer the
+    // dock's.
     const QRect dock = geometry();
 
-    // Abrir el panel cuenta como enterarse: se calla la alarma.
+    // Opening the panel counts as acknowledging: the alarm is silenced.
     if (anyRinging()) {
         for (Note *n : m_store.notes())
             if (n->ringing) silence(n);
@@ -2594,13 +2576,12 @@ void Panel::expand() {
     showPage(m_shell);
     setMinimumSize(kShellMinWidth + shadowMargin() * 2, shellMinimumHeight());
 
-    // Un tamaño guardado mayor de lo que cabe (otro monitor, otra resolución,
-    // un panel del escritorio que recorta el área de trabajo) no entra de
-    // ninguna manera: se recorta antes de aplicarlo, porque si no lo recorta
-    // el gestor por su cuenta y además mueve la ventana.
+    // A saved size larger than what fits (another monitor or resolution, a desktop
+    // panel cutting the work area) is clamped first; otherwise the window manager
+    // clamps it and moves the window too.
     QSize target = m_expandedSize;
-    // Con tamaño por página se abre con el de la página en la que se plegó
-    // (o, si no tiene, con el de la lista).
+    // With size per page it opens with the size of the page it was folded on (or
+    // the list's, if that has none).
     bool hadPageSize = false;
     if (sizePerPage()) {
         QWidget *cur = m_body->currentWidget();
@@ -2614,14 +2595,12 @@ void Panel::expand() {
     if (const QRect area = placementArea(); area.isValid())
         target = target.boundedTo(area.size());
 
-    // El panel sale de la esquina superior izquierda del dock hacia abajo y a
-    // la derecha, que es donde estaba antes de plegarse; solo cuando por ahí no
-    // cabe (el dock arrastrado contra el borde derecho o el inferior) se abre
-    // hacia el otro lado.
+    // The panel comes out of the dock's top-left corner towards the bottom right,
+    // which is where it was before folding; only when that does not fit (a dock
+    // dragged against the right or bottom edge) does it open the other way.
     //
-    // Con tamaño por página, primero se decide dónde saldría la lista y la
-    // página abierta se coloca desde ahí, como al cambiar de página (ver
-    // m_pageHome): si no, cada página sacaría su propia esquina del dock.
+    // With size per page, first decide where the list would come out and place the
+    // open page from there, as on a page switch (see m_pageHome).
     QRect from = QRect(anchoredTopLeft(dock, target), target);
     if (sizePerPage()) {
         QSize list = m_listSize.isValid() ? m_listSize : target;
@@ -2632,15 +2611,14 @@ void Panel::expand() {
     const QPoint at = anchoredTopLeft(from, target);
     setGeometry(QRect(at, target));
 
-    // De qué punto del panel ha salido el dock, para meterlo por ahí al
-    // plegar. Es lo que hace que un dock abajo a la izquierda siga abajo a la
-    // izquierda después de abrir y cerrar el panel.
+    // Which point of the panel the dock came out of, to fold back through it. It
+    // is what keeps a bottom-left dock bottom-left across open and close.
     m_dockOffset = QPoint(qBound(0, dock.x() - from.x(), qMax(0, from.width() - dock.width())),
                           qBound(0, dock.y() - from.y(), qMax(0, from.height() - dock.height())));
 
     keepOnScreen();
-    // Se plegó con el planificador abierto: collapse() le devolvió el ancho
-    // estrecho antes de guardarlo, y aquí se le vuelve a dar el suyo.
+    // Folded with the planner open: collapse() gave back the narrow width before
+    // saving it, and here it widens again.
     if (m_body->currentWidget() == m_planner && !hadPageSize) enterWide();
     if (sizePerPage()) {
         m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
@@ -2649,11 +2627,10 @@ void Panel::expand() {
     }
 }
 
-// Dónde admite el gestor de ventanas que se ponga la ventana: la pantalla
-// disponible, ensanchada con el margen de sombra (que no es marco visible y sí
-// puede salirse), y recortada al área de trabajo del gestor. Ese recorte es el
-// que manda: pedir una posición fuera de ella no falla, la corrige el gestor y
-// la ventana aparece de un salto donde no se pidió.
+/// Where the window manager accepts the window: the available screen, grown by
+/// the shadow margin (not visible frame, it may hang off the screen), and cut
+/// to the WM's work area. That cut is what counts: a position outside it does
+/// not fail, the WM corrects it and the window jumps.
 QRect Panel::placementArea(const QScreen *sc) const {
     if (!sc) sc = screen();
     if (!sc) return {};
@@ -2664,68 +2641,57 @@ QRect Panel::placementArea(const QScreen *sc) const {
     return area;
 }
 
-// Por dónde crece o encoge la ventana. Nada de "hacia el centro de la
-// pantalla": esa regla mandaba el dock a la otra punta del monitor en cuanto el
-// panel pasaba de la mitad, y con el área de trabajo recortada (ver
-// placementArea) esa mitad no estaba donde uno la ve. Manda si cabe o no: se
-// deja quieta la esquina superior izquierda, y solo se ancla el borde contrario
-// cuando por ahí se saldría. Un dock en el borde derecho abre el panel hacia la
-// izquierda y uno en el inferior hacia arriba, porque es la única manera de que
-// quepa; en cualquier otro sitio ni el dock ni el panel se mueven.
+/// Where the window grows or shrinks from. Not "towards the screen centre":
+/// that sent the dock to the far side of the monitor as soon as the panel
+/// passed the middle. What decides is whether it fits: the top-left corner
+/// stays, and the opposite edge is anchored only when it would leave the area.
 QPoint Panel::anchoredTopLeft(const QRect &before, const QSize &after) const {
     const QRect area = placementArea();
     if (!area.isValid()) return before.topLeft();
 
-    // El margen de sombra es igual en ambos lados, así que alinear los bordes
-    // de la ventana alinea también los del marco visible.
+    // The shadow margin is the same on both sides, so aligning the window edges
+    // aligns the visible frame too.
     return {anchorAxis(before.left(), before.width(), after.width(),
                        area.left(), area.right() + 1),
             anchorAxis(before.top(), before.height(), after.height(),
                        area.top(), area.bottom() + 1)};
 }
 
-// Red de seguridad: tras plegar o desplegar, la ventana no puede quedar fuera
-// del sitio donde se la admite. anchoredTopLeft ya lo tiene en cuenta, pero el
-// tamaño restaurado o un cambio de pantalla pueden dejarla asomando.
-//
-// En Wayland colocar la propia ventana es cosa del compositor y move() puede
-// quedarse en nada; en X11 se aplica tal cual.
+/// Safety net: after folding or unfolding the window must not be left outside
+/// the placement area. anchoredTopLeft() already accounts for it, but a
+/// restored size or a screen change may leave it hanging out. On Wayland
+/// move() may do nothing.
 void Panel::keepOnScreen() {
     const QRect area = placementArea();
     if (!area.isValid()) return;
 
-    // qMin antes que qMax dentro de clampInto: si la ventana no cabe, se queda
-    // anclada arriba a la izquierda en vez de irse por el otro lado.
+    // qMin before qMax inside clampInto(): if the window does not fit it stays
+    // anchored top-left instead of going off the other side.
     if (const QPoint p = clampInto(pos(), size(), area); p != pos()) move(p);
 }
 
-// Vuelve al sitio donde quedó la ventana la última vez. Sin esto cada arranque
-// -- y reiniciar el equipo es un arranque -- la deja donde le parece al gestor
-// de ventanas, normalmente en una esquina que no es la que eligió el usuario.
-//
-// Vale lo mismo que para plegar y desplegar: en Wayland colocar la propia
-// ventana es cosa del compositor y esto se queda en nada; en X11 se aplica.
+/// Back to where the window was left last time. Without this every start
+/// (and rebooting is a start) lets the window manager decide. On Wayland this
+/// does nothing; on X11 it applies.
 void Panel::restoreWindowPos() {
     if (!m_store.prefs().hasWindowPos) return;
     const QPoint saved = m_store.prefs().windowPos;
 
-    // La pantalla es la que hay bajo la ventana guardada, no la primaria: con
-    // dos monitores, corregir contra la primaria se traería a ella una ventana
-    // que vivía en el otro. Se busca por el centro, porque el margen de sombra
-    // de la esquina bien puede asomar fuera de la pantalla. Si esa pantalla ya
-    // no está (un portátil desenchufado del monitor), placementArea() usa la
-    // actual y el recorte trae la ventana de vuelta a lo que hay.
+    // The screen under the saved window, not the primary: with two monitors,
+    // correcting against the primary would drag a window from the other one.
+    // Looked up by the centre, since the corner's shadow margin may hang off
+    // screen. If that screen is gone, placementArea() uses the current one and
+    // the clamp brings the window back into view.
     const QScreen *sc = QGuiApplication::screenAt(QRect(saved, size()).center());
     const QRect area = placementArea(sc);
     move(area.isValid() ? clampInto(saved, size(), area) : saved);
 }
 
-// Escape cierra la página en la que se esté y devuelve a las notas, que es lo
-// que anuncia el pie. Solo llega aquí lo que no se ha quedado ningún hijo: el
-// editor de una tarjeta ya usa Escape para cerrarse y se lo queda antes.
+/// Escape closes the open page and returns to the notes. Only what no child
+/// kept reaches here: a card's editor already uses Escape to close itself.
 void Panel::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Escape && m_body && m_body->currentWidget() != m_scroll) {
-        // En el planificador, Escape cierra antes el formulario si está abierto.
+        // On the planner, Escape closes the form first if it is open.
         if (m_body->currentWidget() == m_planner && m_planner->closeEditor()) {
             e->accept();
             return;
@@ -2739,22 +2705,20 @@ void Panel::keyPressEvent(QKeyEvent *e) {
 
 void Panel::moveEvent(QMoveEvent *e) {
     QWidget::moveEvent(e);
-    // Apuntar el sitio en cuanto cambia. El destructor guarda, pero al apagar
-    // el equipo la sesión mata el proceso y ese guardado no llega; el temporizador
-    // del Store agrupa además el chorro de eventos de un arrastre.
+    // Record the position as it changes. The destructor saves, but on shutdown
+    // the session kills the process first; the Store's timer also merges the
+    // stream of moves from a drag.
     if (isVisible()) scheduleSave();
 }
 
-// ---------------------------------------------------------------------------
-
 void Panel::syncPrefs() {
-    // Plegado, el tamaño que vale es el que tenía desplegado.
+    // Folded, the size that counts is the expanded one.
     const bool folded = m_stack && m_stack->currentWidget() == m_badge;
-    // Ensanchada para el planificador, lo que vale es lo que medía antes: al
-    // arrancar se abre la lista, no el planificador.
+    // Widened for the planner, what counts is the size before: the list opens at
+    // startup, not the planner.
     if (sizePerPage()) {
-        // Lo que se guarda como tamaño de la ventana es el de la lista, que es
-        // la que se abre al arrancar; el de la página abierta va a su sitio.
+        // The window size saved is the list's, which opens at startup; the open
+        // page's goes to its own slot.
         if (!folded && m_body) rememberPageSize(m_body->currentWidget());
         m_store.prefs().windowSize = m_listSize.isValid() ? m_listSize : size();
     } else {
@@ -2762,8 +2726,8 @@ void Panel::syncPrefs() {
         m_store.prefs().windowSize = folded ? m_expandedSize : wide ? m_narrowGeom.size() : size();
     }
 
-    // La posición se guarda tal cual esté, plegada o no: al arrancar el panel
-    // se abre por esa esquina, que es exactamente lo que hace desplegar el dock.
+    // The position is saved as it is, folded or not: at startup the panel opens
+    // from that corner, which is exactly what unfolding the dock does.
     m_store.prefs().windowPos = pos();
     m_store.prefs().hasWindowPos = true;
 }

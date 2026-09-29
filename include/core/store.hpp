@@ -23,140 +23,128 @@
 class QJsonObject;
 class QTimer;
 
-// Todo lo que sobrevive al cierre de la aplicación: las notas y las
-// preferencias que viajan con ellas. Está separado de Panel para que la
-// ventana no tenga que saber de JSON, de QSettings ni de migraciones.
+/// Everything that outlives the process: notes, birthdays, events, timers,
+/// areas and the preferences that travel with them. Kept apart from Panel so
+/// the window knows nothing about JSON, QSettings or migrations.
 class Store : public QObject {
     Q_OBJECT
 
 public:
-    // Preferencias guardadas junto a las notas. El acento y la opacidad son
-    // datos, no estilo: Panel construye su Theme a partir de ellos.
+    /// Preferences stored in notes.json. Accent and opacity are data, not a
+    /// Theme: `core` must not depend on `ui`.
     struct Prefs {
         QColor accent{"#7c9cff"};
-        int opacity = 96;              // 40..100
-        QSize windowSize;              // tamaño del panel desplegado
-        // Dónde dejó el usuario la ventana. Hace falta la bandera porque
-        // (0,0) es una esquina perfectamente válida: un QPoint nulo no puede
-        // significar "no hay nada guardado".
+        int opacity = 96;              ///< 40..100
+        QSize windowSize;              ///< Size of the expanded panel (the note list's, with per-page sizes).
+        /// Where the window was left. The flag is needed because (0,0) is a valid
+        /// corner, so a null QPoint cannot mean "nothing stored".
         QPoint windowPos;
         bool hasWindowPos = false;
-        QByteArray input;              // micrófono elegido en ajustes
-        bool onTop = false;            // por defecto vive en el escritorio
-        // Modo aplicación: una ventana más, con la decoración del sistema, en
-        // la barra de tareas y minimizable, en vez del widget sin marco pegado
-        // al escritorio. Es de este equipo, como el resto de la ventana.
+        QByteArray input;              ///< Microphone chosen in settings.
+        bool onTop = false;            ///< Off by default: the widget lives on the desktop.
+        /// App mode: an ordinary decorated window in the taskbar instead of the
+        /// frameless desktop widget. Per machine.
         bool appMode = false;
-        // Cada página (planificador, temporizadores, cumpleaños, ajustes)
-        // recuerda su propio tamaño de ventana, y la lista el suyo
-        // (windowSize): agrandar el planificador ya no agranda la lista.
-        // Apagado, la ventana tiene un solo tamaño como antes. Es de este
-        // equipo, como el resto de lo de la ventana: no se sincroniza.
+        /// Each page remembers its own window size and the list keeps windowSize.
+        /// Off, the window has a single size. Per machine, never synced.
         bool sizePerPage = true;
-        QHash<QString, QSize> pageSizes;   // "planner", "timers", "birthdays", "settings"
-        // El área abierta. Es de este equipo, como la ventana: en el portátil
-        // se puede estar en "Máster" y en el de casa en "Personal".
+        QHash<QString, QSize> pageSizes;   ///< Keyed "planner", "timers", "birthdays", "settings".
+        /// The open area. Per machine, never synced.
         QString activeArea;
-        Lang::Code lang = Lang::Es;    // idioma de la interfaz
-        // Cómo se ordena la página de cumpleaños: por lo que falta para cada
-        // uno (lo de serie) o por meses del año, de enero a diciembre. Vive
-        // aquí y no en birthdays.json porque es una preferencia de la interfaz,
-        // de la misma familia que el idioma, no un dato de la agenda.
+        Lang::Code lang = Lang::Es;    ///< Interface language.
+        /// Birthdays page order: by time left (default) or January to December.
+        /// An interface preference, so it lives here and not in birthdays.json.
         bool birthdaysByMonth = false;
 
-        // Tamaño del texto de las notas, en tanto por ciento del de serie. Solo
-        // escala el contenido (títulos, cuerpos, elementos, eventos); el resto
-        // de la interfaz se queda como está, porque crecer las etiquetas de
-        // anchura fija es lo que recorta la lista entera (ver *Card widths*).
+        /// Note text size in percent. Only content scales: growing fixed-width
+        /// chrome labels would clip the whole list (see *Card widths* in CLAUDE.md).
         int textScale = 100;
 
-        // Cómo se dejó el planificador: vista (0 día, 1 semana, 2 mes) y qué
-        // categorías están escondidas. Son de la interfaz, como el orden de
-        // los cumpleaños, y viajan con las notas.
+        /// Planner view (0 day, 1 week, 2 month) and hidden categories.
         int plannerView = 2;
         QStringList plannerHidden;
 
-        // Buscar si hay versión nueva una vez al día. Es lo único de la
-        // aplicación que sale a la red, así que va como un ajuste a la vista y
-        // no escondido; 'latestSeen' guarda la última versión que contestó el
-        // servidor para poder enseñarla sin volver a preguntar.
+        /// Daily update check. `latestSeen` is the last version the server reported,
+        /// shown without asking again.
         bool updateCheck = true;
         qint64 lastUpdateMs = 0;
         QString latestSeen;
 
-        // Cada cuántos días se aparta una copia, y a qué hora. Cero significa
-        // solo a mano. Viajan en notes.json, así que la pauta se muda con las
-        // notas: el pendrive lleva sus copias y con qué frecuencia se hacen.
+        /// Backup schedule: every N days (0 = manual only) at a given time. Stored
+        /// in notes.json so it moves with the notes.
         int backupEveryDays = 1;
         QTime backupAt{3, 0};
-        qint64 lastBackupMs = 0;       // cuándo se hizo la última
+        qint64 lastBackupMs = 0;       ///< When the last backup was taken.
     };
 
     explicit Store(QObject *parent = nullptr);
     ~Store() override;
 
-    // --- notas (propietario: se liberan en el destructor) ------------------
+    /// @name Notes
+    /// Owned: freed in the destructor and in remove().
+    /// @{
     const QList<Note *> &notes() const { return m_notes; }
     int count() const { return int(m_notes.size()); }
-    void add(Note *n);                 // la más reciente, arriba
-    void remove(Note *n);              // se lleva por delante sus adjuntos
-    // Reordena las notas para que queden en el orden dado. Es lo que usa el
-    // panel tras arrastrar una tarjeta: pasa el orden que ya tienen en
-    // pantalla en vez de calcular índices por su cuenta.
+    void add(Note *n);                 ///< Adds at the top.
+    void remove(Note *n);              ///< Deletes its attachments too.
+    /// Reorders the notes to @p order, which must be a permutation of exactly the
+    /// current notes. The panel passes the on-screen order after a drag.
     void setOrder(const QList<Note *> &order);
+    /// @}
 
-    // --- áreas de trabajo ------------------------------------------------------
-    // Las pestañas de la lista de notas. Siempre hay al menos una: si no queda
-    // ninguna (fichero de antes de las áreas, o todas borradas en otro equipo)
-    // se crea la de serie. Van ordenadas por Area::pos.
+    /// @name Workspace areas
+    /// There is always at least one: the default area is recreated when none is
+    /// left. Sorted by Area::pos.
+    /// @{
     const QList<Area *> &areas() const { return m_areas; }
     Area *area(const QString &id) const;
-    // El área en la que se enseña una nota. Una nota sin área es de la de
-    // serie, y una cuya área ya no existe (borrada en otro equipo mientras aquí
-    // se le asignaba) cae en la primera en vez de quedarse invisible.
+    /// The area a note is shown in. A note with no area, or whose area no longer
+    /// exists (deleted on another machine), falls in the first one instead of
+    /// becoming invisible.
     QString areaOf(const Note *n) const;
     QList<Note *> notesIn(const QString &areaId) const;
-    Area *addArea(const QString &name);           // al final de la tira
-    // Borra el área. Con 'moveTo' sus notas pasan a esa; vacío, se borran con
-    // ella (y sus adjuntos). La última área no se puede borrar.
+    Area *addArea(const QString &name);           ///< Appended at the end of the strip.
+    /// Deletes the area. With @p moveTo its notes go there; empty, they are
+    /// deleted with it (attachments included). The last area cannot be deleted.
     void removeArea(Area *a, const QString &moveTo);
-    void moveArea(Area *a, int steps);            // un sitio a izquierda o derecha
+    void moveArea(Area *a, int steps);            ///< One place left or right.
     void setNoteArea(Note *n, const QString &areaId);
+    /// @}
 
-    // --- temporizadores -----------------------------------------------------
-    // Van dentro de notes.json: son pocos, cambian de estado a cada rato y no
-    // son una agenda que haya que poder restaurar por separado.
+    /// @name Timers
+    /// Stored inside notes.json: few, constantly changing, not an agenda that
+    /// needs restoring separately.
+    /// @{
     const QList<Timer *> &timers() const { return m_timers; }
-    void addTimer(Timer *t);           // el más reciente, arriba
+    void addTimer(Timer *t);           ///< Adds at the top.
     void removeTimer(Timer *t);
+    /// @}
 
-    // --- planificador ---------------------------------------------------------
-    // Como los cumpleaños: su propio fichero (events.json), sus propias copias
-    // de seguridad con la misma marca de tiempo, y el mismo candado si el
-    // fichero está pero no se deja leer.
+    /// @name Planner
+    /// Own file (events.json), own backups with the same timestamp, and the same
+    /// lock when the file exists but cannot be read.
+    /// @{
     const QList<Event *> &events() const { return m_events; }
-    // Con save a false no se escribe todavía: Google Calendar trae cientos de
-    // golpe en la primera pasada, y guarda una vez al terminar.
+    /// With @p save false nothing is written yet: Google Calendar brings hundreds
+    /// at once on the first pass and saves once at the end.
     void addEvent(Event *e, bool save = true);
     void removeEvent(Event *e, bool save = true);
-    // Las categorías que ha creado el usuario (las de serie no se guardan).
-    // Van en events.json con los eventos, y se sincronizan igual que ellos.
+    /// The user's categories (built-in ones are never stored); synced like
+    /// events.
     const QList<Event::Category *> &categories() const { return m_categories; }
     void addCategory(Event::Category *c);
-    // Sus eventos no se quedan huérfanos: pasan a Event::kFallbackCategory.
-    // Salvo los de un calendario de Google (id "gcal:…"): dejar de seguirlo
-    // se los lleva, y en Google se quedan donde estaban (ver CalendarSync).
+    /// Its events move to Event::kFallbackCategory, except those of a Google
+    /// calendar ("gcal:…"), which are removed; they stay in Google.
     void removeCategory(Event::Category *c);
-    // Si events.json se leyó: sin él, nada sincroniza eventos.
+    /// Whether events.json was read; without it nothing syncs events.
     bool eventsReadable() const { return m_eventsReadable; }
-    // Cuándo se borró ese elemento ("e:<id>"), o 0 si no consta borrado.
+    /// When that element ("e:<id>") was deleted, or 0.
     qint64 deletedAt(const QString &key) const { return m_deleted.value(key); }
+    /// @}
 
-    // --- cumpleaños (mismo dueño y mismo fichero que las notas) ------------
-    // Viven aquí y no en la lista de notas porque son otra cosa (ver
-    // birthday.hpp), pero se guardan en el mismo notes.json: así viajan con
-    // las notas al cambiar de carpeta y entran en las copias de seguridad sin
-    // tener que duplicar nada de todo eso.
+    /// @name Birthdays
+    /// Kept in birthdays.json, next to notes.json (see birthday.hpp).
+    /// @{
     const QList<Birthday *> &birthdays() const { return m_birthdays; }
     int birthdayCount() const { return int(m_birthdays.size()); }
     void addBirthday(Birthday *b);
@@ -164,149 +152,131 @@ public:
 
     Prefs &prefs() { return m_prefs; }
     const Prefs &prefs() const { return m_prefs; }
+    /// @}
 
-    // Gancho para que el dueño refresque lo que solo él sabe (el tamaño de la
-    // ventana) justo antes de escribir. Debe soltarse antes de destruirlo: el
-    // Store guarda una última vez al morir, y para entonces ya no existe.
+    /// Hook to refresh what only the owner knows (the window size) right before
+    /// writing. Must be cleared before the owner dies: Store saves once more in
+    /// its destructor.
     std::function<void()> beforeSave;
 
-    // Una copia de seguridad ya hecha, tal como se le ofrece al usuario.
+    /// A backup on disk, as offered to the user.
     struct Backup {
         QString path;
-        QDateTime when;   // inválido si el nombre no lleva fecha reconocible
+        QDateTime when;   ///< Invalid if the file name carries no recognisable date.
         int notes = 0;
     };
 
-    // --- persistencia -------------------------------------------------------
-    QString path() const;              // notes.json
-    QString birthdaysPath() const;     // birthdays.json, al lado del anterior
-    QString eventsPath() const;        // events.json, lo mismo
-    void load();                       // siembra dos notas si no hay fichero
+    QString path() const;              ///< notes.json
+    QString birthdaysPath() const;     ///< birthdays.json, next to it.
+    QString eventsPath() const;        ///< events.json, next to it.
+    void load();                       ///< Seeds two demo notes when there is no file.
     void save();
 
-    // Días de historia que se conservan. Es público porque los ajustes lo
-    // dicen y no puede haber dos números que discrepen.
+    /// Backups kept. Public because settings prints it.
     static constexpr int kBackupsKept = 10;
 
-    // Cuándo toca la siguiente según la pauta, o inválido si es solo a mano.
-    // El menú lo enseña: una programación que no dice cuándo va a actuar no
-    // se puede comprobar.
+    /// When the next scheduled backup is due; invalid if manual only.
     QDateTime nextBackupDue() const;
-    // Hace una si ya tocaba. La llaman el arranque y el latido del panel, así
-    // que una copia programada a las 3:00 con la app cerrada se hace al abrir.
+    /// Takes a backup if one is due. Called at startup and on the panel's
+    /// heartbeat, so a 03:00 backup missed while closed happens on launch.
     bool backupIfDue();
-    // Una ahora, pase lo que pase: el botón de "crear copia ahora", y también
-    // el paso previo a restaurar.
+    /// Takes one now, unconditionally (the button, and the step before a
+    /// restore).
     bool makeBackup();
 
-    // Las copias que hay ahora mismo, de la más reciente a la más antigua.
+    /// Existing backups, newest first.
     QList<Backup> backups() const;
-    // Vuelve a una de ellas. Lo que había pasa antes a ser copia: restaurar
-    // por equivocación no puede ser el error del que ya no se vuelve.
+    /// Restores one. The current state is backed up first, so restoring the
+    /// wrong copy is never the mistake there is no coming back from.
     bool restoreBackup(const QString &file);
-    void scheduleSave();               // agrupa ráfagas de tecleo (600 ms)
+    void scheduleSave();               ///< Debounces bursts of typing (600 ms).
 
-    // Si la carpeta configurada estaba ahí cuando se leyó. En falso el Store
-    // entra en modo de solo lectura y no escribe nada en absoluto: ver save().
+    /// Whether the configured folder was there when read. When false the Store
+    /// is read-only and writes nothing at all (see save()).
     bool available() const { return m_available; }
 
-    // Vuelve a intentar la carga si la carpeta ha aparecido (el pendrive que
-    // se monta al abrirlo, el disco de red que tarda). Devuelve true la vez
-    // que lo consigue; lo que el usuario escribiera mientras tanto se conserva.
+    /// Retries the load if the folder has appeared (a drive mounted later).
+    /// @return true the time it succeeds; what was typed meanwhile is kept.
     bool retryLoad();
 
-    // Mueve la carpeta de datos copiando los adjuntos; deja los originales en
-    // su sitio, así un fallo a mitad no destruye nada. Sobrescribe el
-    // notes.json que hubiera en el destino: es "llevarme mis notas allí".
+    /// Moves the data folder, copying the attachments and leaving the originals
+    /// in place, so a failure halfway destroys nothing. Overwrites any notes.json
+    /// at the destination: "take my notes there".
     void changeDataDir(const QString &to);
 
-    // La otra mitad: apuntar a una carpeta que ya tiene notas y quedarse con
-    // las suyas, sin escribir en ella hasta haberla leído. Quien elige carpeta
-    // tiene que poder decir cuál de las dos cosas quiere.
+    /// The other half: point at a folder that already has notes and keep those,
+    /// writing nothing there until it has been read.
     void adoptDataDir(const QString &to);
 
-    // --- sincronización con Drive -------------------------------------------
-    //
-    // Mezcla elemento a elemento lo que viene de otro equipo con lo de aquí:
-    // de cada nota, cumpleaños, evento o temporizador se queda la versión más
-    // reciente (updatedMs), lo que solo está en un lado se añade, y lo borrado
-    // en cualquiera de los dos se borra si el borrado es posterior a la última
-    // edición. Nunca se sustituye un fichero entero por otro: eso es lo que
-    // haría que un equipo pisara lo que el otro escribió.
-    //
-    // Un objeto vacío para una de las tres partes quiere decir "de eso no hay
-    // nada nuevo" y esa parte no se toca. Guarda al terminar y emite merged()
-    // si ha cambiado algo de aquí.
+    /// @name Drive sync
+    /// @{
+
+    /// Result of mergeRemote().
     struct MergeResult {
         bool changed = false;
-        // Adjuntos ("audio/x.wav", "images/y.png") de notas cuya versión buena
-        // vino de fuera: esos se bajan aunque aquí exista uno con ese nombre.
+        /// Attachments ("audio/x.wav", "images/y.png") of notes whose winning
+        /// version came from outside: downloaded even if a local file exists.
         QSet<QString> pull;
     };
     MergeResult mergeRemote(const QJsonObject &notesRoot, const QJsonObject &birthdaysRoot,
                             const QJsonObject &eventsRoot);
-    // Los adjuntos que usan las notas, como "audio/<nombre>" o "images/<nombre>".
+    /// Attachments used by the notes, as "audio/<name>" or "images/<name>".
     QStringList attachments() const;
-    // Los JSON que se pueden subir. Uno que estaba pero no se dejó leer no: en
-    // memoria no está lo que tiene, y subirlo sería repartir el destrozo.
+    /// JSON files that may be uploaded. One that existed but could not be read is
+    /// excluded: uploading it would spread the damage.
     QStringList syncableFiles() const;
-    // Lo que se sube con ese nombre: solo lo compartido (elementos, lápidas y
-    // orden), sin las preferencias de este equipo, y siempre escrito igual.
-    // Subir el notes.json local haría que dos equipos sin cambios se pisaran
-    // sin fin, porque cada uno guarda su tamaño y su posición de ventana.
+    /// What is uploaded under @p name: only shared data (elements, tombstones,
+    /// order), without this machine's preferences, always serialised the same way.
+    /// Uploading the local notes.json made two idle machines overwrite each other
+    /// forever, since each stores its own window geometry.
+    /// @}
     QByteArray syncPayload(const QString &name) const;
 
 signals:
-    // La lista y las preferencias son otras: quien las muestre tiene que
-    // rehacerse entero (lo emiten retryLoad y adoptDataDir).
+    /// The lists and preferences were replaced wholesale (retryLoad,
+    /// adoptDataDir): views must rebuild.
     void reloaded();
-    // mergeRemote() ha traído cambios de otro equipo: la lista es otra, pero
-    // los objetos que ya existían siguen siendo los mismos (se actualizan en
-    // su sitio), así que los punteros que tengan las vistas siguen valiendo.
+    /// mergeRemote() brought changes. Existing objects were updated in place,
+    /// so pointers held by views stay valid.
     void merged();
-    // Acaba de escribirse notes.json (y sus hermanos). La copia en Drive se
-    // cuelga de aquí para subir lo que ha cambiado.
+    /// notes.json (and its siblings) were just written. The Drive sync hangs off
+    /// this.
     void saved();
 
 private:
-    // Resuelve la carpeta antes de tocar disco: la override manda sobre la
-    // ruta estándar, y de las marcas anteriores se hereda todo lo que haya.
+    /// Resolves the data folder before any disk access: the override wins, and
+    /// settings from legacy names are inherited.
     void resolveDataDir();
-    // Lee el fichero en memoria. Devuelve false si no se pudo abrir, sin
-    // tocar nada: el que no se pueda leer es justo el que no hay que pisar.
+    /// Reads the file into memory.
+    /// @return false if it could not be opened, touching nothing: the file that
+    ///         cannot be read is exactly the one that must not be overwritten.
     bool readFile();
     bool readObject(const QJsonObject &root);
-    // Los cumpleaños viven en su propio fichero. No hay un tercer desenlace
-    // como en las notas: que no exista es lo normal (una instalación que
-    // todavía no tiene ninguno, o una que viene de cuando iban dentro de
-    // notes.json), y solo el fichero que está pero no se deja leer manda callar
-    // la escritura -- ver m_birthdaysReadable.
+    /// Birthdays live in their own file. A missing file is normal (none yet, or
+    /// data from when they lived in notes.json); only a file that exists and
+    /// cannot be read blocks writing (see m_birthdaysReadable).
     void loadBirthdays();
     void saveBirthdays();
-    // Lo mismo para el planificador, con su propio candado.
+    /// Same for the planner, with its own lock.
     void loadEvents();
     void saveEvents();
     void seedDemoNotes();
-    // Que haya al menos un área y que la lista siga el orden de sus 'pos'.
+    /// Guarantees at least one area and keeps the list sorted by pos.
     void ensureAreas();
     void sortAreas();
 
-    // Pone la fecha de cambio a lo que ha cambiado desde la última vez y apunta
-    // como borrado lo que ya no está. Corre al principio de cada save(): así
-    // ninguna tarjeta tiene que acordarse de marcar nada al editar.
+    /// Stamps updatedMs on whatever changed since the last snapshot and records
+    /// as deleted whatever disappeared. Runs at the start of every save().
     void stampChanges();
-    // Toma lo que hay ahora como punto de partida, sin marcar nada.
+    /// Takes the current state as the baseline without stamping anything.
     void resetSnapshots();
 
-    // Escribe el fichero entero o no lo toca. QSaveFile escribe a un temporal
-    // y renombra encima, que es atómico: sin esto, retirar el pendrive a
-    // mitad de la escritura deja un notes.json truncado, y un JSON a medias
-    // no se lee — son todas las notas, no las últimas.
+    /// Writes the whole file or leaves it untouched (QSaveFile: temp file, then
+    /// rename). A truncating write interrupted halfway leaves a JSON that does
+    /// not parse, which is every note, not the last few.
     bool writeAtomic(const QString &file, const QByteArray &data);
-    // Aparta el fichero que hay tal como está en disco. Quién decide cuándo es
-    // la pauta (backupIfDue), no esto: guardar se llama cada 600 ms mientras
-    // se teclea, y copiar en cada pulsación dejaría diez copias del último
-    // minuto en vez de diez días de historia.
+    /// Sets the file on disk aside as a backup. The schedule decides when
+    /// (backupIfDue), not save(), which runs every 600 ms while typing.
     bool copyToBackup(const QString &name);
     void pruneBackups();
 
@@ -319,18 +289,17 @@ private:
     Prefs m_prefs;
     QTimer *m_saveTimer = nullptr;
     bool m_available = true;
-    // Había un birthdays.json y no se pudo leer: entonces no se escribe encima,
-    // por la misma razón que con las notas -- lo que hay en memoria no son los
-    // cumpleaños de su dueño, son los que no se pudieron cargar.
+    /// A birthdays.json existed and could not be read: it is never overwritten,
+    /// since what is in memory is not the user's data.
     bool m_birthdaysReadable = true;
     bool m_eventsReadable = true;
 
-    // Cómo era cada elemento la última vez que se miró (su JSON sin la fecha
-    // de cambio), para saber qué ha cambiado sin que nadie lo avise.
+    /// Each element's JSON (without its timestamp) as last seen, keyed
+    /// "<type>:<id>", to detect changes nobody reported.
     QHash<QString, QByteArray> m_snap;
     QStringList m_orderSnap;
-    qint64 m_orderUpdatedMs = 0;   // el orden de las notas también se sincroniza
-    // Lápidas: "<tipo>:<id>" de lo borrado -> cuándo. Sin ellas, lo borrado aquí volvería
-    // desde el otro equipo, que todavía lo tiene. Viven en notes.json.
+    qint64 m_orderUpdatedMs = 0;   ///< The note order is synced too.
+    /// Tombstones: "<type>:<id>" of deleted elements -> when. Without them a
+    /// deletion would come back from the other machine. Stored in notes.json.
     QHash<QString, qint64> m_deleted;
 };

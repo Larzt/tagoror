@@ -10,15 +10,11 @@
 #include <QWidget>
 #include <functional>
 
-// Navegación con el teclado.
-//
-// Los botones de Qt ya reciben el foco con Tab; lo que no lo recibía era todo
-// lo que en esta aplicación está hecho a mano para poder pintarse como en el
-// diseño: las filas de los menús, las de ajustes, los enlaces de una tarjeta,
-// el chip de la fecha, los puntos del acento, los interruptores. Eran solo de
-// ratón. Esto les da foco por Tab (no por clic: un anillo que aparece al pulsar
-// con el ratón es ruido) y los activa con Intro o con la barra espaciadora, que
-// es lo que hace un botón de verdad.
+/// @file
+/// Keyboard navigation for the hand-made clickables (menu rows, settings
+/// rows, links, date chip, colour dots, switches), which Qt does not make
+/// reachable on its own. They get Tab focus (not click focus: a ring after a
+/// mouse click is noise) and activate on Enter or Space.
 namespace keynav {
 
 class Activator : public QObject {
@@ -39,8 +35,7 @@ protected:
                 }
                 break;
             }
-            // Los que se pintan a mano no se repintan solos al ganar o perder el
-            // foco, y el anillo se quedaría puesto o no llegaría a salir.
+            // Painted widgets do not repaint on focus changes by themselves.
             case QEvent::FocusIn:
             case QEvent::FocusOut:
                 w->update();
@@ -55,47 +50,43 @@ private:
     std::function<void()> m_activate;
 };
 
-// Hace que un widget se pueda alcanzar con Tab y pulsar con Intro/Espacio.
+/// Makes @p w reachable with Tab and activatable with Enter/Space.
 inline void activatable(QWidget *w, std::function<void()> activate) {
     w->setFocusPolicy(Qt::TabFocus);
     w->installEventFilter(new Activator(w, std::move(activate)));
 }
 
-// ¿Hay que pintar el anillo del foco? Solo si llegó con el teclado. Es el
-// :focus-visible de la web: cuando se esconde el widget que tenía el foco, Qt
-// se lo pasa por su cuenta al siguiente de la cadena -- el primer botón de la
-// cabecera --, y un anillo ahí que nadie ha pedido parece un botón atascado.
+/// Whether to paint the focus ring: only when focus arrived by keyboard (the
+/// web's :focus-visible). When a focused widget is hidden, Qt hands focus to
+/// the next in the chain, and a ring there that nobody asked for looks stuck.
 inline bool showsFocus(const QWidget *w) {
     return w->hasFocus() && w->property("kbfocus").toBool();
 }
 
-// Filtro de toda la aplicación, con dos trabajos:
-//  - apuntar en cada widget si el foco le llegó por Tab (la propiedad
-//    "kbfocus", que es lo que miran las reglas de foco de la hoja de estilos
-//    y showsFocus());
-//  - que Intro pulse el botón que tiene el foco. QAbstractButton solo
-//    responde a la barra espaciadora, y quien navega con el teclado espera
-//    que Intro también valga; QPushButton ya lo hace y se deja en paz.
+/// Application-wide filter with two jobs:
+///  - record in every widget whether focus arrived by keyboard (the "kbfocus"
+///    property the stylesheet's focus rules and showsFocus() read);
+///  - make Enter click the focused button (QAbstractButton only answers
+///    Space; QPushButton already handles Enter and is left alone).
 class ButtonEnter : public QObject {
 public:
     using QObject::QObject;
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override {
-        // Los campos de texto no: su borde de foco se enseña siempre, porque
-        // dice dónde va a caer lo que se escriba. Y repulirlos a cada foco
-        // rehace su letra, que al editor de Markdown le cuesta un formateo.
+        // Not text fields: their focus border always shows, and repolishing a
+        // MarkdownEdit on every focus change would re-render it.
         if (event->type() == QEvent::FocusIn && watched->isWidgetType() &&
             !qobject_cast<QLineEdit *>(watched) && !qobject_cast<QAbstractScrollArea *>(watched)) {
             auto *w = static_cast<QWidget *>(watched);
             const Qt::FocusReason reason = static_cast<QFocusEvent *>(event)->reason();
-            // Las flechas de un menú y un atajo también son teclado.
+            // Menu arrows and shortcuts are keyboard too.
             const bool keyboard = reason == Qt::TabFocusReason ||
                                   reason == Qt::BacktabFocusReason ||
                                   reason == Qt::ShortcutFocusReason;
             if (w->property("kbfocus").toBool() != keyboard) {
                 w->setProperty("kbfocus", keyboard);
-                // Una propiedad dinámica no repinta sola.
+                // A dynamic property does not repaint by itself.
                 w->style()->unpolish(w);
                 w->style()->polish(w);
                 w->update();

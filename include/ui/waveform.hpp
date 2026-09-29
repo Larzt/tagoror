@@ -4,18 +4,18 @@
 #include <QList>
 #include <QWidget>
 
-// Onda estilo mensajería: barras de amplitud, la parte ya reproducida en el
-// color de acento y el resto apagado. Se puede pinchar para buscar.
+/// Messaging-style waveform: amplitude bars, the played part in the accent
+/// and the rest dimmed. Clicking seeks.
 class Waveform : public QWidget {
     Q_OBJECT
 
 public:
     explicit Waveform(QWidget *parent = nullptr);
 
-    void setPeaks(const QList<int> &peaks);   // valores 0..100
-    void setProgress(qreal fraction);         // 0..1
+    void setPeaks(const QList<int> &peaks);   ///< Values 0..100.
+    void setProgress(qreal fraction);         ///< 0..1
     void setAccent(const QColor &c);
-    void setLive(bool live);                  // durante la grabación
+    void setLive(bool live);                  ///< While recording.
 
     QSize sizeHint() const override { return QSize(120, 26); }
 

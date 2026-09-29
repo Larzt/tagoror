@@ -14,11 +14,11 @@
 
 namespace {
 
-// Lo que se deja atrás: un evento que terminó hace más de esto no se trae de
-// Google ni se sube desde aquí. Sin límite, la primera pasada metería en
-// events.json diez años de reuniones que nadie va a volver a mirar.
+/// Events that ended more than this many days ago are neither imported nor
+/// uploaded; otherwise the first pass would bring years of old meetings.
 constexpr int kPastDays = 60;
-// Hasta dónde se traen las vueltas de una serie que no cabe en Event::Repeat.
+/// How far the occurrences of a series that does not fit Event::Repeat are
+/// imported.
 constexpr int kExpandBackDays = 30;
 constexpr int kExpandAheadDays = 366;
 
@@ -30,14 +30,14 @@ qint64 updatedOf(const QJsonObject &item) {
     return QDateTime::fromString(item["updated"].toString(), Qt::ISODateWithMs).toMSecsSinceEpoch();
 }
 
-// Un instante de Google ("2026-09-27T10:00:00+02:00") en la hora de aquí.
+/// A Google instant ("2026-09-27T10:00:00+02:00") in local time.
 QDateTime localTime(const QString &s) {
     QDateTime dt = QDateTime::fromString(s, Qt::ISODateWithMs);
     if (!dt.isValid()) dt = QDateTime::fromString(s, Qt::ISODate);
     return dt.toLocalTime();
 }
 
-// "20261231" o "20261231T225959Z" (UTC) o "20261231T235959" (de aquí).
+/// "20261231", "20261231T225959Z" (UTC) or "20261231T235959" (local).
 QDate icalDate(const QString &v) {
     const QDate d = QDate::fromString(v.left(8), "yyyyMMdd");
     if (v.size() < 15 || v.at(8) != 'T') return d;
@@ -46,7 +46,7 @@ QDate icalDate(const QString &v) {
     return d;
 }
 
-// Con qué día empezaba la vuelta que una excepción sustituye.
+/// The day the occurrence replaced by an exception originally started on.
 QDate originalDate(const QJsonObject &item) {
     const QJsonObject o = item["originalStartTime"].toObject();
     if (o.contains("date")) return QDate::fromString(o["date"].toString(), Qt::ISODate);
@@ -62,8 +62,9 @@ const char *weekdayCode(int dow) {
     return codes[qBound(1, dow, 7) - 1];
 }
 
-// Lee la repetición de Google. Devuelve si cabe en Event::Repeat; hasta
-// cuándo se repite lo apunta aunque no quepa, porque decide si es antigua.
+/// Reads Google's recurrence.
+/// @return Whether it fits Event::Repeat. The end date is recorded even when
+///         it does not fit, since it decides whether the series is old.
 bool parseRecurrence(const QJsonArray &lines, Event &e) {
     e.repeat = Event::Once;
     e.until = QDate();
@@ -91,7 +92,7 @@ bool parseRecurrence(const QJsonArray &lines, Event &e) {
                 } else if (key == "COUNT") {
                     count = val.toInt();
                 } else if (key == "BYDAY") {
-                    // Semanal el mismo día que empieza es lo que ya hace Weekly.
+                    // Weekly on the start day is what Weekly already does.
                     fits &= val == weekdayCode(e.date.dayOfWeek());
                 } else if (key == "BYMONTHDAY") {
                     fits &= val.toInt() == e.date.day();
@@ -106,7 +107,7 @@ bool parseRecurrence(const QJsonArray &lines, Event &e) {
                 if (const QDate day = icalDate(d); day.isValid() && !e.skip.contains(day))
                     e.skip.append(day);
         } else {
-            fits = false;   // RDATE, EXRULE: días sueltos que no son un patrón
+            fits = false;   // RDATE, EXRULE: loose days, not a pattern
         }
     }
     fits &= rules == 1;
@@ -115,11 +116,11 @@ bool parseRecurrence(const QJsonArray &lines, Event &e) {
             if (v.toString().contains("BYDAY=")) return v.toString();
         return QString();
     }();
-    // Diaria solo entre semana, o mensual "el segundo martes": no caben.
+    // Weekdays-only daily, or monthly "second Tuesday": they do not fit.
     if (!byDay.isEmpty() && e.repeat != Event::Weekly) fits = false;
 
-    // COUNT se convierte en la fecha de la última vuelta. Tiene tope, por un
-    // 29 de febrero anual que tardaría siglos en sumar las que pide.
+    // COUNT becomes the date of the last occurrence. Capped, for a yearly
+    // 29 February that would take centuries to add up.
     if (fits && count > 0 && e.repeat != Event::Once) {
         Event probe = e;
         probe.until = QDate();
@@ -132,8 +133,6 @@ bool parseRecurrence(const QJsonArray &lines, Event &e) {
 }
 
 }  // namespace
-
-// ---------------------------------------------------------------------------
 
 CalendarSync::CalendarSync(DriveSync *drive, Store *store)
     : QObject(drive), m_drive(drive), m_store(store) {
@@ -163,6 +162,7 @@ void CalendarSync::load() {
     m_tokens = readMap("tokens");
     m_links = readMap("links");
     m_expandedDay = readMap("expanded");
+    m_followedAt = readMap("followed");
     s.endGroup();
 }
 
@@ -189,6 +189,7 @@ void CalendarSync::saveState() {
     writeMap("tokens", m_tokens);
     writeMap("links", m_links);
     writeMap("expanded", m_expandedDay);
+    writeMap("followed", m_followedAt);
     s.endGroup();
 }
 
@@ -197,7 +198,7 @@ void CalendarSync::forget() {
     s.beginGroup("calendar");
     s.remove("");
     s.endGroup();
-    ++m_pass;   // lo que estuviera en vuelo ya no es de nadie
+    ++m_pass;   // anything in flight belongs to nobody now
     m_running = false;
     m_enabled = false;
     m_seeded = false;
@@ -206,6 +207,7 @@ void CalendarSync::forget() {
     m_tokens.clear();
     m_links.clear();
     m_expandedDay.clear();
+    m_followedAt.clear();
     m_error.clear();
     emit changed();
 }
@@ -241,9 +243,10 @@ void CalendarSync::follow(const QString &calId) {
     c->label = cal ? cal->name : calId;
     c->color = cal ? cal->color : QColor();
     m_store->addCategory(c);
-    // Uno que se vuelve a seguir se lee entero: lo que se quitó al dejarlo
-    // no va a llegar como cambio.
+    // A re-followed calendar is read in full: what was removed when unfollowing
+    // will not arrive as a change.
     m_tokens.remove(calId);
+    m_followedAt.insert(calId, QString::number(QDateTime::currentMSecsSinceEpoch()));
     saveState();
     emit changed();
 }
@@ -265,9 +268,9 @@ QString CalendarSync::activeTarget() const {
     return c && c->writable && isFollowed(m_target) ? m_target : QString();
 }
 
-// El calendario que le toca: el de su categoría si es de Google, el de
-// destino si es de Tagoror. Uno de un calendario que ya no se sigue, o de solo
-// lectura, no va a ninguno: subirlo a otro sería cambiarlo de sitio sin pedirlo.
+/// The calendar an event belongs in: its category's if that is a Google one,
+/// the target if it is Tagoror's. None for an unfollowed or read-only
+/// calendar: uploading elsewhere would move it without being asked.
 QString CalendarSync::desiredCalendar(const Event *e) const {
     if (e->category.startsWith("gcal:")) {
         const QString cal = e->category.mid(5);
@@ -289,13 +292,21 @@ Event *CalendarSync::byId(const QString &id) const {
     return nullptr;
 }
 
-// El id de Tagoror de un evento que vino de Google. Tiene que salir igual en
-// todos los equipos, o dos que lo traen a la vez lo duplicarían en Drive.
+/// Tagoror id of an event that came from Google. It must be the same on every
+/// machine, or two machines importing it at once would duplicate it in Drive.
 QString CalendarSync::derivedId(const QString &cal, const QString &gid) {
     return "gcal-" + QString::fromLatin1(
                          QCryptographicHash::hash((cal + "/" + gid).toUtf8(), QCryptographicHash::Sha1)
                              .toHex()
                              .left(32));
+}
+
+/// Deleted here after its last change in Google, and after starting to follow
+/// that calendar: unfollowing leaves tombstones too, and those must not block
+/// the events from coming back when it is followed again.
+bool CalendarSync::deletedHere(const QString &cal, const QString &id, qint64 remoteUpdatedMs) const {
+    const qint64 at = m_store->deletedAt("e:" + id);
+    return at > 0 && at >= remoteUpdatedMs && at > m_followedAt.value(cal).toLongLong();
 }
 
 QSet<QString> CalendarSync::knownCategories() const {
@@ -304,8 +315,6 @@ QSet<QString> CalendarSync::knownCategories() const {
     for (const Event::Category *c : m_store->categories()) out.insert(c->id);
     return out;
 }
-
-// --- traducción ------------------------------------------------------------------
 
 QString CalendarSync::fingerprint(const Event &e) {
     QJsonObject o;
@@ -352,7 +361,7 @@ CalendarSync::Mapped CalendarSync::fromGoogle(const QJsonObject &item, const Eve
     if (start.contains("date")) {
         e.allDay = true;
         e.date = QDate::fromString(start["date"].toString(), Qt::ISODate);
-        // En Google el fin de uno de todo el día es el día siguiente al último.
+        // In Google the end of an all-day event is the day after the last one.
         const QDate last = QDate::fromString(end["date"].toString(), Qt::ISODate).addDays(-1);
         e.endDate = last > e.date ? last : QDate();
         e.start = QTime(0, 0);
@@ -367,8 +376,8 @@ CalendarSync::Mapped CalendarSync::fromGoogle(const QJsonObject &item, const Eve
         e.endDate = f.date() > s.date() ? f.date() : QDate();
     }
 
-    // Los días saltados que ya tenía aquí vienen de excepciones de Google (que
-    // llegan aparte); los de EXDATE se suman.
+    // Skipped days already here come from Google exceptions (which arrive
+    // separately); EXDATE ones are added.
     m.representable = parseRecurrence(item["recurrence"].toArray(), e);
 
     const QJsonObject reminders = item["reminders"].toObject();
@@ -428,8 +437,8 @@ QJsonObject CalendarSync::toGoogle(const Event &e) {
                                                     .toUTC()
                                                     .toString("yyyyMMdd'T'HHmmss'Z'"));
             rec.append(rule);
-            // Los días saltados siguen saltados: sin esto, cambiar la serie
-            // desde aquí devolvería en Google las vueltas que se cancelaron.
+            // Skipped days stay skipped: without this, editing the series here would
+            // bring back in Google the occurrences that were cancelled.
             QList<QDate> skip = e.skip;
             std::sort(skip.begin(), skip.end());
             for (const QDate &d : skip)
@@ -437,7 +446,7 @@ QJsonObject CalendarSync::toGoogle(const Event &e) {
                                     : QString("EXDATE;TZID=%1:%2")
                                           .arg(tz, QDateTime(d, e.start).toString("yyyyMMdd'T'HHmmss")));
         }
-        o["recurrence"] = rec;   // vacía también: una serie que deja de repetirse
+        o["recurrence"] = rec;   // empty too: a series that stops repeating
     }
 
     QJsonArray overrides;
@@ -459,8 +468,6 @@ QJsonObject CalendarSync::toGoogle(const Event &e) {
     return o;
 }
 
-// --- peticiones -------------------------------------------------------------------
-
 int CalendarSync::status(QNetworkReply *r) {
     return r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 }
@@ -475,8 +482,8 @@ void CalendarSync::request(const QByteArray &verb, const QString &path, const QS
                  hasBody ? QJsonDocument(body).toJson(QJsonDocument::Compact) : QByteArray(),
                  hasBody ? QByteArray("application/json; charset=UTF-8") : QByteArray(),
                  [this, pass, done](QNetworkReply *r) {
-                     // Una pasada vieja (la cuenta se desconectó, o Drive falló y
-                     // empezó otra) no sigue: su done() ya no espera nadie.
+                     // An old pass (account disconnected, or Drive failed and started another)
+                     // stops here: nobody waits for its done() any more.
                      if (pass != m_pass || !m_running ||
                          m_drive->state() != DriveSync::Syncing)
                          return;
@@ -493,8 +500,6 @@ bool CalendarSync::ok(QNetworkReply *r, const QString &what) {
     m_error = L("Google Calendar: %1 (%2)").arg(what, why);
     return false;
 }
-
-// --- la pasada ------------------------------------------------------------------------
 
 void CalendarSync::run(std::function<void()> done) {
     ++m_pass;
@@ -534,7 +539,7 @@ void CalendarSync::fetchCalendars(const QString &pageToken) {
         for (const QJsonValue v : o["items"].toArray()) {
             const QJsonObject c = v.toObject();
             const QString role = c["accessRole"].toString();
-            if (role == "freeBusyReader") continue;   // sin títulos no hay nada que enseñar
+            if (role == "freeBusyReader") continue;   // no titles, nothing to show
             Calendar cal;
             cal.id = c["id"].toString();
             cal.name = c["summaryOverride"].toString(c["summary"].toString());
@@ -553,7 +558,7 @@ void CalendarSync::fetchCalendars(const QString &pageToken) {
             fetchCalendars(next);
             return;
         }
-        // El principal, primero; los demás por nombre.
+        // The primary first, the rest by name.
         std::sort(m_listing.begin(), m_listing.end(), [](const Calendar &a, const Calendar &b) {
             if (a.primary != b.primary) return a.primary;
             return a.name.localeAwareCompare(b.name) < 0;
@@ -561,9 +566,8 @@ void CalendarSync::fetchCalendars(const QString &pageToken) {
         m_calendars = m_listing;
         m_listing.clear();
 
-        // La primera vez, el principal: es donde vive casi todo, y así hay algo
-        // que ver sin tener que pasar antes por ajustes. Si otro equipo ya
-        // sigue alguno (han llegado sus categorías por Drive), se respeta.
+        // The first time, follow the primary calendar, unless another machine already
+        // follows some (their categories arrived through Drive).
         if (!m_seeded) {
             bool any = false;
             for (const Event::Category *c : m_store->categories())
@@ -582,8 +586,8 @@ void CalendarSync::fetchCalendars(const QString &pageToken) {
     });
 }
 
-// Lo que ha cambiado en cada calendario desde la última vez (syncToken), o
-// todo si no hay token. Con showDeleted, lo borrado llega como "cancelled".
+/// What changed in each calendar since last time (syncToken), or everything
+/// without a token. With showDeleted, deletions arrive as "cancelled".
 void CalendarSync::listEvents(int index, const QString &pageToken) {
     if (index >= m_active.size()) {
         apply();
@@ -600,7 +604,7 @@ void CalendarSync::listEvents(int index, const QString &pageToken) {
     request("GET", "/calendars/" + enc(cal) + "/events", q, {},
             [this, index, cal](QNetworkReply *r) {
         if (status(r) == 410) {
-            // El token caducó: se lee el calendario entero otra vez.
+            // Token expired: read the whole calendar again.
             m_tokens.remove(cal);
             m_fetched.remove(cal);
             m_full.insert(cal);
@@ -627,9 +631,8 @@ void CalendarSync::listEvents(int index, const QString &pageToken) {
 }
 
 void CalendarSync::apply() {
-    // Como la mezcla de Drive: con el usuario escribiendo o un menú abierto, lo
-    // de Google se deja para la próxima. Los tokens nuevos no se guardan, así
-    // que la próxima pasada vuelve a pedir estos mismos cambios.
+    // As with the Drive merge: while the user is typing or a menu is open, wait.
+    // New tokens are not stored, so the next pass asks for the same changes.
     if (m_drive->canApply && !m_drive->canApply()) {
         finish();
         return;
@@ -643,27 +646,27 @@ void CalendarSync::apply() {
     for (const QString &cal : m_active) {
         if (m_failed.contains(cal)) continue;
         QList<QJsonObject> items = m_fetched.value(cal);
-        // Las series antes que sus excepciones: una excepción apunta a su serie.
+        // Series before their exceptions: an exception points at its series.
         std::stable_partition(items.begin(), items.end(), [](const QJsonObject &i) {
             return i["recurringEventId"].toString().isEmpty();
         });
         for (const QJsonObject &item : items) handleItem(cal, item);
 
         if (m_full.contains(cal)) {
-            // Leído entero: lo enlazado que ya no está allí se borró en Google
-            // mientras aquí no se miraba (o el token caducó y no llegó el aviso).
+            // Read in full: linked events Google no longer has were deleted there while
+            // nobody was looking (or the token expired and the notice never came).
             QSet<QString> seen;
             for (const QJsonObject &item : items) seen.insert(item["id"].toString());
             const QList<Event *> events = m_store->events();
             for (Event *e : events) {
                 if (e->gcalCal != cal || !e->linked() || seen.contains(e->gcalId)) continue;
                 if (e->gcalInstance()) {
-                    // Las vueltas de una serie expandida las lleva la expansión.
+                    // Occurrences of an expanded series are handled by the expansion.
                     const Event *master = byGoogle(cal, e->gcalId.section('_', 0, 0));
                     if (master && master->gcalExpanded) continue;
                 }
                 if (fingerprint(*e) != e->gcalHash) {
-                    // Editado aquí sin subir: se vuelve a crear allí.
+                    // Edited here and not uploaded yet: create it there again.
                     e->gcalCal.clear();
                     e->gcalId.clear();
                     e->gcalHash.clear();
@@ -676,8 +679,8 @@ void CalendarSync::apply() {
         if (const QString t = m_newTokens.value(cal); !t.isEmpty()) m_tokens.insert(cal, t);
     }
 
-    // Las series expandidas: las tocadas en esta pasada y, una vez al día, el
-    // resto, porque la ventana de un año avanza con el calendario.
+    // Expanded series: those touched in this pass and, once a day, the rest,
+    // since the one-year window moves with the calendar.
     const QString today = QDate::currentDate().toString(Qt::ISODate);
     for (Event *e : m_store->events()) {
         if (!e->gcalExpanded || !active(e->gcalCal)) continue;
@@ -693,25 +696,40 @@ void CalendarSync::handleItem(const QString &cal, const QJsonObject &item) {
     if (gid.isEmpty()) return;
     const bool cancelled = item["status"].toString() == "cancelled";
     const QString masterGid = item["recurringEventId"].toString();
-    // Las vueltas heredan las propiedades de su serie, tagororId incluido: ese
-    // id es el de la serie, no el suyo.
+    // Occurrences inherit their series' properties, tagororId included: that id
+    // is the series', not theirs.
     const QString tagororId =
         masterGid.isEmpty()
             ? item["extendedProperties"].toObject()["private"].toObject()["tagororId"].toString()
             : QString();
 
     Event *local = byGoogle(cal, gid);
+    // Moved in Google into this calendar from another followed one: the Google id
+    // does not change on a move, so it is the same event.
+    if (!local && !cancelled && masterGid.isEmpty())
+        for (Event *e : m_store->events())
+            if (e->gcalId == gid && active(e->gcalCal)) {
+                local = e;
+                break;
+            }
     if (!local && !tagororId.isEmpty()) {
         Event *t = byId(tagororId);
-        if (t && t->linked() && !(t->gcalCal == cal && t->gcalId == gid)) {
-            // Dos equipos lo subieron a la vez: el otro enlace es el bueno y
-            // esta copia sobra (una vez borrada, ya no vuelve).
-            if (!cancelled && t->gcalCal == cal) m_deletes.append({QString(), cal, gid});
+        if (t && t->linked() && t->gcalCal == cal) {
+            // Two machines uploaded it at once: the other link is the good one and this
+            // copy is extra (once deleted it does not come back).
+            if (!cancelled) m_deletes.append({QString(), cal, gid});
             return;
         }
-        local = t;
+        // Linked to another calendar, it is another event (a copy made there).
+        if (t && !t->linked()) local = t;
     }
-    if (!local) local = byId(derivedId(cal, gid));
+    if (!local) {
+        // The derived id only matches if not already linked to another Google event:
+        // a moved event leaves a "cancelled" stub with the same id in its old
+        // calendar, and that must not take the moved one with it.
+        Event *d = byId(derivedId(cal, gid));
+        if (d && !d->linked()) local = d;
+    }
     Event *master = masterGid.isEmpty() ? nullptr : byGoogle(cal, masterGid);
 
     if (cancelled) {
@@ -722,10 +740,17 @@ void CalendarSync::handleItem(const QString &cal, const QJsonObject &item) {
                 m_changed = true;
             }
         }
-        if (!local) return;
+        if (!local) {
+            // No longer here (Drive removed it with another machine's tombstone): gone
+            // there too, so nothing is left to delete in Google.
+            const QString link = cal + "\n" + gid;
+            for (auto it = m_links.begin(); it != m_links.end();)
+                it = it.value() == link ? m_links.erase(it) : std::next(it);
+            return;
+        }
         if (masterGid.isEmpty()) {
-            // Editado aquí después de que allí se borrara: gana la edición, y
-            // se vuelve a crear en Google en esta misma pasada.
+            // Edited here after being deleted there: the edit wins and it is recreated in
+            // Google in this same pass.
             if (local->linked() && fingerprint(*local) != local->gcalHash &&
                 local->updatedMs > updatedOf(item)) {
                 local->gcalCal.clear();
@@ -747,11 +772,11 @@ void CalendarSync::handleItem(const QString &cal, const QJsonObject &item) {
     Mapped m = fromGoogle(item, local, defaultCategory, c ? c->defaultRemind : -1,
                           knownCategories());
     if (!local) {
-        // Borrado aquí después de su último cambio allí: no se resucita, y la
-        // fase de borrados de esta misma pasada lo quita de Google.
+        // Deleted here after its last change there: not resurrected, and this pass's
+        // deletion phase removes it from Google.
         const QString id = !m.tagororId.isEmpty() ? m.tagororId : derivedId(cal, gid);
-        if (m_store->deletedAt("e:" + id) >= m.updatedMs) return;
-        // Uno viejo que aquí no está no se trae.
+        if (deletedHere(cal, id, m.updatedMs)) return;
+        // An old event that is not here is not imported.
         const Event &e = m.event;
         const bool old = !m.representable || e.repeat != Event::Once
                              ? e.until.isValid() && e.until < cutoff()
@@ -760,7 +785,7 @@ void CalendarSync::handleItem(const QString &cal, const QJsonObject &item) {
     }
 
     if (!masterGid.isEmpty()) {
-        // Una vuelta suelta: la movida de una serie, o una de una expandida.
+        // A single occurrence: the moved one of a series, or one of an expanded one.
         m.event.repeat = Event::Once;
         m.event.until = QDate();
         m.event.skip.clear();
@@ -776,9 +801,9 @@ void CalendarSync::handleItem(const QString &cal, const QJsonObject &item) {
         return;
     }
 
-    // Una vez expandida, una serie se queda así aunque después se simplifique:
-    // volver a serie quitaría aquí vueltas que en Google siguen existiendo, y
-    // en otro equipo ese quitar parecería un borrado del usuario.
+    // Once expanded, a series stays so even if its rule later becomes simple:
+    // going back would remove occurrences here that still exist in Google, and on
+    // another machine that removal would look like a user deletion.
     m.event.gcalExpanded = !m.representable || (local && local->gcalExpanded);
     Event *e = upsert(local, m, cal, gid);
     if (e && e->gcalExpanded) m_touched.insert(cal + "\n" + gid);
@@ -789,7 +814,7 @@ Event *CalendarSync::upsert(Event *local, const Mapped &m, const QString &cal, c
     if (!local) {
         auto *e = new Event(m.event);
         const QString wanted = m.tagororId.isEmpty() ? derivedId(cal, gid) : m.tagororId;
-        if (!byId(wanted)) e->id = wanted;   // si no, el id nuevo del constructor
+        if (!byId(wanted)) e->id = wanted;   // otherwise the constructor's fresh id
         e->gcalCal = cal;
         e->gcalId = gid;
         e->gcalHash = remoteFp;
@@ -820,8 +845,8 @@ Event *CalendarSync::upsert(Event *local, const Mapped &m, const QString &cal, c
     }
     const bool remoteChanged = remoteFp != local->gcalHash;
     const bool localChanged = localFp != local->gcalHash;
-    if (!remoteChanged) return local;   // solo aquí: se sube en esta pasada
-    if (localChanged && local->updatedMs > m.updatedMs) return local;   // aquí es más reciente
+    if (!remoteChanged) return local;   // changed here only: uploaded in this pass
+    if (localChanged && local->updatedMs > m.updatedMs) return local;   // the local edit is newer
 
     const QString id = local->id;
     const qint64 fired = local->firedMs;
@@ -833,7 +858,7 @@ Event *CalendarSync::upsert(Event *local, const Mapped &m, const QString &cal, c
     local->gcalCal = cal;
     local->gcalId = gid;
     local->gcalHash = remoteFp;
-    local->firedMs = moved ? 0 : fired;   // otra hora es otro aviso
+    local->firedMs = moved ? 0 : fired;   // another time is another alert
     local->ringingMs = ringing;
     local->updatedMs = updated;
     m_changed = true;
@@ -841,13 +866,11 @@ Event *CalendarSync::upsert(Event *local, const Mapped &m, const QString &cal, c
 }
 
 void CalendarSync::removeLocal(Event *e) {
-    // Lo quita Google, no el usuario: no hay nada que borrar allí.
+    // Removed by Google, not by the user: nothing to delete there.
     m_links.remove(e->id);
     m_store->removeEvent(e, false);
     m_changed = true;
 }
-
-// --- series que no caben --------------------------------------------------------
 
 void CalendarSync::expandNext() {
     if (m_expandQueue.isEmpty()) {
@@ -871,7 +894,7 @@ void CalendarSync::fetchInstances(const QString &cal, const QString &masterGid,
     request("GET", "/calendars/" + enc(cal) + "/events/" + enc(masterGid) + "/instances", q, {},
             [=, this](QNetworkReply *r) {
         const int code = status(r);
-        if (code == 404 || code == 410) {   // la serie ya no está: lo dirá el listado
+        if (code == 404 || code == 410) {   // the series is gone: the listing will say so
             expandNext();
             return;
         }
@@ -879,8 +902,8 @@ void CalendarSync::fetchInstances(const QString &cal, const QString &masterGid,
             expandNext();
             return;
         }
-        // Se vuelve a buscar: mientras llegaba la respuesta el usuario ha podido
-        // borrar cosas, y un puntero de antes podría no valer ya.
+        // Looked up again: the user may have deleted things while the reply was on
+        // its way, and an earlier pointer may no longer be valid.
         Event *master = byGoogle(cal, masterGid);
         if (!master || !master->gcalExpanded) {
             expandNext();
@@ -897,22 +920,22 @@ void CalendarSync::fetchInstances(const QString &cal, const QString &masterGid,
             if (!local) local = byId(derivedId(cal, iid));
             Mapped m = fromGoogle(item, local, master->category, c ? c->defaultRemind : -1,
                                   knownCategories());
-            if (!local && m_store->deletedAt("e:" + derivedId(cal, iid)) >= m.updatedMs) continue;
+            if (!local && deletedHere(cal, derivedId(cal, iid), m.updatedMs)) continue;
             m.event.repeat = Event::Once;
             m.event.until = QDate();
             m.event.skip.clear();
             m.event.gcalExpanded = false;
             upsert(local, m, cal, iid);
-            master = byGoogle(cal, masterGid);   // añadir puede mover la lista
+            master = byGoogle(cal, masterGid);   // adding may move the list
         }
         const QString next = o["nextPageToken"].toString();
         if (!next.isEmpty()) {
             fetchInstances(cal, masterGid, next, seen);
             return;
         }
-        // Lo que había aquí de esa serie dentro de la ventana y Google ya no
-        // tiene (se cambió la regla, se canceló una vuelta) sobra. Fuera de la
-        // ventana no se toca: lo pasado se queda como historia.
+        // What was here of that series inside the window and Google no longer has
+        // (rule changed, occurrence cancelled) is removed. Outside the window nothing
+        // is touched: the past stays as history.
         const QList<Event *> events = m_store->events();
         for (Event *e : events)
             if (e->gcalCal == cal && e->gcalId.startsWith(masterGid + "_") &&
@@ -923,15 +946,13 @@ void CalendarSync::fetchInstances(const QString &cal, const QString &masterGid,
     });
 }
 
-// --- de aquí a Google -----------------------------------------------------------
-
 void CalendarSync::planPushes() {
     for (Event *e : m_store->events()) {
         if (e->gcalExpanded) continue;
         if (e->linked()) {
             const Calendar *c = calendar(e->gcalCal);
             if (!active(e->gcalCal) || !c->writable) continue;
-            // Pasarlo a la categoría de otro calendario es llevarlo allí.
+            // Moving it to another calendar's category moves it there.
             if (e->category.startsWith("gcal:") && !e->gcalInstance()) {
                 const QString dest = e->category.mid(5);
                 const Calendar *d = calendar(dest);
@@ -964,8 +985,8 @@ void CalendarSync::pushNext() {
         return;
     }
     const QString id = e->id;
-    // La huella de lo que se manda, no de lo que haya al volver: si entre
-    // medias el usuario lo cambia, eso otro sigue pendiente de subir.
+    // The fingerprint of what is sent, not of what is there on return: if the
+    // user changes it meanwhile, that change is still pending upload.
     const QString fp = fingerprint(*e);
 
     switch (p.kind) {
@@ -992,8 +1013,7 @@ void CalendarSync::pushNext() {
                 const int code = status(r);
                 Event *e = byId(id);
                 if ((code == 404 || code == 410) && e && e->gcalId == gid) {
-                    // Borrado allí mientras aquí se editaba: la edición gana y
-                    // se crea de nuevo.
+                    // Deleted there while edited here: the edit wins and it is created again.
                     e->gcalCal.clear();
                     e->gcalId.clear();
                     e->gcalHash.clear();
@@ -1025,10 +1045,10 @@ void CalendarSync::pushNext() {
     }
 }
 
-// Lo que estaba enlazado en la pasada anterior y ya no está aquí. Solo se
-// borra en Google si lo borró alguien: tiene que tener lápida (cambiar de
-// carpeta de datos no deja ninguna) y su calendario tiene que seguirse todavía
-// (dejar de seguirlo se lleva sus eventos de Tagoror, no de Google).
+/// Deletes in Google what was linked on the previous pass and is gone here,
+/// but only if someone deleted it: it needs a tombstone (changing the data
+/// folder leaves none) and its calendar must still be followed (unfollowing
+/// removes events from Tagoror, not from Google).
 void CalendarSync::planDeletes() {
     for (auto it = m_links.begin(); it != m_links.end();) {
         const QString id = it.key();
@@ -1055,18 +1075,18 @@ void CalendarSync::deleteNext() {
     request("DELETE", "/calendars/" + enc(d.cal) + "/events/" + enc(d.gid), QString(), {},
             [this, d](QNetworkReply *r) {
         const int code = status(r);
-        // Ya no estaba: lo que se quería.
+        // Already gone: what was wanted.
         if (code != 404 && code != 410 && !ok(r, L("no se pudo borrar un evento")) &&
             !d.id.isEmpty())
-            m_links.insert(d.id, d.cal + "\n" + d.gid);   // se reintenta la próxima vez
+            m_links.insert(d.id, d.cal + "\n" + d.gid);   // retried next time
         deleteNext();
     });
 }
 
 void CalendarSync::finish() {
     if (m_applied) {
-        // Lo enlazado ahora, para saber la próxima vez qué ha desaparecido.
-        // Se añade a lo que quedó (los borrados que fallaron) sin pisarlo.
+        // What is linked now, to know next time what disappeared. Added to what is
+        // left (failed deletions) without overwriting it.
         for (const Event *e : m_store->events())
             if (e->linked() && active(e->gcalCal)) m_links.insert(e->id, e->gcalCal + "\n" + e->gcalId);
         for (auto it = m_expandedDay.begin(); it != m_expandedDay.end();) {

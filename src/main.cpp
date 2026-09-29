@@ -8,7 +8,7 @@
 
 #include "ui/panel.hpp"
 
-// Lo fija CMake (ver TAGOROR_APP_ID); compilando a mano vale el de siempre.
+// Set by CMake (see TAGOROR_APP_ID); a hand build gets the default.
 #ifndef TAGOROR_APP_ID
 #define TAGOROR_APP_ID "tagoror"
 #endif
@@ -17,13 +17,12 @@ namespace {
 
 #ifdef Q_OS_LINUX
 
-// En Wayland una ventana no puede colocarse a sí misma ni saber dónde está:
-// Qt informa siempre de 0,0 (comprobado). El widget necesita justamente eso
-// para desplegarse desde el dock hacia el centro de la pantalla en vez de
-// hacia la derecha siempre, así que bajo una sesión Wayland se pide XWayland.
-//
-// Se puede volver a Wayland nativo desde ajustes (clave 'platform') o fijando
-// QT_QPA_PLATFORM en el entorno, que manda sobre todo lo demás.
+/// Under a Wayland session, asks for XWayland. On Wayland a window can neither
+/// place itself nor know where it is (Qt always reports 0,0), and the widget
+/// needs that to unfold from the dock towards free space.
+///
+/// Native Wayland can be chosen in settings (key "platform"), and
+/// QT_QPA_PLATFORM in the environment overrides everything.
 void choosePlatform() {
     if (!qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) return;
 
@@ -39,52 +38,43 @@ void choosePlatform() {
 
 int main(int argc, char *argv[]) {
 #ifdef Q_OS_LINUX
-    choosePlatform();       // antes de QApplication: después ya no se elige
+    choosePlatform();       // before QApplication: afterwards it cannot be chosen
 #endif
 
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("Stride");
     QCoreApplication::setApplicationName("Tagoror");
-    // La necesita el buscador de actualizaciones para saber con qué comparar.
+    // The update check compares against this.
     QCoreApplication::setApplicationVersion(TAGOROR_VERSION);
 
-    // Enlaza la ventana con su entrada .desktop: de ahí sacan el nombre y el
-    // icono el lanzador y el conmutador de ventanas (imprescindible en Wayland).
+    // Links the window with its .desktop entry, where launchers and the window
+    // switcher take its name and icon (essential on Wayland).
     QGuiApplication::setDesktopFileName(TAGOROR_APP_ID);
-    // Un PNG por tamaño: los pequeños salen del icono simplificado y los
-    // grandes del detallado, que por debajo de ~32 px se emborrona.
+    // One PNG per size: small ones from the simplified icon, large ones from the
+    // detailed one, which blurs below ~32 px.
     QIcon embedded;
     for (int size : {16, 24, 32, 48, 64, 128, 256})
         embedded.addFile(QString(":/icons/%1x%1/tagoror.png").arg(size), QSize(size, size));
 
-    // El tema manda (así se puede sustituir con un icon pack); si no lo
-    // resuelve, el que va dentro del binario.
+    // The icon theme wins (so an icon pack can override); otherwise the embedded one.
     app.setWindowIcon(QIcon::fromTheme(TAGOROR_APP_ID, embedded));
-    // El panel se esconde en la bandeja y desde ahí se recupera, así que
-    // quedarse sin ventana visible no es motivo para terminar: de salir se
-    // encarga "Salir", en ajustes o en el menú de la bandeja. Sin bandeja
-    // disponible, Panel::closeEvent sale por su cuenta.
+    // The panel hides in the tray and comes back from there, so having no visible
+    // window is no reason to quit. Without a tray, Panel::closeEvent quits itself.
     app.setQuitOnLastWindowClosed(false);
 
-    // Una sola instancia por usuario. Lanzándolo desde el menú con el widget
-    // ya abierto (por ejemplo por el autoarranque) saldrían dos paneles sobre
-    // el mismo notes.json y el último en guardar se comería las notas del otro.
+    // One instance per user: two panels over one notes.json means the last one to
+    // save wins and the other's notes are lost.
     const QString key = QString("tagoror-%1").arg(qEnvironmentVariable("USER", "user"));
-    // Quién es la primera lo decide el `listen`, no el sondeo: enlazar el
-    // socket es atómico y preguntar por él no. Al iniciar sesión el
-    // autoarranque y la restauración de sesión de KDE lanzan las dos copias a
-    // la vez (comprobado: dos procesos escuchando sobre el mismo nombre), y
-    // entre sondear y escuchar se construía el Panel entero, así que ninguna
-    // de las dos escuchaba todavía cuando la otra preguntaba. Peor: el
-    // `removeServer` incondicional hacía que la perdedora borrase el socket de
-    // la ganadora y se quedase con el nombre, con lo que ambas se creían la
-    // única y las dos guardaban sobre el mismo notes.json.
+    // `listen` decides who is first, not a probe: binding the socket is atomic and
+    // asking about it is not. At login, autostart and KDE session restore launch
+    // both copies at once (measured), and an unconditional `removeServer` let the
+    // loser delete the winner's socket, so both believed they were alone.
     QLocalServer server;
 
     if (!server.listen(key)) {
-        // O hay una viva, o quedó el socket de un cierre brusco. El cerrojo
-        // serializa esa comprobación: si arrancan dos a la vez sobre un socket
-        // huérfano, la segunda espera y encuentra a la primera ya escuchando.
+        // Either one is alive or a crash left the socket behind. The lock serialises
+        // the check: two starting at once over an orphaned socket, the second waits
+        // and finds the first already listening.
         QLockFile lock(QDir::tempPath() + "/" + key + ".lock");
         lock.setStaleLockTime(10000);
         lock.tryLock(3000);
@@ -94,17 +84,17 @@ int main(int argc, char *argv[]) {
         if (probe.waitForConnected(200)) {
             probe.write("show");
             probe.waitForBytesWritten(200);
-            return 0;                  // ya hay una abierta: que dé la cara ella
+            return 0;                  // one is already open: let it come forward
         }
 
-        QLocalServer::removeServer(key);   // socket huérfano, ahora sí
+        QLocalServer::removeServer(key);   // orphaned socket: now it is safe
         server.listen(key);
     }
 
     Panel panel;
 
-    // Las conexiones que lleguen mientras se construye el panel esperan en la
-    // cola del socket; newConnection las entrega al entrar en el bucle.
+    // Connections arriving while the panel is being built wait in the socket's
+    // queue; newConnection delivers them once the event loop runs.
     QObject::connect(&server, &QLocalServer::newConnection, &panel, [&server, &panel] {
         if (QLocalSocket *client = server.nextPendingConnection()) {
             client->deleteLater();

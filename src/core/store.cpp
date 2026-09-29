@@ -17,30 +17,27 @@ namespace {
 
 constexpr int kSaveDelayMs = 600;
 
-// Diez días (Store::kBackupsKept) es lo que hace falta para que la copia buena
-// siga estando cuando alguien tarda una semana en darse cuenta de que le
-// faltan notas; son ficheros de unos pocos KB.
+/// Ten days of history (Store::kBackupsKept): enough for someone who notices
+/// a week later that notes are missing.
 constexpr auto kBackupPrefix = "notes-";
-// Los cumpleaños se copian a la vez y con la misma marca de tiempo, para que
-// una copia sea siempre las dos mitades del mismo instante y restaurar una
-// pueda arrastrar la otra. Sin esto, separar el fichero habría dejado la
-// agenda entera fuera de la historia.
+/// Birthdays are backed up at the same time with the same timestamp, so a
+/// backup is always both halves of one instant and restoring one brings the
+/// other.
 constexpr auto kBirthdayBackupPrefix = "birthdays-";
-// Y el planificador, igual: tercera mitad de la misma foto.
+/// The planner too: the third part of the same snapshot.
 constexpr auto kEventBackupPrefix = "events-";
 
-// Nombres con los que se guardaron los datos en marcas anteriores, del más
-// reciente al más antiguo. Renombrar la aplicación nunca debe dejar a nadie sin
-// sus notas, así que se hereda tanto la carpeta como los ajustes. Cada cambio
-// de nombre AÑADE a esta lista por delante; no sustituye lo que ya había, o el
-// que se saltara una versión se quedaría con sus notas huérfanas.
+/// Names the data was stored under by earlier releases, newest first. A
+/// rename must never strand anyone's notes, so both the folder and the
+/// settings are inherited. Each rename ADDS to the front of this list;
+/// replacing entries would orphan the notes of whoever skipped a version.
 const QStringList &legacyAppNames() {
     static const QStringList names{"Codex", "Abyss", "NotasWidget"};
     return names;
 }
 
-// Si los datos siguen bajo un nombre antiguo y todavía no hay nada en el
-// nuevo, se mudan enteros al arrancar.
+/// Moves the data wholesale if it still sits under an old name and the new
+/// location is still empty.
 void migrateLegacyDataDir() {
     const QString current = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (QFile::exists(current + "/notes.json")) return;
@@ -50,30 +47,30 @@ void migrateLegacyDataDir() {
         const QString legacy = parent + "/" + name;
         if (!QFile::exists(legacy + "/notes.json")) continue;
 
-        // rename() falla si el destino existe, y appDataDir() pudo crearlo vacío.
+        // rename() fails if the destination exists, and appDataDir() may have created
+        // it empty.
         if (QDir(current).exists() && QDir(current).isEmpty()) QDir().rmdir(current);
         QDir().rename(legacy, current);
         return;
     }
 }
 
-// Quita la barra final. La ruta guardada se compara con la que devuelve el
-// selector de carpetas, que nunca la lleva, y "…/notas/" != "…/notas" hacía
-// que reelegir la misma carpeta se tomara por una mudanza.
+/// Drops the trailing slash. The folder picker never returns one, and
+/// ".../notes/" != ".../notes" made re-picking the same folder look like a
+/// move.
 QString trimmedDir(const QString &in) {
     QString out = in;
     while (out.size() > 1 && out.endsWith('/')) out.chop(1);
     return out;
 }
 
-// Las lápidas se guardan medio año: de sobra para que todos los equipos se
-// hayan conectado alguna vez, y sin que el fichero crezca para siempre.
+/// Tombstones are kept for half a year: plenty for every machine to connect
+/// once, without the file growing forever.
 constexpr qint64 kTombstoneMs = 180LL * 24 * 3600 * 1000;
 
-// La clave de un elemento en las fotos y en las lápidas: el tipo delante del
-// id. Los id son UUID y no deberían repetirse, pero un fichero viejo o tocado a
-// mano puede tener una nota y un cumpleaños con el mismo, y entonces cada uno
-// pisaba la foto del otro y los dos parecían cambiados en cada guardado.
+/// Key of an element in snapshots and tombstones: its type before its id.
+/// With bare ids, a note and a birthday sharing one (old or hand-edited files)
+/// overwrote each other's snapshot and both looked changed on every save.
 inline QString keyOf(const Note *n) { return "n:" + n->id; }
 inline QString keyOf(const Birthday *b) { return "b:" + b->id; }
 inline QString keyOf(const Event *e) { return "e:" + e->id; }
@@ -81,8 +78,8 @@ inline QString keyOf(const Timer *t) { return "t:" + t->id; }
 inline QString keyOf(const Event::Category *c) { return "c:" + c->id; }
 inline QString keyOf(const Area *a) { return "a:" + a->id; }
 
-// Lo que dice un elemento, sin la fecha de cambio: si esto no cambia, el
-// elemento no ha cambiado.
+/// What an element says without its timestamp: if this does not change, the
+/// element did not change.
 template <typename T>
 QByteArray snapshotOf(const T *item) {
     QJsonObject o = item->toJson();
@@ -90,8 +87,8 @@ QByteArray snapshotOf(const T *item) {
     return QJsonDocument(o).toJson(QJsonDocument::Compact);
 }
 
-// Al quedarse con la versión de fuera se conserva lo que solo vive en memoria:
-// que algo esté sonando es de este equipo, no del otro.
+/// Adopting the remote version keeps runtime-only state: ringing belongs to
+/// this machine, not the other.
 void adopt(Note *local, const Note *remote) {
     const bool ringing = local->ringing;
     *local = *remote;
@@ -111,13 +108,12 @@ void adopt(Timer *local, const Timer *remote) { *local = *remote; }
 void adopt(Event::Category *local, const Event::Category *remote) { *local = *remote; }
 void adopt(Area *local, const Area *remote) { *local = *remote; }
 
-// Las categorías propias de un events.json (o de su copia). Un fichero de antes
-// de que existieran no trae la clave y no hay ninguna.
+/// Custom categories of an events.json (or of its backup).
 QList<Event::Category *> readCategories(const QJsonObject &root) {
     QList<Event::Category *> out;
     for (const QJsonValue v : root["categories"].toArray()) {
         Event::Category *c = Event::Category::fromJson(v.toObject());
-        // Una propia no puede hacerse pasar por una de serie.
+        // A custom category cannot pose as a built-in one.
         if (Event::isBuiltinCategory(c->id)) delete c;
         else out.append(c);
     }
@@ -125,8 +121,6 @@ QList<Event::Category *> readCategories(const QJsonObject &root) {
 }
 
 }  // namespace
-
-// ---------------------------------------------------------------------------
 
 Store::Store(QObject *parent) : QObject(parent) {
     resolveDataDir();
@@ -152,7 +146,7 @@ void Store::resolveDataDir() {
     QString dir = settings.value("dataDir").toString();
 
     if (dir.isEmpty()) {
-        // La carpeta elegida a mano también se hereda de los nombres viejos.
+        // The hand-picked folder is inherited from old names too.
         for (const QString &name : legacyAppNames()) {
             dir = QSettings("Stride", name).value("dataDir").toString();
             if (dir.isEmpty()) continue;
@@ -165,16 +159,13 @@ void Store::resolveDataDir() {
     if (dataDirOverride().isEmpty()) migrateLegacyDataDir();
 }
 
-// --- notas -----------------------------------------------------------------
-
 void Store::add(Note *n) {
     m_notes.prepend(n);
     scheduleSave();
 }
 
 void Store::remove(Note *n) {
-    // Los adjuntos mueren con la nota; si no, quedan ficheros huérfanos en la
-    // carpeta de datos que ya nada sabe borrar.
+    // Attachments die with the note, or nothing would ever delete them.
     if (!n->audio.isEmpty()) QFile::remove(n->audioPath());
     for (const QString &image : n->images) QFile::remove(Note::imagePath(image));
 
@@ -183,21 +174,17 @@ void Store::remove(Note *n) {
     save();
 }
 
-// El orden llega hecho desde la pantalla, así que solo se comprueba que sean
-// exactamente las mismas notas: cualquier discrepancia (una lista a medias,
-// una nota que ya no existe) deja el orden anterior en vez de perder ninguna.
+// The order comes from the screen, so only check that it holds exactly the
+// same notes: any mismatch keeps the previous order rather than losing one.
 void Store::setOrder(const QList<Note *> &order) {
     if (order.size() != m_notes.size()) return;
     for (Note *n : order)
         if (!m_notes.contains(n)) return;
 
     m_notes = order;
-    // Diferido a propósito: arrastrando una tarjeta esto se llama una vez por
-    // cada tarjeta que cruza, y no hay que escribir el fichero en cada cruce.
+    // Deferred on purpose: a card drag calls this once per card crossed.
     scheduleSave();
 }
-
-// --- áreas de trabajo ----------------------------------------------------------
 
 Area *Store::area(const QString &id) const {
     for (Area *a : m_areas)
@@ -230,8 +217,8 @@ Area *Store::addArea(const QString &name) {
 void Store::removeArea(Area *a, const QString &moveTo) {
     if (!m_areas.contains(a) || m_areas.size() < 2) return;
     const QString id = a->id;
-    // Se decide con el área todavía en la lista: sin ella, areaOf() ya
-    // mandaría sus notas a la primera y no se las podría distinguir.
+    // Decided while the area is still in the list: without it, areaOf() would
+    // already send its notes to the first area.
     const QList<Note *> own = notesIn(id);
     for (Note *n : own) {
         if (!moveTo.isEmpty() && moveTo != id && area(moveTo)) {
@@ -254,8 +241,8 @@ void Store::moveArea(Area *a, int steps) {
     const int to = from + steps;
     if (from < 0 || to < 0 || to >= m_areas.size()) return;
     m_areas.move(from, to);
-    // Se renumeran todas: dos áreas con el mismo 'pos' (creadas a la vez en
-    // dos equipos) quedarían si no en un orden que depende de la mezcla.
+    // Renumber all of them: two areas with the same pos (created at once on two
+    // machines) would otherwise end up in merge-dependent order.
     for (int i = 0; i < m_areas.size(); ++i) m_areas[i]->pos = i;
     save();
 }
@@ -266,7 +253,7 @@ void Store::setNoteArea(Note *n, const QString &areaId) {
 
 void Store::sortAreas() {
     std::stable_sort(m_areas.begin(), m_areas.end(), [](const Area *a, const Area *b) {
-        // A igual 'pos', por id: dos equipos tienen que verlas en el mismo orden.
+        // Equal pos: by id, so every machine sees the same order.
         return a->pos != b->pos ? a->pos < b->pos : a->id < b->id;
     });
 }
@@ -280,8 +267,6 @@ void Store::ensureAreas() {
     m_areas.append(a);
 }
 
-// --- temporizadores ----------------------------------------------------------
-
 void Store::addTimer(Timer *t) {
     m_timers.prepend(t);
     save();
@@ -292,8 +277,6 @@ void Store::removeTimer(Timer *t) {
     delete t;
     save();
 }
-
-// --- planificador -------------------------------------------------------------
 
 void Store::addEvent(Event *e, bool save) {
     m_events.append(e);
@@ -328,14 +311,10 @@ void Store::removeCategory(Event::Category *c) {
     save();
 }
 
-// --- cumpleaños --------------------------------------------------------------
-
-// El orden en que se guardan da igual: la página los ordena por lo que falta
-// para cada uno, que es lo único que se quiere mirar de una lista así.
 void Store::addBirthday(Birthday *b) {
     m_birthdays.append(b);
-    // Diferido como el de las notas: quien da uno de alta lo rellena justo
-    // después, y ese guardado ya escribe los dos cambios de una vez.
+    // Deferred like notes: whoever adds one fills it in right after, and that
+    // save writes both changes at once.
     scheduleSave();
 }
 
@@ -345,31 +324,24 @@ void Store::removeBirthday(Birthday *b) {
     save();
 }
 
-// --- persistencia ----------------------------------------------------------
-
 QString Store::path() const { return appDataDir() + "/notes.json"; }
 
-// Los cumpleaños son una agenda, no notas: viven en su propio fichero, al lado
-// del de las notas y dentro de la misma carpeta de datos, así que siguen
-// mudándose con ellas y entrando en las copias de seguridad.
 QString Store::birthdaysPath() const { return appDataDir() + "/birthdays.json"; }
 QString Store::eventsPath() const { return appDataDir() + "/events.json"; }
 
 void Store::scheduleSave() { m_saveTimer->start(); }
 
 void Store::save() {
-    // Nunca se escribe un fichero que no se ha conseguido leer. Con la carpeta
-    // ausente lo que hay en memoria no son las notas del usuario —son las que
-    // no se pudieron cargar—, y volcarlas encima las borra en cuanto el
-    // volumen vuelve a aparecer. Ver load().
+    // Never write a file that could not be read. With the folder missing, what is
+    // in memory is not the user's notes but the ones that failed to load, and
+    // writing them would wipe the real file once the volume reappears.
     if (!m_available) return;
 
     if (beforeSave) beforeSave();
     stampChanges();
 
-    // Antes de armar el JSON: si toca copia, se hace del fichero que todavía
-    // está en disco —lo de antes de esta escritura— y la fecha que apunta
-    // entra en este mismo guardado, sin tener que volver a escribir.
+    // Before building the JSON: a due backup copies the file still on disk, and
+    // its new lastBackupMs goes into this very write.
     backupIfDue();
 
     QJsonArray arr;
@@ -437,8 +409,8 @@ void Store::saveEvents() {
     writeAtomic(eventsPath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
-// Mismo trato que birthdays.json, sin la herencia: los eventos nunca vivieron
-// dentro de notes.json, así que un fichero ausente es solo "todavía ninguno".
+/// Same treatment as birthdays.json, without the migration: events never
+/// lived in notes.json, so a missing file just means none yet.
 void Store::loadEvents() {
     m_eventsReadable = true;
     if (!m_available) return;
@@ -451,7 +423,7 @@ void Store::loadEvents() {
     }
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     if (!root.contains("events")) {
-        m_eventsReadable = false;   // no se pisa lo que no se ha podido leer
+        m_eventsReadable = false;   // never overwrite what could not be read
         return;
     }
     qDeleteAll(m_events);
@@ -462,8 +434,8 @@ void Store::loadEvents() {
     m_categories = readCategories(root);
 }
 
-// Aparte de save() para poder no escribirlo: un birthdays.json ilegible no se
-// pisa, igual que no se pisa un notes.json que no se pudo leer.
+/// Separate from save() so it can be skipped: an unreadable birthdays.json is
+/// never overwritten.
 void Store::saveBirthdays() {
     if (!m_available || !m_birthdaysReadable) return;
 
@@ -481,11 +453,9 @@ void Store::loadBirthdays() {
 
     QFile f(birthdaysPath());
     if (!f.exists()) {
-        // No hay fichero. O no hay ningún cumpleaños todavía, o vienen de
-        // cuando se guardaban dentro de notes.json: en ese caso readObject ya
-        // los ha dejado en memoria y basta con pedir que se escriban donde
-        // toca ahora. Lo de notes.json se queda ahí hasta el siguiente
-        // guardado, que ya no vuelve a poner la clave.
+        // No file: either no birthdays yet, or they come from when they lived in
+        // notes.json, in which case readObject() already loaded them and a save
+        // writes them where they belong now.
         if (!m_birthdays.isEmpty()) scheduleSave();
         return;
     }
@@ -496,14 +466,14 @@ void Store::loadBirthdays() {
     }
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     if (!root.contains("birthdays")) {
-        // El fichero está pero no es lo que dice ser (truncado a medias, otra
-        // cosa copiada ahí): no se toca, que es lo contrario de vaciarlo.
+        // The file exists but is not what it claims (truncated, something else):
+        // leave it alone, which is the opposite of emptying it.
         m_birthdaysReadable = false;
         return;
     }
 
-    // El fichero manda sobre lo que trajera notes.json: si existe, es el sitio
-    // bueno y lo de dentro de las notas es un resto de la versión anterior.
+    // The file wins over whatever notes.json brought: that is a leftover of the
+    // previous version.
     qDeleteAll(m_birthdays);
     m_birthdays.clear();
     for (const QJsonValue v : root["birthdays"].toArray())
@@ -517,24 +487,21 @@ bool Store::writeAtomic(const QString &file, const QByteArray &data) {
         f.cancelWriting();
         return false;
     }
-    return f.commit();   // aquí es donde el fichero pasa a ser el nuevo, de golpe
+    return f.commit();   // the file is replaced here, in one step
 }
-
-// --- copias de seguridad ----------------------------------------------------
 
 bool Store::copyToBackup(const QString &name) {
     const QString dir = backupDir();
-    if (dir.isEmpty()) return false;     // carpeta ausente: ya no se escribe nada
+    if (dir.isEmpty()) return false;     // folder missing: write nothing
     const QString src = path();
-    if (!QFile::exists(src)) return false;   // no hay nada que apartar todavía
+    if (!QFile::exists(src)) return false;   // nothing to set aside yet
 
     const QString target = dir + "/" + name;
     if (QFile::exists(target)) return false;
     if (!QFile::copy(src, target)) return false;
 
-    // La otra mitad, con el mismo nombre y otro prefijo. Puede no existir
-    // todavía (nadie ha apuntado ningún cumpleaños) y eso no invalida la copia:
-    // lo que manda es la de las notas.
+    // The sibling halves, same name with another prefix. They may not exist yet,
+    // which does not invalidate the backup: the notes are what counts.
     const QString stamp = name.mid(int(qstrlen(kBackupPrefix)));
     if (QFile::exists(birthdaysPath()))
         QFile::copy(birthdaysPath(), dir + "/" + kBirthdayBackupPrefix + stamp);
@@ -547,8 +514,8 @@ bool Store::copyToBackup(const QString &name) {
 
 namespace {
 
-// ¿Son el mismo contenido? Los ficheros son de unos pocos KB, así que leerlos
-// enteros es más barato que cualquier cosa más lista.
+/// Whether both files have the same content. They are a few KB, so reading
+/// them whole beats anything cleverer.
 bool sameFile(const QString &a, const QString &b) {
     QFile fa(a), fb(b);
     if (!fa.open(QIODevice::ReadOnly) || !fb.open(QIODevice::ReadOnly)) return false;
@@ -558,10 +525,10 @@ bool sameFile(const QString &a, const QString &b) {
 }  // namespace
 
 QDateTime Store::nextBackupDue() const {
-    if (m_prefs.backupEveryDays <= 0) return {};   // solo a mano
+    if (m_prefs.backupEveryDays <= 0) return {};   // manual only
 
-    // Sin ninguna copia todavía, la primera toca hoy a esa hora: si ya ha
-    // pasado, se hace ahora mismo, que es lo que se espera al encenderlo.
+    // With no backup yet the first is due today at that time, i.e. right away if
+    // it has already passed.
     if (m_prefs.lastBackupMs <= 0) return QDateTime(QDate::currentDate(), m_prefs.backupAt);
 
     const QDate last = QDateTime::fromMSecsSinceEpoch(m_prefs.lastBackupMs).date();
@@ -579,26 +546,22 @@ bool Store::makeBackup() {
     const QString dir = backupDir();
     if (dir.isEmpty()) return false;
 
-    // El nombre lleva la hora hasta el milisegundo: con segundos, dos copias
-    // seguidas —pulsar dos veces "crear copia ahora", o restaurar justo
-    // después de guardar— caían en el mismo fichero, y la segunda no se hacía
-    // ni apuntaba la fecha, lo que descolocaba la pauta entera.
+    // Millisecond timestamps: with seconds, two backups in a row landed on one
+    // file, the second was skipped and lastBackupMs was not recorded, which
+    // knocked the schedule out.
     //
-    // Y cuando aun así coinciden hay que mirar, no suponer: es tentador dar
-    // por hecho que dos copias del mismo milisegundo son la misma porque el
-    // origen no ha podido cambiar, pero sí puede — restaurar reescribe
-    // notes.json y pide copia acto seguido. Con esa suposición se daba por
-    // buena una copia del contenido anterior. Si lo que hay guardado ya es
-    // igual, está hecho; si es distinto, se prueba el milisegundo siguiente.
+    // A collision is checked, not assumed identical: restoring rewrites
+    // notes.json and requests a backup right after, inside the same millisecond.
+    // Same content means done; different means try the next millisecond.
     QDateTime stamp = QDateTime::currentDateTime();
     for (int i = 0; i < 100; ++i, stamp = stamp.addMSecs(1)) {
         const QString name = kBackupPrefix + stamp.toString("yyyy-MM-dd-HHmmsszzz") + ".json";
         if (copyToBackup(name)) break;
 
         const QString target = dir + "/" + name;
-        if (!QFile::exists(target)) return false;      // el fallo fue de la copia
-        if (!sameFile(target, path())) continue;       // ese hueco es de otra cosa
-        break;                                         // ya estaba hecha, y es esta
+        if (!QFile::exists(target)) return false;      // the copy itself failed
+        if (!sameFile(target, path())) continue;       // that slot holds something else
+        break;                                         // already taken, and it is this one
     }
 
     m_prefs.lastBackupMs = QDateTime::currentMSecsSinceEpoch();
@@ -609,10 +572,9 @@ void Store::pruneBackups() {
     const QString dir = backupDir();
     if (dir.isEmpty()) return;
 
-    // El nombre lleva la fecha en ISO, así que ordenar por nombre es ordenar
-    // por antigüedad y no hace falta preguntarle al sistema de ficheros. Las
-    // dos mitades se podan por separado y con el mismo tope: comparten marca
-    // de tiempo, así que caen a la vez.
+    // Names carry an ISO date, so sorting by name sorts by age. Each prefix is
+    // pruned separately with the same limit; they share timestamps and so go
+    // together.
     for (const char *prefix : {kBackupPrefix, kBirthdayBackupPrefix, kEventBackupPrefix}) {
         QStringList files = QDir(dir).entryList({QString(prefix) + "*.json"}, QDir::Files);
         files.sort();
@@ -628,14 +590,12 @@ QList<Store::Backup> Store::backups() const {
     files.sort();
 
     QList<Backup> out;
-    for (auto it = files.crbegin(); it != files.crend(); ++it) {   // la más nueva primero
+    for (auto it = files.crbegin(); it != files.crend(); ++it) {   // newest first
         Backup b;
         b.path = dir + "/" + *it;
-        // Tres formas, de la más nueva a la más vieja: con milisegundos, con
-        // segundos (copias de antes de que hicieran falta) y solo la fecha (de
-        // cuando era una al día). Se prueban por orden, de más larga a más
-        // corta; lo que no encaje en ninguna se enseña por su nombre en vez de
-        // descartarse, que puede ser una copia puesta a mano ahí.
+        // Three shapes, newest to oldest: milliseconds, seconds and date only. What
+        // matches none is listed by file name rather than hidden (it may be a copy
+        // placed there by hand).
         const QString stamp = it->mid(int(qstrlen(kBackupPrefix)),
                                       it->size() - int(qstrlen(kBackupPrefix)) - 5);
         for (const char *fmt : {"yyyy-MM-dd-HHmmsszzz", "yyyy-MM-dd-HHmmss"}) {
@@ -660,11 +620,10 @@ bool Store::restoreBackup(const QString &file) {
     QFile f(file);
     if (!f.open(QIODevice::ReadOnly)) return false;
     const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
-    if (!root.contains("notes")) return false;   // no es un notes.json: no se toca nada
+    if (!root.contains("notes")) return false;   // not a notes.json: touch nothing
     f.close();
 
-    // Lo que hay ahora pasa a ser una copia más: restaurar la copia equivocada
-    // tiene que poder deshacerse.
+    // The current state becomes one more backup, so restoring can be undone.
     makeBackup();
     const qint64 justNow = m_prefs.lastBackupMs;
 
@@ -672,28 +631,25 @@ bool Store::restoreBackup(const QString &file) {
     m_notes.clear();
     qDeleteAll(m_timers);
     m_timers.clear();
-    // Las áreas van con sus notas: una copia de antes de que existieran no
-    // trae ninguna y se vuelve a la de serie, donde caen todas sus notas.
+    // Areas go with their notes: a backup from before areas has none, and the
+    // default one is recreated.
     qDeleteAll(m_areas);
     m_areas.clear();
     const QString activeArea = m_prefs.activeArea;
     m_prefs = Prefs{};
     readObject(root);
     ensureAreas();
-    // El área abierta es de este equipo y no de la copia.
+    // The open area belongs to this machine, not to the backup.
     m_prefs.activeArea = activeArea;
 
-    // La mitad de los cumpleaños de esa misma copia, si está. Si no está —una
-    // copia de antes de que existieran— los de ahora se quedan como están: no
-    // es lo mismo "esa copia no tenía ninguno" que "esa copia no sabía de
-    // esto", y vaciar la agenda por lo segundo sería perderla entera.
-    //
-    // El planificador sigue la misma regla, por la misma razón.
+    // The birthdays half of the same backup, if present. If absent (a backup from
+    // before the split) the current ones are left alone: "that backup had none"
+    // and "that backup did not know about this" are not the same, and emptying
+    // the agenda for the second would lose it. The planner follows the same rule.
     const QString fileName = QFileInfo(file).fileName();
     if (fileName.startsWith(kBackupPrefix)) {
         const QString stamp = fileName.mid(int(qstrlen(kBackupPrefix)));
-        // Devuelve false si esa mitad no está o no trae su clave: entonces lo
-        // de ahora se queda como está.
+        // false if that half is missing or lacks its key: the current data stays.
         auto readMate = [&](const char *prefix, const char *key, QJsonObject *out) {
             QFile mf(QFileInfo(file).path() + "/" + prefix + stamp);
             if (!mf.exists() || !mf.open(QIODevice::ReadOnly)) return false;
@@ -709,9 +665,7 @@ bool Store::restoreBackup(const QString &file) {
             for (const QJsonValue v : mate["birthdays"].toArray())
                 m_birthdays.append(Birthday::fromJson(v.toObject()));
         }
-        // Las categorías propias van con sus eventos: una copia de antes de
-        // que existieran deja sin ninguna, y sus eventos se pintan con el
-        // acento hasta que se les elija otra.
+        // Custom categories go with their events.
         if (readMate(kEventBackupPrefix, "events", &mate)) {
             qDeleteAll(m_events);
             m_events.clear();
@@ -721,12 +675,11 @@ bool Store::restoreBackup(const QString &file) {
             m_categories = readCategories(mate);
         }
     }
-    // readObject trae el "última copia" que llevaba dentro la copia, que es
-    // viejo: dejarlo pediría otra copia inmediatamente. La que vale es la que
-    // se acaba de hacer.
+    // readObject() brought the backup's old lastBackupMs; keeping it would ask for
+    // another backup immediately.
     m_prefs.lastBackupMs = qMax(justNow, m_prefs.lastBackupMs);
-    // Restaurar es justamente decir "quiero esto encima de lo que haya", así
-    // que el candado de un birthdays.json ilegible se levanta aquí.
+    // Restoring means "put this over whatever is there", so the lock of an
+    // unreadable file is lifted.
     m_birthdaysReadable = true;
     m_eventsReadable = true;
     save();
@@ -746,23 +699,20 @@ void Store::seedDemoNotes() {
     m_notes = {a, b};
 }
 
-// Tres desenlaces, y hay que distinguirlos: no hay fichero (instalación
-// nueva), lo hay y se lee, o debería haberlo y no se puede llegar a él.
-// Confundir el tercero con el primero es lo que hacía que un pendrive sin
-// montar se llevara por delante las notas de su dueño.
+// Three outcomes that must be told apart: no file (fresh install), a file that
+// reads, and a file that should be there and cannot be reached. Mistaking the
+// third for the first is how an unmounted drive destroyed its owner's notes.
 void Store::load() {
     m_available = dataDirAvailable();
 
     if (m_available && !QFile::exists(path())) {
-        // Instalación nueva: aquí sí manda el idioma del sistema, porque no
-        // hay ninguna elección anterior que respetar. Se fija antes de sembrar
-        // las notas de ejemplo, que también van traducidas.
+        // Fresh install: the system language decides, set before seeding the demo
+        // notes, which are translated too.
         m_prefs.lang = Lang::systemDefault();
         Lang::setCurrent(m_prefs.lang);
         seedDemoNotes();
         ensureAreas();
-        // Puede haber cumpleaños sin notas: quien borró todas las notas, o
-        // quien llegó aquí con un birthdays.json copiado a mano.
+        // There may be birthdays without notes.
         loadBirthdays();
         loadEvents();
         resetSnapshots();
@@ -770,41 +720,35 @@ void Store::load() {
     }
 
     if (m_available && readFile()) {
-        // Un fichero de antes de las áreas no trae ninguna: se crea la de
-        // serie, con la foto ya tomada abajo -- no es un cambio del usuario,
-        // y todos los equipos la crean igual, con el mismo id.
+        // A file from before areas has none: the default one is created before the
+        // snapshot below, since it is not a user change and every machine creates it
+        // with the same id.
         ensureAreas();
-        // Después de readFile: si los cumpleaños siguen dentro de notes.json
-        // (la versión anterior), ahí es donde acaban de leerse, y esto decide
-        // si el fichero propio los sustituye.
+        // After readFile(): if birthdays still live in notes.json (older version) they
+        // were just read there, and this decides whether their own file replaces them.
         loadBirthdays();
         loadEvents();
-        resetSnapshots();   // lo leído no es un cambio
-        // Aquí y no solo tras copiar: un día que ya tiene su copia sale antes
-        // de podar, así que colgada únicamente de eso la carpeta podía crecer
-        // sin límite. Una vez por lanzamiento acota el número sin tener que
-        // listar el directorio en cada pulsación de tecla.
+        resetSnapshots();   // what was read is not a change
+        // Here and not only after a copy: copyToBackup() returns early when the
+        // target exists, so hung only off it the folder could grow without limit.
         pruneBackups();
-        // La app pudo estar cerrada a la hora programada: se pone al día aquí,
-        // sobre el fichero recién leído y antes de que nada lo toque.
-        if (backupIfDue()) scheduleSave();   // para dejar apuntada la fecha
+        // The app may have been closed at the scheduled time: catch up here, on the
+        // file just read and before anything touches it.
+        if (backupIfDue()) scheduleSave();   // to record the date
         return;
     }
 
-    // La carpeta configurada no está, o su notes.json está ahí pero no se deja
-    // leer. En ninguno de los dos casos se siembra nada ni se escribe: el
-    // panel abre vacío y en solo lectura, y retryLoad() vuelve a mirar por si
-    // el volumen aparece.
+    // The folder is missing, or its notes.json cannot be read. Seed nothing and
+    // write nothing: the panel opens empty and read-only, and retryLoad() checks
+    // again later.
     m_available = false;
-    // Y como tampoco se ha podido leer qué idioma prefería, se sigue al del
-    // sistema igual que en una instalación nueva: dejarlo en español hacía que
-    // el aviso de "no se está guardando" —lo único que se ve— saliera en un
-    // idioma que su dueño quizá no lee. Es provisional: cuando el volumen
-    // aparece, retryLoad() trae la preferencia de verdad y retranslate() la
-    // aplica.
+    // The preferred language could not be read either, so follow the system's as
+    // on a fresh install; otherwise the "not saving" warning (the only thing on
+    // screen) could be in a language its owner does not read. retryLoad() brings
+    // the real preference later.
     m_prefs.lang = Lang::systemDefault();
     Lang::setCurrent(m_prefs.lang);
-    ensureAreas();   // el panel necesita una pestaña aunque esté vacío
+    ensureAreas();   // the panel needs a tab even when empty
 }
 
 bool Store::readFile() {
@@ -813,16 +757,16 @@ bool Store::readFile() {
     return readObject(QJsonDocument::fromJson(f.readAll()).object());
 }
 
-// Aparte del fichero, porque restaurar una copia lee exactamente lo mismo de
-// otro sitio. Se lee tolerando ficheros de versiones anteriores: cada clave
-// añadida con el tiempo se comprueba antes de usarla.
+/// Reads everything but the files themselves, since restoring a backup reads
+/// the same from elsewhere. Tolerates older files: every key added over time
+/// is checked before use.
 bool Store::readObject(const QJsonObject &root) {
     if (root.contains("accent")) m_prefs.accent = QColor(root["accent"].toString());
     if (root.contains("opacity")) m_prefs.opacity = root["opacity"].toInt(96);
     if (root.contains("input")) m_prefs.input = root["input"].toString().toLatin1();
     m_prefs.onTop = root["onTop"].toBool();
-    m_prefs.appMode = root["appMode"].toBool();   // de antes: widget, como siempre
-    // De antes de que existiera: activado, que es lo de serie.
+    m_prefs.appMode = root["appMode"].toBool();   // older files: widget mode
+    // Older files: on, the default.
     if (root.contains("sizePerPage")) m_prefs.sizePerPage = root["sizePerPage"].toBool();
     const QJsonObject pageSizes = root["pageSizes"].toObject();
     for (auto it = pageSizes.begin(); it != pageSizes.end(); ++it) {
@@ -830,9 +774,8 @@ bool Store::readObject(const QJsonObject &root) {
         const QSize size(wh.at(0).toInt(), wh.at(1).toInt());
         if (size.isValid() && !size.isEmpty()) m_prefs.pageSizes.insert(it.key(), size);
     }
-    // Un fichero de antes de que hubiera idioma se queda en español, que es
-    // como lo venía viendo su dueño; el del sistema solo decide en un
-    // arranque en blanco.
+    // A file from before languages stays Spanish, which is what its owner was
+    // seeing; the system language only decides on a blank start.
     m_prefs.lang = Lang::fromString(root["lang"].toString(), Lang::Es);
     Lang::setCurrent(m_prefs.lang);
     m_prefs.birthdaysByMonth = root["birthdaysByMonth"].toBool();
@@ -840,8 +783,7 @@ bool Store::readObject(const QJsonObject &root) {
     if (root.contains("plannerView")) m_prefs.plannerView = qBound(0, root["plannerView"].toInt(2), 2);
     for (const QJsonValue v : root["plannerHidden"].toArray())
         m_prefs.plannerHidden << v.toString();
-    // Un fichero de antes de que existiera esto no trae la clave, y entonces
-    // toBool() daría false: se respeta el valor por defecto en su lugar.
+    // Guarded: toBool() on a missing key would give false instead of the default.
     if (root.contains("updateCheck")) m_prefs.updateCheck = root["updateCheck"].toBool();
     m_prefs.lastUpdateMs = qint64(root["lastUpdate"].toDouble());
     m_prefs.latestSeen = root["latestSeen"].toString();
@@ -864,15 +806,14 @@ bool Store::readObject(const QJsonObject &root) {
     for (const QJsonValue v : root["areas"].toArray())
         m_areas.append(Area::fromJson(v.toObject()));
     m_prefs.activeArea = root["activeArea"].toString();
-    // Un fichero de antes de que existieran los cumpleaños no trae la clave, y
-    // entonces toArray() devuelve una lista vacía: no hace falta guarda.
+    // No guard needed: a missing key gives an empty array.
     for (const QJsonValue v : root["birthdays"].toArray())
         m_birthdays.append(Birthday::fromJson(v.toObject()));
     for (const QJsonValue v : root["timers"].toArray())
         m_timers.append(Timer::fromJson(v.toObject()));
     m_orderUpdatedMs = qint64(root["orderUpdated"].toDouble());
-    // Se suman y no se sustituyen: restaurar una copia vieja no puede olvidar
-    // lo que se ha borrado desde entonces.
+    // Merged, not replaced: restoring an old backup must not forget what has been
+    // deleted since.
     const QJsonObject deleted = root["deleted"].toObject();
     for (auto it = deleted.begin(); it != deleted.end(); ++it)
         m_deleted[it.key()] = qMax(m_deleted.value(it.key()), qint64(it.value().toDouble()));
@@ -883,9 +824,8 @@ bool Store::retryLoad() {
     if (m_available || !dataDirAvailable()) return false;
 
     if (QFile::exists(path())) {
-        // Lo que se haya escrito mientras la carpeta no estaba se conserva, y
-        // queda arriba como cualquier nota recién creada: recuperar el fichero
-        // no puede costarle una nota a nadie.
+        // What was written while the folder was missing is kept, on top like any new
+        // note: recovering the file must not cost anyone a note.
         const QList<Note *> pending = m_notes;
         const QList<Birthday *> pendingBdays = m_birthdays;
         const QList<Timer *> pendingTimers = m_timers;
@@ -907,15 +847,15 @@ bool Store::retryLoad() {
             m_areas = pendingAreas;
             return false;
         }
-        // Las áreas creadas mientras tanto se quedan, salvo las que el fichero
-        // ya tiene (la de serie, que se creó sola al abrir en vacío).
+        // Areas created meanwhile are kept, except those the file already has (the
+        // default one, created when opening empty).
         QList<Area *> newAreas;
         for (Area *a : pendingAreas) {
             if (area(a->id)) {
                 delete a;
                 continue;
             }
-            a->pos = 1 << 20;   // detrás de las que ya había
+            a->pos = 1 << 20;   // after the existing ones
             m_areas.append(a);
             newAreas.append(a);
         }
@@ -923,18 +863,16 @@ bool Store::retryLoad() {
         for (int i = int(pending.size()) - 1; i >= 0; --i) m_notes.prepend(pending[i]);
         for (int i = int(pendingTimers.size()) - 1; i >= 0; --i) m_timers.prepend(pendingTimers[i]);
 
-        // loadBirthdays mira si hay fichero propio y, de haberlo, se queda con
-        // lo que diga; por eso lo que se escribió mientras la carpeta no estaba
-        // se vuelve a poner después. No tienen orden que respetar (la página
-        // los ordena por fecha), así que van detrás y ya está.
-        m_available = true;      // lo que consulta loadBirthdays
+        // loadBirthdays() keeps what its own file says, which is why what was written
+        // meanwhile is added back afterwards.
+        m_available = true;      // what loadBirthdays() checks
         loadBirthdays();
         m_birthdays += pendingBdays;
         loadEvents();
         m_events += pendingEvents;
         m_categories += pendingCats;
-        // Lo leído es el punto de partida; lo escrito mientras la carpeta no
-        // estaba sí es un cambio, y se queda sin foto para que se marque.
+        // What was read is the baseline; what was written meanwhile is a change, so
+        // it gets no snapshot and will be stamped.
         resetSnapshots();
         for (Note *n : pending) m_snap.remove(keyOf(n));
         for (Birthday *b : pendingBdays) m_snap.remove(keyOf(b));
@@ -943,9 +881,8 @@ bool Store::retryLoad() {
         for (Event::Category *c : pendingCats) m_snap.remove(keyOf(c));
         for (Area *a : newAreas) m_snap.remove(keyOf(a));
     }
-    // Si la carpeta apareció sin fichero, se queda lo que hubiera en memoria:
-    // sembrar los ejemplos ahora sería ponerlos encima de lo que el usuario
-    // acaba de escribir.
+    // The folder appeared without a file: keep what is in memory. Seeding the
+    // demo notes now would put them over what the user just wrote.
 
     m_available = true;
     save();
@@ -958,8 +895,7 @@ void Store::changeDataDir(const QString &raw) {
     const QString from = appDataDir();
     if (to.isEmpty() || to == from) return;
 
-    // Las notas se llevan consigo sus adjuntos; si no, las notas de voz y las
-    // imágenes apuntarían a ficheros que se quedaron en la carpeta anterior.
+    // Attachments move with the notes, or they would point at the old folder.
     QDir().mkpath(to + "/audio");
     QDir().mkpath(to + "/images");
     auto copyAttachment = [&](const QString &sub, const QString &name) {
@@ -972,8 +908,7 @@ void Store::changeDataDir(const QString &raw) {
         for (const QString &image : n->images) copyAttachment("images", image);
     }
 
-    // La historia se muda con las notas: son unos pocos KB y sin ella el
-    // primer día en la carpeta nueva es un día sin nada a lo que volver.
+    // The backup history moves too.
     QDir().mkpath(to + "/backups");
     for (const char *prefix : {kBackupPrefix, kBirthdayBackupPrefix, kEventBackupPrefix})
         for (const QString &name : QDir(from + "/backups")
@@ -982,26 +917,22 @@ void Store::changeDataDir(const QString &raw) {
 
     dataDirOverride() = to;
     QSettings().setValue("dataDir", to);
-    // La carpeta nueva sí está —viene del selector—, así que se puede volver a
-    // escribir aunque la anterior hubiera desaparecido. Lo mismo vale para el
-    // candado de los cumpleaños: el fichero ilegible era el de la carpeta que
-    // se deja atrás. El save() de abajo escribe notes.json y birthdays.json en
-    // el destino, así que ninguno de los dos hay que copiarlo a mano.
+    // The new folder does exist (it comes from the picker), so writing is allowed
+    // again, and the birthdays lock belonged to the folder left behind. The save()
+    // below writes notes.json and its siblings at the destination.
     m_available = true;
     m_birthdaysReadable = true;
     m_eventsReadable = true;
     save();
 }
 
-// La otra manera de cambiar de carpeta: quedarse con las notas que ya viven
-// allí en lugar de llevarle las de aquí. Sin esto, elegir una carpeta era
-// siempre "sobrescribe lo que haya", que es exactamente lo que no se quiere
-// cuando se apunta a un pendrive que ya tiene las notas de uno.
+/// The other way of changing folder: keep the notes already there instead of
+/// bringing these, without writing there until it has been read.
 void Store::adoptDataDir(const QString &raw) {
     const QString to = trimmedDir(raw);
     if (to.isEmpty() || to == appDataDir()) return;
 
-    save();   // lo que había en memoria se queda guardado donde estaba
+    save();   // what was in memory stays saved where it was
     qDeleteAll(m_notes);
     m_notes.clear();
     qDeleteAll(m_birthdays);
@@ -1015,7 +946,7 @@ void Store::adoptDataDir(const QString &raw) {
     qDeleteAll(m_areas);
     m_areas.clear();
     m_prefs = Prefs{};
-    // Otras notas, otra historia: las lápidas de aquí no son de allí.
+    // Other notes, other history: these tombstones do not belong there.
     m_deleted.clear();
     m_orderUpdatedMs = 0;
 
@@ -1024,8 +955,6 @@ void Store::adoptDataDir(const QString &raw) {
     load();
     emit reloaded();
 }
-
-// --- sincronización -------------------------------------------------------------
 
 void Store::resetSnapshots() {
     m_snap.clear();
@@ -1050,11 +979,10 @@ void Store::stampChanges() {
         if (it != m_snap.end() && *it == snap) return;
         item->updatedMs = now;
         m_snap[key] = snap;
-        m_deleted.remove(key);   // vuelve a existir: la lápida sobra
+        m_deleted.remove(key);   // it exists again: drop the tombstone
     };
     for (Note *n : m_notes) stamp(n);
-    // Si un fichero no se pudo leer, lo que falta de él no se ha borrado: no
-    // se ha llegado a cargar. Sin esta guarda se repartiría su borrado.
+    // What is missing from an unreadable file was never loaded, not deleted.
     if (m_birthdaysReadable)
         for (Birthday *b : m_birthdays) stamp(b);
     if (m_eventsReadable) {
@@ -1088,8 +1016,9 @@ void Store::stampChanges() {
 
 namespace {
 
-// Mezcla una lista con su gemela de fuera. Devuelve si ha cambiado algo aquí
-// y avisa de cada elemento cuya versión buena ha venido de fuera.
+/// Merges a list with its remote twin.
+/// @return Whether anything changed here; reports every element whose winning
+///         version came from outside.
 template <typename T>
 bool mergeList(QList<T *> &local, const QJsonArray &remote, QHash<QString, qint64> &deleted,
                bool prependNew, const std::function<void(T *)> &remoteWon) {
@@ -1100,7 +1029,7 @@ bool mergeList(QList<T *> &local, const QJsonArray &remote, QHash<QString, qint6
     QList<T *> added;
     for (const QJsonValue v : remote) {
         T *r = T::fromJson(v.toObject());
-        // Borrado en algún sitio después de su última edición: no vuelve.
+        // Deleted somewhere after its last edit: it does not come back.
         if (deleted.contains(keyOf(r)) && deleted.value(keyOf(r)) >= r->updatedMs) {
             delete r;
             continue;
@@ -1120,7 +1049,7 @@ bool mergeList(QList<T *> &local, const QJsonArray &remote, QHash<QString, qint6
             delete r;
         }
     }
-    // Lo nuevo de fuera, arriba, como cualquier nota recién creada.
+    // New remote elements go on top, like any new note.
     if (prependNew)
         for (int i = int(added.size()) - 1; i >= 0; --i) local.prepend(added.at(i));
     else
@@ -1128,7 +1057,7 @@ bool mergeList(QList<T *> &local, const QJsonArray &remote, QHash<QString, qint6
     return changed;
 }
 
-// Borra aquí lo que otro equipo borró después de la última edición de aquí.
+/// Deletes here what another machine deleted after the last local edit.
 template <typename T>
 bool applyTombstones(QList<T *> &local, QHash<QString, qint64> &deleted,
                      const std::function<void(T *)> &beforeDelete = nullptr) {
@@ -1138,8 +1067,8 @@ bool applyTombstones(QList<T *> &local, QHash<QString, qint64> &deleted,
         const QString key = keyOf(item);
         if (!deleted.contains(key)) continue;
         if (deleted.value(key) < item->updatedMs) {
-            // Editado aquí después del borrado de allí: gana la edición, y la
-            // lápida se retira para no seguir repartiéndola.
+            // Edited here after the remote deletion: the edit wins and the tombstone is
+            // dropped so it stops spreading.
             deleted.remove(key);
             continue;
         }
@@ -1157,9 +1086,9 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
                                       const QJsonObject &birthdaysRoot,
                                       const QJsonObject &eventsRoot) {
     MergeResult result;
-    if (!m_available) return result;   // nunca se mezcla sobre lo que no se leyó
+    if (!m_available) return result;   // never merge over what was not read
 
-    // Lo de aquí, con sus fechas al día antes de compararlo con nada.
+    // Local changes stamped before comparing anything.
     stampChanges();
 
     if (notesRoot.contains("deleted")) {
@@ -1182,8 +1111,8 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
         result.changed |= mergeList<Area>(m_areas, notesRoot["areas"].toArray(), m_deleted,
                                           false, nothing);
 
-        // El orden: el de quien lo cambió más tarde. Lo que ese orden no
-        // conoce (lo recién creado aquí) va arriba, en el orden de aquí.
+        // The order of whoever changed it last. Ids it does not know (just created
+        // here) go on top, in local order.
         const qint64 remoteOrder = qint64(notesRoot["orderUpdated"].toDouble());
         if (remoteOrder > m_orderUpdatedMs) {
             QStringList ids;
@@ -1212,8 +1141,7 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
             m_categories, eventsRoot["categories"].toArray(), m_deleted, false, nothing);
     }
 
-    // Lo borrado en el otro equipo, también aquí. Las notas se llevan sus
-    // adjuntos, igual que al borrarlas a mano.
+    // Notes deleted elsewhere take their attachments with them here too.
     result.changed |= applyTombstones<Note>(m_notes, m_deleted, [](Note *n) {
         if (!n->audio.isEmpty()) QFile::remove(n->audioPath());
         for (const QString &image : n->images) QFile::remove(Note::imagePath(image));
@@ -1227,11 +1155,11 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
         result.changed |= applyTombstones<Event::Category>(m_categories, m_deleted);
     }
 
-    // Lo que acaba de llegar no es un cambio de este equipo: si se marcara,
-    // se llevaría la fecha de ahora y ganaría a la de verdad en el siguiente.
+    // What just arrived is not a local change: stamping it would give it "now"
+    // and it would beat the real version next time.
     resetSnapshots();
-    // Después de la foto: si no queda ningún área, la de serie que se crea
-    // ahora sí es un cambio de aquí, y el save() de abajo la marca y la sube.
+    // After the snapshot: if no area is left, the default one created now is a
+    // local change, and save() stamps and uploads it.
     ensureAreas();
     save();
     if (result.changed) emit merged();
@@ -1249,8 +1177,8 @@ QStringList Store::attachments() const {
 
 namespace {
 
-// Ordenados por id: el orden de estas listas no significa nada, y dos equipos
-// con lo mismo tienen que producir exactamente los mismos bytes.
+/// Sorted by id: order means nothing in these lists, and two machines with
+/// the same data must produce exactly the same bytes.
 template <typename T>
 QJsonArray sortedById(const QList<T *> &items) {
     QList<const T *> sorted(items.begin(), items.end());
@@ -1266,7 +1194,7 @@ QJsonArray sortedById(const QList<T *> &items) {
 QByteArray Store::syncPayload(const QString &name) const {
     QJsonObject root;
     if (name == "notes.json") {
-        QJsonArray notes;   // este sí en su orden: el orden de las notas se comparte
+        QJsonArray notes;   // this one keeps its order: the note order is shared
         for (const Note *n : m_notes) notes.append(n->toJson());
         root["notes"] = notes;
         root["timers"] = sortedById(m_timers);

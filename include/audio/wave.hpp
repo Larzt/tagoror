@@ -7,10 +7,11 @@
 #include <QString>
 #include <QtEndian>
 
-// Lectura mínima de WAV PCM para dibujar la onda. Solo se necesita entender
-// los ficheros que graba la propia app (PCM 16 bits), así que no se enlaza
-// ningún decodificador: se recorre el RIFF a mano.
-// Cabecera RIFF/WAVE de 44 bytes para PCM entero.
+/// @file
+/// Minimal 16-bit PCM WAV writer and reader, enough for the files this app
+/// records. The RIFF chunks are walked by hand; no decoder is linked.
+
+/// 44-byte RIFF/WAVE header for integer PCM.
 inline QByteArray wavHeader(int sampleRate, int channels, int bits, quint32 dataBytes) {
     const quint32 byteRate = quint32(sampleRate) * channels * bits / 8;
     const quint16 blockAlign = quint16(channels * bits / 8);
@@ -33,8 +34,8 @@ inline QByteArray wavHeader(int sampleRate, int channels, int bits, quint32 data
 }
 
 struct WaveScan {
-    QList<int> peaks;      // 0..100, normalizados al pico del propio fichero
-    qreal loudest = 0.0;   // pico absoluto 0..1, para detectar tomas mudas
+    QList<int> peaks;      ///< 0..100, normalised to the file's own peak.
+    qreal loudest = 0.0;   ///< Absolute peak 0..1, to detect silent takes.
     bool ok = false;
 };
 
@@ -49,8 +50,7 @@ inline WaveScan scanWave(const QString &path, int buckets = 56) {
     int channels = 0, bits = 0;
     qint64 dataAt = -1, dataLen = 0;
 
-    // Recorrido de chunks: fmt y data pueden venir en cualquier orden y con
-    // otros chunks (LIST, fact…) intercalados.
+    // fmt and data may come in any order, with other chunks (LIST, fact…) between.
     qint64 pos = 12;
     while (pos + 8 <= raw.size()) {
         const QByteArray id = raw.mid(pos, 4);
@@ -66,7 +66,7 @@ inline WaveScan scanWave(const QString &path, int buckets = 56) {
             dataAt = body;
             dataLen = qMin<qint64>(len, raw.size() - body);
         }
-        pos = body + len + (len & 1);   // los chunks van alineados a 2 bytes
+        pos = body + len + (len & 1);   // chunks are 2-byte aligned
     }
 
     if (dataAt < 0 || bits != 16 || channels <= 0) return out;
@@ -90,8 +90,8 @@ inline WaveScan scanWave(const QString &path, int buckets = 56) {
         rough.append(v);
     }
 
-    // Se normaliza al pico propio (como WhatsApp): una toma floja sigue
-    // teniéndose que ver. Si es prácticamente muda no se amplifica el ruido.
+    // Normalised to its own peak so a quiet take is still visible; a nearly
+    // silent one is not amplified into noise.
     const qreal scale = out.loudest > 0.02 ? 1.0 / out.loudest : 1.0;
     for (qreal v : rough)
         out.peaks.append(int(qBound(0.0, v * scale, 1.0) * 100));

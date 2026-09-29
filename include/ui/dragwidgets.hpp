@@ -8,12 +8,12 @@
 #include <QWidget>
 #include <QWindow>
 
-// Todo lo que mueve o redimensiona la ventana se delega en el compositor:
-// Wayland no permite que un cliente coloque sus propias ventanas. Cualquier
-// asidero nuevo debe seguir a estos tres.
+/// @file
+/// Everything that moves or resizes the window delegates to the compositor:
+/// Wayland does not let a client position its own windows. Any new handle
+/// should follow these three.
 
-// Franja superior arrastrable: delega el movimiento al compositor, así
-// funciona igual en X11 y en Wayland (donde move() no está permitido).
+/// Draggable header strip: startSystemMove() on press.
 class DragBar : public QFrame {
 public:
     using QFrame::QFrame;
@@ -30,9 +30,9 @@ protected:
     }
 };
 
-// Botón que además se puede arrastrar: el dock plegado se mueve como el panel,
-// pero sigue respondiendo al clic si no ha habido desplazamiento. startSystemMove
-// se queda con el resto del gesto, así que el clic no llega a dispararse.
+/// A button that can also be dragged (the folded dock). It still answers a
+/// click when the pointer did not move; once dragging, startSystemMove() takes
+/// the rest of the gesture and the click never fires.
 class DragButton : public QToolButton {
 public:
     using QToolButton::QToolButton;
@@ -50,7 +50,7 @@ protected:
                 QApplication::startDragDistance()) {
             if (QWindow *w = window()->windowHandle()) {
                 m_dragging = true;
-                setDown(false);          // si no, se queda hundido tras el arrastre
+                setDown(false);          // otherwise it stays pressed after the drag
                 w->startSystemMove();
                 return;
             }
@@ -68,8 +68,7 @@ private:
     bool m_dragging = false;
 };
 
-// Esquina de redimensión. Igual que el arrastre, se delega en el compositor
-// (startSystemResize) para que funcione en Wayland.
+/// Resize corner, delegated to the compositor through startSystemResize().
 class GripCorner : public QWidget {
 public:
     explicit GripCorner(QWidget *parent = nullptr) : QWidget(parent) {

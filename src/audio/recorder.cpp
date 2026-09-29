@@ -8,12 +8,12 @@
 #include <QMediaDevices>
 
 namespace {
-constexpr int kWindowMs = 50;    // resolución de la onda mientras se graba
+constexpr int kWindowMs = 50;    // waveform resolution while recording
 constexpr int kBits = 16;
 }
 
 namespace {
-QByteArray g_preferredInput;   // id del dispositivo elegido en ajustes
+QByteArray g_preferredInput;   // device id chosen in settings
 }
 
 void VoiceRecorder::setPreferredInput(const QByteArray &id) { g_preferredInput = id; }
@@ -32,8 +32,8 @@ bool VoiceRecorder::start(const QString &path) {
     m_windowPeak = 0;
     m_error.clear();
 
-    // Si el dispositivo guardado ya no está (auriculares desconectados), se
-    // vuelve al del sistema en lugar de fallar.
+    // If the saved device is gone (headphones unplugged), fall back to the
+    // system default instead of failing.
     QAudioDevice dev = QMediaDevices::defaultAudioInput();
     if (!g_preferredInput.isEmpty()) {
         for (const QAudioDevice &d : QMediaDevices::audioInputs())
@@ -45,8 +45,8 @@ bool VoiceRecorder::start(const QString &path) {
         return false;
     }
 
-    // Se fuerza Int16 (la onda y el WAV asumen enteros de 16 bits); si el
-    // dispositivo no lo acepta tal cual, se prueba con 48 kHz mono.
+    // Int16 is forced (the waveform and the WAV assume 16-bit integers); if the
+    // device refuses it, try 48 kHz mono.
     m_format = dev.preferredFormat();
     m_format.setSampleFormat(QAudioFormat::Int16);
     if (!dev.isFormatSupported(m_format)) {
@@ -65,7 +65,7 @@ bool VoiceRecorder::start(const QString &path) {
         emit finished(false);
         return false;
     }
-    // Cabecera provisional: los tamaños se reescriben al parar.
+    // Provisional header: the sizes are rewritten on stop.
     m_file.write(wavHeader(m_format.sampleRate(), m_format.channelCount(), kBits, 0));
 
     m_windowFrames = qMax(1, m_format.sampleRate() * kWindowMs / 1000);
@@ -119,7 +119,7 @@ void VoiceRecorder::stop() {
 
     disconnect(m_input, nullptr, this, nullptr);
     m_source->stop();
-    drain();                     // lo que quedara en el buffer
+    drain();                     // whatever was left in the buffer
     m_input = nullptr;
     m_source->deleteLater();
     m_source = nullptr;
@@ -129,7 +129,7 @@ void VoiceRecorder::stop() {
     m_file.write(wavHeader(m_format.sampleRate(), m_format.channelCount(), kBits, dataBytes));
     m_file.close();
 
-    // La onda se normaliza al pico propio, igual que scanWave().
+    // Normalised to its own peak, like scanWave().
     if (m_loudest > 0.02) {
         for (int &v : m_peaks)
             v = int(qBound(0.0, v / 100.0 / m_loudest, 1.0) * 100);

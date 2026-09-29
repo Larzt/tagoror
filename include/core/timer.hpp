@@ -5,14 +5,11 @@
 #include <QString>
 #include <QUuid>
 
-// Un temporizador: una cuenta atrás con nombre que se puede pausar, reiniciar
-// y volver a lanzar. Los que no están en marcha no se borran solos: se quedan
-// como plantillas ("Pomodoro", "Pausa corta"), que es para lo que se guardan.
-//
-// Mientras corre no se apunta lo que queda sino cuándo acaba. Así el tiempo
-// sigue pasando con la aplicación cerrada o el equipo suspendido, igual que en
-// un temporizador de cocina, y al volver lo que queda es la resta y no lo que
-// hubiera en memoria la última vez que alguien miró.
+/// A named countdown that can be paused, reset and started again. Idle ones
+/// are kept as templates and never deleted on their own.
+///
+/// A running timer stores when it ends, not how much is left, so time keeps
+/// passing while the app is closed or the machine sleeps.
 struct Timer {
     enum State { Idle, Running, Paused, Done };
 
@@ -20,16 +17,13 @@ struct Timer {
     QString name;
     qint64 totalMs = 0;
     State state = Idle;
-    qint64 leftMs = 0;       // Idle y Paused: lo que queda
-    qint64 endsAtMs = 0;     // Running: el instante en que llega a cero
-    // Cuándo cambió por última vez, para la sincronización con Drive: entre
-    // dos equipos gana la versión más reciente de cada elemento. No lo pone
-    // quien edita sino Store al guardar (ver Store::stampChanges), así que
-    // ninguna tarjeta tiene que acordarse de tocarlo.
+    qint64 leftMs = 0;       ///< Idle and Paused: time left.
+    qint64 endsAtMs = 0;     ///< Running: the instant it reaches zero.
+    /// Last change, for the Drive sync (newest version of each element wins).
+    /// Set by Store::stampChanges() on save, never by the editor.
     qint64 updatedMs = 0;
 
-    // Lo que queda ahora mismo. Terminado es cero, no negativo: el contador
-    // no sigue bajando mientras suena.
+    /// Time left right now. A finished timer is at zero, never negative.
     qint64 remainingMs(qint64 now = QDateTime::currentMSecsSinceEpoch()) const {
         switch (state) {
             case Running: return qMax<qint64>(0, endsAtMs - now);
@@ -38,13 +32,12 @@ struct Timer {
         }
     }
 
-    // De 1 a 0: lo que se pinta en el anillo.
+    /// From 1 to 0: what the ring draws.
     qreal fraction(qint64 now = QDateTime::currentMSecsSinceEpoch()) const {
         return totalMs > 0 ? qreal(remainingMs(now)) / totalMs : 0.0;
     }
 
-    // ¿Ha llegado a cero mientras corría? Es lo que el latido del panel
-    // pregunta para hacerlo sonar.
+    /// Whether it reached zero while running (what the panel's heartbeat asks).
     bool expired(qint64 now = QDateTime::currentMSecsSinceEpoch()) const {
         return state == Running && now >= endsAtMs;
     }
@@ -52,8 +45,8 @@ struct Timer {
     bool ringing() const { return state == Done; }
 
     void start(qint64 now = QDateTime::currentMSecsSinceEpoch()) {
-        // Uno terminado o a cero vuelve a empezar entero: darle a "iniciar"
-        // sobre un 00:00 no puede querer decir "suena otra vez ya".
+        // A finished or zeroed timer restarts from its full length: "start" on
+        // 00:00 cannot mean "ring again now".
         const qint64 left = (state == Done || leftMs <= 0) ? totalMs : leftMs;
         endsAtMs = now + left;
         state = Running;
@@ -65,20 +58,18 @@ struct Timer {
         state = Paused;
     }
 
-    // Vuelve a su duración y se queda quieto: de vuelta a plantilla.
+    /// Back to its full length and idle, i.e. back to being a template.
     void reset() {
         leftMs = totalMs;
         endsAtMs = 0;
         state = Idle;
     }
 
-    // "+1 min" sobre uno que suena: lo calla y lo relanza con un minuto.
+    /// "+1 min" on a ringing timer: silences it and restarts it with @p ms.
     void snooze(qint64 ms, qint64 now = QDateTime::currentMSecsSinceEpoch()) {
         endsAtMs = now + ms;
         state = Running;
     }
-
-    // --- serialización -----------------------------------------------------
 
     QJsonObject toJson() const {
         QJsonObject o;

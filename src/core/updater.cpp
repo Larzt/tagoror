@@ -12,12 +12,10 @@
 
 namespace {
 
-// La API de releases del repositorio. La versión que interesa es la última
-// publicada, que es justo lo que devuelve este punto final; los borradores y
-// las prereleases no salen por aquí.
+/// Latest published release (drafts and prereleases are not returned).
 constexpr auto kLatestUrl = "https://api.github.com/repos/Larzt/tagoror/releases/latest";
 
-// GitHub rechaza las peticiones sin User-Agent.
+/// GitHub rejects requests without a User-Agent.
 constexpr auto kUserAgent = "Tagoror-update-check";
 
 constexpr int kTimeoutMs = 10000;
@@ -38,15 +36,14 @@ int Updater::compare(const QString &a, const QString &b) {
     auto trozos = [](const QString &s) {
         QString v = s.trimmed();
         if (v.startsWith('v') || v.startsWith('V')) v.remove(0, 1);
-        // Se corta en el primer guion: "2.1.0-beta2" se compara como 2.1.0, y
-        // así una etiqueta con sufijo no se lee como una versión distinta.
+        // Cut at the first dash: "2.1.0-beta2" compares as 2.1.0.
         v = v.section('-', 0, 0);
 
         QList<int> out;
         for (const QString &parte : v.split('.')) {
             bool ok = false;
             const int n = parte.toInt(&ok);
-            if (!ok) break;   // en cuanto deja de ser número, se acabó
+            if (!ok) break;   // stop at the first non-number
             out.append(n);
         }
         return out;
@@ -61,13 +58,12 @@ int Updater::compare(const QString &a, const QString &b) {
 }
 
 void Updater::check() {
-    if (m_reply) return;   // ya hay una en vuelo
+    if (m_reply) return;   // already in flight
 
     QNetworkRequest req{QUrl(QString::fromLatin1(kLatestUrl))};
     req.setRawHeader("Accept", "application/vnd.github+json");
     req.setRawHeader("User-Agent", kUserAgent);
-    // Sin tope, una red que no contesta deja la consulta colgada para siempre y
-    // el botón de buscar no vuelve a estar disponible.
+    // Without a timeout an unresponsive network hangs the check forever.
     req.setTransferTimeout(kTimeoutMs);
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                      QNetworkRequest::NoLessSafeRedirectPolicy);
@@ -78,7 +74,7 @@ void Updater::check() {
 
 void Updater::onReply() {
     QNetworkReply *reply = m_reply;
-    m_reply = nullptr;            // antes de emitir: quien escuche puede pedir otra
+    m_reply = nullptr;            // before emitting: a listener may start another check
     reply->deleteLater();
 
     if (reply->error() != QNetworkReply::NoError) {
@@ -89,9 +85,8 @@ void Updater::onReply() {
     const QJsonObject root = QJsonDocument::fromJson(reply->readAll()).object();
     const QString tag = root["tag_name"].toString();
     if (tag.isEmpty()) {
-        // Contestó algo que no es lo esperado (un límite de peticiones, una
-        // página de error): mejor decir que no se pudo que inventarse una
-        // versión a partir de un objeto vacío.
+        // Something unexpected (a rate limit, an error page): better to say the check
+        // failed than to invent a version from an empty object.
         emit finished(QString(), QString(), L("No se pudo comprobar"));
         return;
     }

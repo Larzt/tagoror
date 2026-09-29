@@ -14,94 +14,76 @@
 
 #include "core/lang.hpp"
 
-// Una entrada del planificador: un evento (una clase, una reunión) o una tarea
-// con hora (entregar una práctica). Tiene inicio y fin, a diferencia de un
-// recordatorio, que es un instante; por eso no es una Note, igual que un
-// cumpleaños tampoco lo es. Viven en su propio fichero, events.json.
+/// A planner entry: an event or a timed task. Unlike a reminder it has a start
+/// and an end, which is why it is not a Note. Stored in events.json.
 struct Event {
     enum Kind { Meeting, Task };
-    // Diaria, semanal y mensual son las que pide un horario: la clase de los
-    // martes, el gimnasio a diario, el alquiler el día 1. La anual llegó con
-    // Google Calendar, donde es la de los aniversarios y los festivos.
     enum Repeat { Once, Daily, Weekly, Monthly, Yearly };
 
     QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString title;
     Kind kind = Meeting;
-    QDate date;                       // el primer día
+    QDate date;                       ///< First day.
     QTime start{10, 0};
     QTime end{11, 0};
     Repeat repeat = Once;
-    // Todo el día: sin horas, se pinta en la franja de arriba. Las horas se
-    // quedan en 00:00–23:59 para que el aviso tenga un inicio del que contar.
+    /// All-day: no times, drawn in the band above the grid. The times stay at
+    /// 00:00–23:59 so the alert has a start to count from.
     bool allDay = false;
-    // Último día de uno que dura varios (unas vacaciones). Inválido = el mismo
-    // día. Solo uno de todo el día ocupa todos; uno con hora que pasa de la
-    // medianoche se pinta en su primer día, hasta el final.
+    /// Last day of a multi-day event; invalid means the same day. Only all-day
+    /// events cover every day; a timed one crossing midnight is drawn on its
+    /// first day until the end.
     QDate endDate;
-    // Hasta cuándo se repite (inclusive). Inválido = sin fin.
+    /// Last day of the repetition (inclusive); invalid means no end.
     QDate until;
-    // Vueltas que no tocan: en Google una vuelta suelta se puede cancelar o
-    // mover, y la movida pasa a ser un evento aparte.
+    /// Occurrences that do not happen (cancelled or moved in Google).
     QList<QDate> skip;
     QString category = "work";
-    bool remind = false;              // suena remindBeforeMin antes de empezar
-    // Cuánto antes avisa, en minutos. Cero es "al empezar". Los eventos de
-    // antes de que se pudiera elegir no traen la clave y siguen con los diez
-    // de siempre.
+    bool remind = false;              ///< Rings remindBeforeMin before it starts.
+    /// Alert lead time in minutes; 0 means at the start.
     int remindBeforeMin = kDefaultRemindMin;
     QString description;
-    // Una tarea repetida se hace muchas veces: se apunta qué días está hecha,
-    // no un "hecha" suelto que marcaría todas las vueltas de golpe.
+    /// Days on which a repeating task is done (a single flag would tick every
+    /// occurrence at once).
     QList<QDate> doneOn;
-    // Inicio (en ms) de la última vuelta que ya avisó. Con un booleano, una
-    // clase semanal sonaría una vez en la vida.
+    /// Start (ms) of the last occurrence that already rang. A boolean would make
+    /// a weekly class ring once in a lifetime.
     qint64 firedMs = 0;
-    qint64 ringingMs = 0;             // solo en memoria: la vuelta que suena ahora
-    // Cuándo cambió por última vez, para la sincronización con Drive: entre
-    // dos equipos gana la versión más reciente de cada elemento. No lo pone
-    // quien edita sino Store al guardar (ver Store::stampChanges), así que
-    // ninguna tarjeta tiene que acordarse de tocarlo.
+    qint64 ringingMs = 0;             ///< Runtime only: the occurrence ringing now.
+    /// Last change, for the Drive sync (newest version of each element wins).
+    /// Set by Store::stampChanges() on save, never by the editor.
     qint64 updatedMs = 0;
 
-    // --- Google Calendar -------------------------------------------------------
-    // El calendario y el evento de Google con el que va enlazado (vacíos: solo
-    // de Tagoror), y la huella de lo que se compartió la última vez que los
-    // dos lados coincidieron (ver CalendarSync::fingerprint). Viajan por Drive
-    // con el evento: otro equipo conectado a la misma cuenta sabe así que ya
-    // está en Google y no lo sube dos veces.
+    /// Google Calendar link.
+    /// Calendar and Google event this one is linked to (empty: Tagoror only), and
+    /// the fingerprint of the shared fields the last time both sides agreed (see
+    /// CalendarSync::fingerprint). They travel through Drive, so another machine
+    /// on the same account knows it is already in Google.
     QString gcalCal;
     QString gcalId;
     QString gcalHash;
-    // Una serie de Google que se repite de una forma que aquí no cabe (cada
-    // dos semanas, lunes y miércoles, el segundo martes): no se pinta, la
-    // representan sus vueltas, cada una un evento suelto. Se esconde en vez de
-    // borrarse porque su lápida viajaría por Drive y otro equipo la tomaría
-    // por un borrado del usuario, y la borraría también en Google.
+    /// A Google series whose rule does not fit #Repeat: it is not drawn, its
+    /// occurrences are imported as separate events. It is hidden rather than
+    /// deleted because its tombstone would travel through Drive and another
+    /// machine would take it for a user deletion and delete it in Google.
     bool gcalExpanded = false;
 
     bool linked() const { return !gcalId.isEmpty(); }
-    // Una vuelta de una serie de Google: sus id son "<serie>_<instante>", y
-    // los de Google no llevan nunca guion bajo.
+    /// An occurrence of a Google series: ids are "<series>_<instant>", and
+    /// Google ids never contain an underscore otherwise.
     bool gcalInstance() const { return gcalId.contains('_'); }
 
     static constexpr int kDefaultRemindMin = 10;
-    // Un día como mucho: alarmDue() mira las vueltas de hoy en adelante hasta
-    // donde alcance el aviso, y más allá de eso ya no es un aviso sino una
-    // agenda.
+    /// At most a day: alarmDue() only looks as far ahead as the lead reaches.
     static constexpr int kMaxRemindMin = 24 * 60;
 
-    // --- categorías ----------------------------------------------------------
-    // Cuatro de serie, que no se guardan en ningún sitio, y las que cree el
-    // usuario, que viven en events.json junto a los eventos y se sincronizan
-    // como un elemento más (con su fecha de cambio y sus lápidas). El acento es
-    // la de trabajo porque es la que más se usa y la que tiene que parecer "la
-    // app".
+    /// A category: four built-in ones (never stored) plus the user's, which live
+    /// in events.json and sync like any other element.
     struct Category {
         QString id;
-        QString label;    // de serie: en español, se traduce con L(); propias: tal cual
-        QColor color;     // inválido = el acento
-        qint64 updatedMs = 0;   // solo las propias: ver Event::updatedMs
+        QString label;    ///< Built-in: Spanish, translated with L(). Custom: as typed.
+        QColor color;     ///< Invalid means the accent.
+        qint64 updatedMs = 0;   ///< Custom only: see Event::updatedMs.
 
         QJsonObject toJson() const {
             QJsonObject o;
@@ -134,10 +116,10 @@ struct Event {
             if (c.id == id) return true;
         return false;
     }
-    // Adónde van los eventos de una categoría propia que se borra.
+    /// Where the events of a deleted custom category go.
     static constexpr auto kFallbackCategory = "other";
-    // Una categoría que ya no existe (borrada en otro equipo a la vez que aquí
-    // se le asignaba un evento) se pinta con el acento en vez de desaparecer.
+    /// A category nobody knows (deleted on another machine meanwhile) is painted
+    /// in the accent instead of vanishing.
     static QColor categoryColor(const QString &id, const QColor &accent,
                                 const QList<Category *> *custom = nullptr) {
         for (const Category &c : categories())
@@ -148,11 +130,8 @@ struct Event {
         return accent;
     }
 
-    // --- cuándo cae ----------------------------------------------------------
-
-    // ¿Cae en ese día? Como Note::occursOn, un día 31 mensual no se corre al 30
-    // en los meses cortos: ese mes simplemente no toca.
-    // La anual, como un cumpleaños: un 29 de febrero solo cae en bisiesto.
+    /// Whether it falls on @p d. A monthly one on the 31st skips short months
+    /// and a yearly 29 February only falls on leap years, like Note::occursOn().
     bool occursOn(const QDate &d) const {
         if (gcalExpanded || !date.isValid() || !d.isValid() || d < date) return false;
         if (repeat != Once && until.isValid() && d > until) return false;
@@ -168,18 +147,16 @@ struct Event {
         }
     }
 
-    // Días que ocupa (1 = uno solo). Lo que no es de todo el día ocupa uno.
+    /// Days covered (1 = a single one).
     int spanDays() const {
         return endDate.isValid() && endDate > date ? int(date.daysTo(endDate)) + 1 : 1;
     }
 
-    // Un fin anterior al inicio (o inválido) se toma como una hora de duración:
-    // es lo que se quería casi siempre, y un bloque de alto negativo no se
-    // puede ni pintar ni pulsar.
+    /// An end before the start (or invalid) is taken as one hour: a negative
+    /// height block could be neither painted nor clicked.
     QTime effectiveEnd() const {
         if (allDay) return QTime(23, 59);
-        // Uno con hora que termina otro día se pinta en el primero hasta el
-        // final: la rejilla no parte bloques entre columnas.
+        // The grid does not split blocks across columns.
         if (endDate.isValid() && endDate > date) return QTime(23, 59);
         if (end.isValid() && end > start) return end;
         const QTime plus = start.addSecs(3600);
@@ -189,7 +166,7 @@ struct Event {
     QDateTime startOn(const QDate &d) const { return QDateTime(d, start); }
     QDateTime endOn(const QDate &d) const { return QDateTime(d, effectiveEnd()); }
 
-    // En horas decimales, para colocar el bloque en la rejilla.
+    /// In decimal hours, to place the block on the grid.
     qreal startHours() const { return start.msecsSinceStartOfDay() / 3600000.0; }
     qreal endHours() const { return effectiveEnd().msecsSinceStartOfDay() / 3600000.0; }
 
@@ -199,12 +176,11 @@ struct Event {
         if (on) doneOn.append(d);
     }
 
-    // ¿Tiene que sonar ahora? Mira la vuelta de hoy y las siguientes hasta
-    // donde llegue el aviso (una clase a las 00:05 avisa a las 23:55 del día
-    // antes; con un día de antelación, la de mañana avisa hoy). No suena por una vuelta que
-    // ya ha terminado: con la aplicación cerrada toda la mañana, al abrirla no
-    // tiene sentido avisar de la clase de las nueve. Devuelve el inicio de la
-    // vuelta en ms, o 0.
+    /// Whether it has to ring now.
+    ///
+    /// Looks at today's occurrence and the following ones as far as the lead
+    /// reaches, and never rings for an occurrence that has already ended.
+    /// @return Start of the occurrence in ms, or 0.
     qint64 alarmDue(const QDateTime &now = QDateTime::currentDateTime()) const {
         if (!remind) return 0;
         const int lead = qBound(0, remindBeforeMin, kMaxRemindMin);
@@ -212,7 +188,7 @@ struct Event {
         for (int i = 0; i <= ahead; ++i) {
             const QDate d = now.date().addDays(i);
             if (!occursOn(d) || isDoneOn(d)) continue;
-            // Uno de varios días avisa al empezar, no cada uno de ellos.
+            // A multi-day event rings when it starts, not on each of its days.
             if (repeat == Once && d != date) continue;
             const QDateTime begins = startOn(d);
             const qint64 key = begins.toMSecsSinceEpoch();
@@ -228,8 +204,6 @@ struct Event {
                description.contains(query, Qt::CaseInsensitive);
     }
 
-    // --- serialización -----------------------------------------------------
-
     QJsonObject toJson() const {
         QJsonObject o;
         o["id"] = id;
@@ -239,9 +213,8 @@ struct Event {
         o["start"] = start.toString("HH:mm");
         o["end"] = end.toString("HH:mm");
         o["repeat"] = int(repeat);
-        // Lo que vino con Google solo se escribe si está: un evento de antes
-        // sigue escribiéndose byte a byte igual y la sincronización no lo toma
-        // por cambiado.
+        // Written only when set, so older events keep their exact bytes and the
+        // sync does not see them as changed.
         if (allDay) o["allDay"] = true;
         if (endDate.isValid()) o["endDate"] = endDate.toString(Qt::ISODate);
         if (until.isValid()) o["until"] = until.toString(Qt::ISODate);
@@ -260,9 +233,7 @@ struct Event {
         }
         o["category"] = category;
         o["remind"] = remind;
-        // Solo si no es el de siempre: así un evento que nadie ha tocado sigue
-        // escribiéndose igual que antes y la sincronización no lo toma por
-        // cambiado (ver Store::stampChanges).
+        // Only when not the default, for the same reason (see Store::stampChanges).
         if (remindBeforeMin != kDefaultRemindMin) o["remindBefore"] = remindBeforeMin;
         o["description"] = description;
         QJsonArray done;

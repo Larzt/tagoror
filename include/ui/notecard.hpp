@@ -19,33 +19,32 @@ class NoteCard : public QFrame {
     Q_OBJECT
 
 public:
-    // Recibe el Theme completo (no solo el acento) porque las tarjetas abren
-    // sus propios popups y deben respetar la opacidad configurada.
+    /// @param theme The whole Theme, not only the accent: cards open their own
+    ///              popups, which must respect the configured opacity.
     NoteCard(Note *note, const Theme &theme, QWidget *parent = nullptr);
 
     Note *note() const { return m_note; }
 
-    // Vuelve a pintar el estado del recordatorio (sonando / vencido) sin
-    // reconstruir la tarjeta, para no perder el foco de edición.
+    /// Repaints the reminder state (ringing / overdue) without rebuilding the
+    /// card, so edit focus is kept.
     void refreshDue();
 
-    // Deja el cursor en el título: es como llega el usuario desde el
-    // calendario, con la nota recién creada esperando nombre.
+    /// Puts the cursor in the title (a note just created from the planner is
+    /// waiting for a name).
     void focusTitle();
 
 signals:
-    void dirty();                 // el contenido cambió → guardar
+    void dirty();                 ///< Content changed: save.
     void deleteRequested(Note *);
-    void dismissRequested(Note *);   // parar la alarma de este recordatorio
-    // Le cambiaron la fecha a un aviso que estaba sonando: la tarjeta ya se
-    // ha quitado el 'ringing', pero el tono y el rojo del dock son del panel.
+    void dismissRequested(Note *);   ///< Stop this reminder's alarm.
+    /// The date of a ringing reminder was changed: the card already cleared
+    /// @c ringing, but the tone and the dock belong to the panel.
     void rescheduled(Note *);
 
-    // --- reordenar ---
-    // Un paso arriba (-1) o abajo (+1) desde el menú; el arrastre por el
-    // asidero va aparte, porque necesita seguir al ratón mientras dura.
+    /// One step up (-1) or down (+1) from the menu; dragging the grip is separate
+    /// because it has to follow the mouse.
     void moveRequested(Note *, int steps);
-    // «Mover a…»: el panel es quien sabe qué áreas hay.
+    /// "Move to…": the panel knows which areas exist.
     void areaMenuRequested(Note *, const QPoint &globalPos);
     void dragStarted();
     void dragMoved(const QPoint &globalPos);
@@ -53,7 +52,7 @@ signals:
 
 protected:
     void contextMenuEvent(QContextMenuEvent *e) override;
-    // Vigila el editor de detalles: vacío, se cierra solo al salir de él.
+    /// Watches the details editor: left empty, it closes itself on focus-out.
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
@@ -64,49 +63,44 @@ private:
     void buildText(QVBoxLayout *l);
     void buildVoice(QVBoxLayout *l);
     void addCheckRow(QVBoxLayout *l, int index);
-    void rebuildItems();          // re-numera las filas tras borrar una
+    void rebuildItems();          ///< Renumbers the rows after a structural change.
     void refreshProgress();
-    // Renombrar un elemento. La fila en edición se dibuja con un campo en vez
-    // de con su etiqueta, así que basta con apuntar cuál es y rehacerlas: el
-    // índice que capturan las lambdas sigue siendo el bueno, que es justo lo
-    // que pide *Reordering / rebuildItems* en CLAUDE.md.
+    /// Renames an item. The row being edited draws a field instead of its label,
+    /// so it is enough to record which one and rebuild: the indices the lambdas
+    /// captured stay correct.
     void beginItemEdit(int index);
     void commitItemEdit(int index, const QString &text);
     void cancelItemEdit();
-    // Reordenar elementos: el asidero de cada fila la mueve en caliente dentro
-    // de m_itemsLayout y, al soltar, el orden de las filas pasa a items.
+    /// Item reordering: each row's grip moves it live inside m_itemsLayout, and on
+    /// release the row order is written back to items.
     void dragItemTo(QWidget *row, const QPoint &globalPos);
     void endItemDrag();
-    void moveItem(int index, int steps);   // Alt+↑ / Alt+↓ sobre la casilla
+    void moveItem(int index, int steps);   ///< Alt+Up / Alt+Down on the checkbox.
 
-    void openDuePopup(const QPoint &globalPos);   // chip o menú contextual
-    // El único sitio que mueve la fecha de un aviso: instante, etiqueta y
-    // estado se cambian juntos para que no puedan quedar en desacuerdo.
+    void openDuePopup(const QPoint &globalPos);   ///< From the chip or the context menu.
+    /// The only place that moves a reminder's date: instant, label and state
+    /// change together so they cannot disagree.
     void applyDue(qint64 whenMs, const QString &label);
     void setRepeat(Note::Repeat repeat);
     void refreshRepeat();
 
-    // --- detalles del recordatorio ---
-    // Un recordatorio sin cuerpo enseña solo su fecha; el editor aparece
-    // cuando se pide, no ocupando sitio por si acaso.
+    /// A reminder without a body shows only its date; the editor appears when
+    /// asked for instead of taking room just in case.
     void showDetailsGhost();
     void showDetailsEditor(bool focus);
 
-    // --- imágenes adjuntas ---
     void buildImages(QVBoxLayout *l);
     void refreshImages();
     void addImages();
     void toggleImages();
     void openImageMenu(int index, const QPoint &globalPos);
 
-    // --- enlaces adjuntos ---
-    void refreshLinks();                         // reconstruye solo las filas
-    void openLinkEditor(int index, const QPoint &globalPos);   // -1 = uno nuevo
+    void refreshLinks();                         ///< Rebuilds only the rows.
+    void openLinkEditor(int index, const QPoint &globalPos);   ///< -1 means a new one.
     void openLinkMenu(int index, const QPoint &globalPos);
     void openLink(int index);
 
-    // --- voz ---
-    void ensureAudio();           // crea grabador/reproductor bajo demanda
+    void ensureAudio();           ///< Builds recorder/player on demand.
     void toggleRecord();
     void togglePlay();
     void refreshVoice();
@@ -120,29 +114,29 @@ private:
     QLabel *m_meta = nullptr;
     QVBoxLayout *m_itemsLayout = nullptr;
     QLineEdit *m_newItem = nullptr;
-    int m_editingItem = -1;       // elemento que se está renombrando, o -1
-    QLineEdit *m_itemEdit = nullptr;   // su campo, mientras dura
-    bool m_itemsMoved = false;    // el arrastre en curso ya cambió el orden
+    int m_editingItem = -1;       ///< Item being renamed, or -1.
+    QLineEdit *m_itemEdit = nullptr;   ///< Its field, while it lasts.
+    bool m_itemsMoved = false;    ///< The drag in progress already changed the order.
 
-    QWidget *m_linksBox = nullptr;       // contenedor de las filas de enlaces
+    QWidget *m_linksBox = nullptr;       ///< Container of the link rows.
     QVBoxLayout *m_linksLayout = nullptr;
 
-    QWidget *m_imagesBox = nullptr;      // cabecera plegable + tira de miniaturas
+    QWidget *m_imagesBox = nullptr;      ///< Foldable header plus thumbnail strip.
     QWidget *m_imagesStrip = nullptr;
     QVBoxLayout *m_imagesLayout = nullptr;
     QLabel *m_imagesTitle = nullptr;
     QToolButton *m_imagesToggle = nullptr;
 
-    // Hueco donde vive el cuerpo de un recordatorio: dentro está el editor o
-    // el "añadir detalles", y cambiar de uno a otro no toca el resto.
+    /// Slot for a reminder's body: holds either the editor or the "add details"
+    /// line, and swapping them touches nothing else.
     QWidget *m_detailSlot = nullptr;
     QVBoxLayout *m_detailLayout = nullptr;
-    QTextEdit *m_detailBody = nullptr;   // vivo solo mientras hay editor
+    QTextEdit *m_detailBody = nullptr;   ///< Alive only while the editor is shown.
     QLabel *m_repeatChip = nullptr;
 
     QLabel *m_chip = nullptr;
     QLabel *m_dueIcon = nullptr;
-    QToolButton *m_dueBtn = nullptr;     // "detener" cuando el aviso suena
+    QToolButton *m_dueBtn = nullptr;     ///< "Stop" while the reminder rings.
     QToolButton *m_recBtn = nullptr;
     QToolButton *m_playBtn = nullptr;
     Waveform *m_wave = nullptr;

@@ -14,12 +14,12 @@
 namespace {
 
 constexpr int kHeight = 34;
-constexpr int kLeft = 8;           // margen izquierdo de la tira
+constexpr int kLeft = 8;           // left margin of the strip
 constexpr int kRight = 6;
-constexpr int kPad = 7;            // a cada lado del texto de una pestaña
-constexpr int kGap = 2;            // entre pestañas
-constexpr int kGlyph = 12;         // lo que ocupa el glifo, con su aire
-constexpr int kMaxName = 116;      // un nombre largo se recorta, no empuja a las demás
+constexpr int kPad = 7;            // on each side of a tab's text
+constexpr int kGap = 2;            // between tabs
+constexpr int kGlyph = 12;         // room for the glyph, with its spacing
+constexpr int kMaxName = 116;      // a long name is elided rather than pushing the others out
 constexpr int kAddSize = 26;
 const QColor kRed("#ff7a6b");
 
@@ -35,7 +35,7 @@ QFont tabFont(const QFont &base, bool active) {
 AreaTabs::AreaTabs(const Theme *theme, QWidget *parent) : QWidget(parent), m_theme(theme) {
     setObjectName("areaTabs");
     setMouseTracking(true);
-    // Una sola parada de Tab para toda la tira; dentro se va con las flechas.
+    // One Tab stop for the whole strip; arrows move inside it.
     setFocusPolicy(Qt::TabFocus);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     setFixedHeight(kHeight);
@@ -47,8 +47,7 @@ QSize AreaTabs::minimumSizeHint() const { return {60, kHeight}; }
 void AreaTabs::setTabs(const QList<Tab> &tabs, const QString &active) {
     m_tabs = tabs;
     m_active = active;
-    // La pestaña que se estaba renombrando puede haber desaparecido (borrada
-    // en otro equipo): entonces el editor sobra.
+    // The tab being renamed may be gone (deleted on another machine).
     if (m_editor && indexOf(m_editing) < 0) finishRename(false);
     relayout();
     update();
@@ -61,8 +60,8 @@ int AreaTabs::indexOf(const QString &id) const {
 }
 
 int AreaTabs::tabWidth(const Tab &t, QString *elided) const {
-    // Se mide con la letra de la activa, la más ancha: así una pestaña no
-    // cambia de tamaño al elegirla y la tira no baila.
+    // Measured with the active tab's (widest) font, so a tab does not resize when
+    // chosen and the strip does not jump.
     const QFontMetrics fm(tabFont(font(), true));
     const QString text = fm.elidedText(t.name.isEmpty() ? L("Sin nombre") : t.name,
                                        Qt::ElideRight, kMaxName);
@@ -89,7 +88,7 @@ void AreaTabs::relayout() {
         total += widths.last() + kGap;
     }
 
-    // ¿Caben todas? Entonces no hay «+N».
+    // All fit: no "+N".
     QList<int> shown;
     if (kLeft + total <= limit) {
         for (int i = 0; i < m_tabs.size(); ++i) shown << i;
@@ -103,8 +102,8 @@ void AreaTabs::relayout() {
             shown << i;
             used += widths.at(i) + kGap;
         }
-        // La activa siempre se ve: si ha quedado fuera, ocupa el sitio de la
-        // última, y de las de antes se quitan las que hagan falta para que quepa.
+        // The active tab is always shown: if it fell out it takes the last slot, and
+        // earlier tabs are dropped until it fits.
         const int act = indexOf(m_active);
         if (act >= 0 && !shown.contains(act)) {
             while (!shown.isEmpty()) {
@@ -115,7 +114,7 @@ void AreaTabs::relayout() {
             }
             shown << act;
         }
-        // Ni la activa cabe entera: va sola, recortada al hueco que haya.
+        // Not even the active one fits whole: it goes alone, elided to the room left.
         if (shown.isEmpty() && act >= 0) shown << act;
     }
 
@@ -125,7 +124,7 @@ void AreaTabs::relayout() {
         QString text = texts.at(i);
         const int room = limit - x - (shown.size() < m_tabs.size() ? 60 : 0);
         if (w > room && room > kPad * 2 + 20) {
-            // Solo pasa en ventanas muy estrechas: se recorta más.
+            // Only in very narrow windows: elide further.
             const QFontMetrics fm(tabFont(font(), true));
             const int textRoom = room - kPad * 2 - (m_tabs.at(i).glyph.isEmpty() ? 0 : kGlyph + 5);
             text = fm.elidedText(m_tabs.at(i).name, Qt::ElideRight, textRoom);
@@ -148,7 +147,7 @@ void AreaTabs::relayout() {
 void AreaTabs::resizeEvent(QResizeEvent *) {
     relayout();
     if (m_editor) {
-        // El editor sigue a su pestaña, que puede haberse movido.
+        // The editor follows its tab, which may have moved.
         for (const Slot &s : m_slots)
             if (m_tabs.at(s.index).id == m_editing)
                 m_editor->setGeometry(s.rect.adjusted(2, 6, -2, -6));
@@ -159,7 +158,7 @@ void AreaTabs::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    // La raya de abajo, como la de la cabecera.
+    // Bottom rule, like the header's.
     p.setPen(QColor(255, 255, 255, 23));
     p.drawLine(QPointF(0, kHeight - 0.5), QPointF(width(), kHeight - 0.5));
 
@@ -173,7 +172,7 @@ void AreaTabs::paintEvent(QPaintEvent *) {
         const bool hovered = m_hover == s.index;
         const QRect r = s.rect;
 
-        // Soltar aquí: la pestaña destino se tiñe con el acento.
+        // Drop target: tinted with the accent.
         if (t.id == m_drop) {
             QColor fill = accent;
             fill.setAlphaF(0.20);
@@ -203,7 +202,7 @@ void AreaTabs::paintEvent(QPaintEvent *) {
                        Qt::AlignVCenter | Qt::AlignLeft, s.text);
         }
 
-        // El punto rojo: esa área tiene algo sonando, aunque no esté abierta.
+        // Red dot: something in that area is ringing, even if it is not open.
         if (t.ringing) {
             p.setPen(Qt::NoPen);
             p.setBrush(kRed);
@@ -222,7 +221,7 @@ void AreaTabs::paintEvent(QPaintEvent *) {
         }
     }
 
-    // «+N»: las que no caben, con el punto rojo de las escondidas.
+    // "+N": the tabs that do not fit, with the red dot of the hidden ones.
     if (m_hidden > 0) {
         const QRectF c = QRectF(m_overflowRect).adjusted(0.5, 0.5, -0.5, -0.5);
         QColor fill = accent;
@@ -245,7 +244,7 @@ void AreaTabs::paintEvent(QPaintEvent *) {
         }
     }
 
-    // «+»: área nueva.
+    // "+": new area.
     if (m_hover == -2) {
         p.setPen(Qt::NoPen);
         p.setBrush(QColor(255, 255, 255, 18));
@@ -285,7 +284,7 @@ void AreaTabs::activate(int index) {
     if (index < 0 || index >= m_tabs.size()) return;
     const QString id = m_tabs.at(index).id;
     if (id == m_active) return;
-    // El panel contesta con setTabs(); hasta entonces ya se ve elegida.
+    // The panel answers with setTabs(); until then it already shows as chosen.
     m_active = id;
     relayout();
     update();
@@ -357,7 +356,7 @@ void AreaTabs::keyPressEvent(QKeyEvent *e) {
             if (deleteRequested) deleteRequested(m_active);
             return;
         case Qt::Key_Down:
-            focusNextChild();   // de la tira a las notas
+            focusNextChild();   // from the strip to the notes
             return;
         case Qt::Key_Return:
         case Qt::Key_Enter:
@@ -380,8 +379,6 @@ void AreaTabs::focusOutEvent(QFocusEvent *e) {
     update();
 }
 
-// --- áreas soltadas y renombradas --------------------------------------------
-
 QString AreaTabs::areaAt(const QPoint &globalPos) const {
     const QPoint pos = mapFromGlobal(globalPos);
     if (!rect().contains(pos)) return {};
@@ -398,8 +395,8 @@ void AreaTabs::setDropTarget(const QString &id) {
 
 void AreaTabs::beginRename(const QString &id) {
     if (indexOf(id) < 0) return;
-    // Si está escondida en «+N», se abre primero: no se puede renombrar a
-    // ciegas una pestaña que no se ve.
+    // If it is hidden behind "+N" it is opened first: a tab that cannot be seen
+    // cannot be renamed.
     if (id != m_active) activate(indexOf(id));
     if (m_editor) finishRename(true);
 
@@ -409,12 +406,11 @@ void AreaTabs::beginRename(const QString &id) {
     m_editor->setText(m_tabs.at(indexOf(id)).name);
     m_editor->selectAll();
     m_editor->installEventFilter(this);
-    // Enter y perder el foco llegan los dos: el segundo encuentra el editor ya
-    // cerrado y no hace nada.
+    // Enter and focus-out both arrive: the second finds the editor closed.
     connect(m_editor, &QLineEdit::editingFinished, this, [this] { finishRename(true); });
     for (const Slot &s : m_slots)
         if (m_tabs.at(s.index).id == id) {
-            // Un poco más ancho que el nombre, para que se pueda escribir.
+            // A bit wider than the name, so there is room to type.
             QRect r = s.rect.adjusted(2, 6, -2, -6);
             r.setWidth(qMax(r.width(), 120));
             r.setRight(qMin(r.right(), (m_hidden > 0 ? m_overflowRect.left()
@@ -431,16 +427,16 @@ void AreaTabs::finishRename(bool commit) {
     QLineEdit *editor = m_editor;
     const QString id = m_editing;
     const QString text = editor->text().trimmed();
-    // Con Intro o Escape el foco vuelve a la tira; si el editor se cerró porque
-    // se hizo clic en otro sitio, el foco ya es de ese otro sitio.
+    // After Enter or Escape the focus returns to the strip; after a click
+    // elsewhere it already belongs there.
     const bool hadFocus = editor->hasFocus();
     m_editor = nullptr;
     m_editing.clear();
     editor->hide();
-    // Diferido: quien pide cerrar es una señal del propio editor.
+    // Deferred: the request comes from a signal of the editor itself.
     editor->deleteLater();
     update();
-    // Un nombre vacío no deja un área sin nombre: se queda el que tenía.
+    // An empty name keeps the previous one.
     if (commit && !text.isEmpty() && renamed) renamed(id, text);
     if (hadFocus && isVisible()) setFocus(Qt::OtherFocusReason);
 }

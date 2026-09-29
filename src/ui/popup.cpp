@@ -21,11 +21,11 @@
 
 namespace {
 
-constexpr int kShadowMargin = 18;   // hueco alrededor del marco para la sombra
+constexpr int kShadowMargin = 18;   ///< Room around the frame for the shadow.
 constexpr int kRowWidth = 226;
 
-// Fila del menú: icono + título + subtítulo opcional. Se pinta a mano en vez
-// de usar QToolButton para poder tener dos líneas de texto y un realce redondo.
+/// Menu row: icon, title and optional subtitle. Painted by hand rather than a
+/// QToolButton to allow two lines of text and a rounded highlight.
 class PopupRow : public QWidget {
 public:
     PopupRow(const QIcon &icon, const QString &title, const QString &subtitle,
@@ -55,8 +55,8 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
 
-        // El foco del teclado se ve como el paso del ratón, más un borde: así
-        // las flechas se siguen con la vista sin que haya dos realces distintos.
+        // Keyboard focus looks like hover plus a border, so the arrows can be followed
+        // without two different highlights.
         if (m_hover || keynav::showsFocus(this)) {
             p.setPen(keynav::showsFocus(this) ? QPen(QColor(255, 255, 255, 70), 1) : QPen(Qt::NoPen));
             p.setBrush(QColor(255, 255, 255, 20));
@@ -101,8 +101,6 @@ private:
 
 } // namespace
 
-// ---------------------------------------------------------------------------
-
 Popup::Popup(const Theme &theme, QWidget *anchor, Surface surface)
     : QWidget(anchor, Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint),
       m_theme(theme) {
@@ -127,8 +125,8 @@ Popup::Popup(const Theme &theme, QWidget *anchor, Surface surface)
     m_col->setContentsMargins(6, 6, 6, 6);
     m_col->setSpacing(1);
 
-    // El popup es una ventana propia: necesita la hoja de estilos por su
-    // cuenta para que #popupShell tome el fondo con la opacidad del tema.
+    // The popup is a window of its own: it needs the stylesheet itself so that
+    // #popupShell takes the theme's background.
     setStyleSheet(m_theme.sheet());
 }
 
@@ -185,8 +183,7 @@ void Popup::addFields(const QStringList &placeholders, const QStringList &values
         l->addWidget(edit);
     }
 
-    // Se conectan cuando ya existen todos: Enter en cualquiera confirma el
-    // conjunto, así el orden en que se rellenen da igual.
+    // Connected once all exist: Enter in any of them confirms the set.
     for (QLineEdit *edit : edits) {
         QObject::connect(edit, &QLineEdit::returnPressed, this, [this, edits, commit] {
             QStringList out;
@@ -202,9 +199,6 @@ void Popup::addFields(const QStringList &placeholders, const QStringList &values
     }
 }
 
-// Los presets de hora del calendario: cinco filas de menú son 150 px, más que
-// la mitad del panel, y el popup terminaba encima del calendario. En chips
-// caben tres por línea y el menú entero mide poco más que una tarjeta.
 void Popup::addIconChoice(const QStringList &iconKinds, const QStringList &tips, int chosen,
                           std::function<void(int)> action) {
     auto *host = new QWidget;
@@ -234,7 +228,7 @@ void Popup::addText(const QString &text) {
     auto *l = new QLabel(text);
     l->setObjectName("popupText");
     l->setWordWrap(true);
-    l->setMinimumWidth(24);   // ver *Card widths*: el texto no impone su ancho
+    l->setMinimumWidth(24);   // see *Card widths*: the text must not impose its width
     l->setContentsMargins(10, 2, 10, 6);
     m_col->addWidget(l);
 }
@@ -243,8 +237,8 @@ void Popup::addChoice(const QStringList &labels, int chosen,
                       std::function<void(int)> action) {
     addChips(labels, {}, QString(), std::move(action));
 
-    // El último widget añadido es la rejilla de chips que acaba de montar
-    // addChips: se marca el elegido sobre ella en vez de duplicar el montaje.
+    // The last widget added is the chip grid addChips() just built: the chosen
+    // one is marked on it instead of duplicating the construction.
     QWidget *host = m_col->itemAt(m_col->count() - 1)->widget();
     if (!host) return;
     const QList<QToolButton *> chips = host->findChildren<QToolButton *>();
@@ -320,8 +314,8 @@ void Popup::addChips(const QStringList &labels, const QList<bool> &muted,
         chip->setText(labels.at(i));
         chip->setCursor(Qt::PointingHandCursor);
         chip->setProperty("past", muted.value(i, false));
-        // Lo que antes era el subtítulo de la fila: en un chip no cabe, pero
-        // la razón de que se vea apagado sigue estando a mano.
+        // What used to be the row subtitle: no room in a chip, but the reason it is
+        // dimmed stays at hand.
         if (muted.value(i, false)) chip->setToolTip(mutedTip);
         chip->setFixedHeight(26);
         QObject::connect(chip, &QToolButton::clicked, this, [this, i, action] {
@@ -329,8 +323,8 @@ void Popup::addChips(const QStringList &labels, const QList<bool> &muted,
         });
         grid->addWidget(chip, i / kPerRow, i % kPerRow);
     }
-    // La última fila suele ir a medias: la columna sobrante se queda el hueco
-    // en vez de repartirlo estirando los chips que hay.
+    // The last row is often half full: the spare column takes the gap instead of
+    // stretching the chips.
     grid->setColumnStretch(kPerRow, 1);
     m_col->addWidget(host);
 }
@@ -344,20 +338,17 @@ void Popup::addSeparator() {
     m_col->addSpacing(3);
 }
 
-// ---------------------------------------------------------------------------
-
 void Popup::keyPressEvent(QKeyEvent *e) {
     if (e->key() == Qt::Key_Down || e->key() == Qt::Key_Up) {
         focusNextPrevChild(e->key() == Qt::Key_Down);
         return;
     }
-    QWidget::keyPressEvent(e);   // Escape cierra: lo hace QWidget con los Qt::Popup
+    QWidget::keyPressEvent(e);   // Escape closes: QWidget does it for Qt::Popup
 }
 
-// El popup se queda el foco al abrirse (si no lo ha pedido ya un campo), para
-// que las flechas y Tab funcionen desde el primer momento. No se enciende la
-// primera fila: abierto con el ratón, un realce que nadie ha pedido parece un
-// fallo; la primera pulsación de flecha ya lo lleva a ella.
+/// Takes the focus on show (unless a field already did) so arrows and Tab
+/// work at once. The first row is not highlighted: opened with the mouse, an
+/// unrequested highlight looks like a glitch.
 void Popup::showEvent(QShowEvent *e) {
     QWidget::showEvent(e);
     setFocusPolicy(Qt::StrongFocus);
@@ -367,7 +358,7 @@ void Popup::showEvent(QShowEvent *e) {
 }
 
 void Popup::run(const std::function<void()> &action) {
-    close();   // WA_DeleteOnClose: este objeto muere en cuanto vuelva al bucle
+    close();   // WA_DeleteOnClose: this object dies on return to the event loop
     if (action) QTimer::singleShot(0, qApp, action);
 }
 
@@ -378,16 +369,15 @@ void Popup::place(const QPoint &globalTopLeft, int minY) {
     if (QScreen *screen = QGuiApplication::screenAt(pos) ? QGuiApplication::screenAt(pos)
                                                          : QGuiApplication::primaryScreen()) {
         const QRect area = screen->availableGeometry();
-        // El margen de sombra no cuenta como parte visible del menú.
+        // The shadow margin is not part of the visible menu.
         pos.setX(qBound(area.left() - kShadowMargin, pos.x(),
                         area.right() - width() + kShadowMargin));
         pos.setY(qBound(area.top() - kShadowMargin, pos.y(),
                         area.bottom() - height() + kShadowMargin));
 
-        // Con suelo, la corrección contra la pantalla no puede subir el menú:
-        // se queda por debajo de quien lo abrió aunque asome un poco. El suelo
-        // se levanta solo si el marco visible ya no cabría entero, porque un
-        // menú cortado por el borde de abajo es peor que uno mal puesto.
+        // With a floor the screen clamp cannot move the menu up. The floor is lifted
+        // only if the visible frame would no longer fit below at all: a menu cut off
+        // by the screen edge is worse than a badly placed one.
         if (minY != INT_MIN && minY + height() - kShadowMargin <= area.bottom())
             pos.setY(qMax(pos.y(), minY));
     } else if (minY != INT_MIN) {
@@ -399,7 +389,7 @@ void Popup::place(const QPoint &globalTopLeft, int minY) {
 
 void Popup::showUnder(QWidget *anchor) {
     adjustSize();
-    // Se descuenta el margen de sombra para que el marco quede pegado al botón.
+    // Minus the shadow margin, so the frame sits right under the button.
     const QPoint below = anchor->mapToGlobal(QPoint(0, anchor->height() + 2));
     place(below - QPoint(kShadowMargin, 0) + QPoint(0, -kShadowMargin + 6));
 }

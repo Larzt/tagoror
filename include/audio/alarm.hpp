@@ -6,14 +6,12 @@
 class QSoundEffect;
 class QTimer;
 
-// Aviso sonoro de los recordatorios.
-//
-// El tono se sintetiza y se deja en disco la primera vez que hace falta, así
-// que la app no depende de ningún fichero de sonido del sistema ni de un
-// recurso empotrado. Suena en bucle hasta que el usuario lo para o hasta que
-// pasa kMaxRingMs: un aviso que nadie oye no tiene que pitar toda la tarde.
-// Callarse solo apaga el sonido; lo que sonaba sigue en rojo en la tarjeta, en
-// la franja y en el icono hasta que alguien lo atienda.
+/// The alarm tone for reminders, timers, events and birthdays.
+///
+/// The tone is synthesised into alarm.wav on first use, so there is no bundled
+/// asset and no dependency on a system sound theme. It loops until stopped or
+/// until kMaxRingMs passes; that only silences the sound, whatever rang stays
+/// red until someone acknowledges it.
 class Alarm : public QObject {
     Q_OBJECT
 
@@ -27,8 +25,8 @@ public:
     bool isRinging() const;
 
 private:
-    QString ensureToneFile();   // genera alarm.wav si no existe
+    QString ensureToneFile();   ///< Generates alarm.wav if missing.
 
     QSoundEffect *m_effect = nullptr;
-    QTimer *m_limit = nullptr;   // corta el bucle a los kMaxRingMs
+    QTimer *m_limit = nullptr;   ///< Cuts the loop after kMaxRingMs.
 };

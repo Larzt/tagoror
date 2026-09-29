@@ -5,27 +5,23 @@
 #include <QStringList>
 #include <QUuid>
 
-// Un área de trabajo: una pestaña de la lista de notas (Personal, Máster,
-// Stride…). Cada nota pertenece a una, y la lista solo enseña las del área
-// abierta. No tienen color propio a propósito: el acento tiene que seguir
-// siendo el único color fuerte del panel, y el rojo es de lo que suena. Lo que
-// las distingue es un glifo geométrico monocromo, opcional.
-//
-// Viven en notes.json bajo "areas" y se sincronizan como un elemento más (su
-// fecha de cambio, sus lápidas "a:<id>"). El orden de las pestañas es 'pos' y
-// no el de la lista: así reordenar es cambiar un campo de cada área, que es lo
-// que la mezcla elemento a elemento sabe llevar entre equipos.
+/// A workspace area: one tab of the note list. Every note belongs to one and
+/// the list shows only the open area's notes.
+///
+/// Areas deliberately have no colour of their own (the accent must stay the
+/// only strong colour, and red means something is ringing); an optional
+/// monochrome glyph tells them apart. Tab order is @ref pos, not list order,
+/// so reordering is a per-element change the sync merge can carry.
 struct Area {
     QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     QString name;
-    QString glyph;            // "" (ninguno), o uno de glyphs()
-    int pos = 0;              // lugar en la tira de pestañas
-    qint64 updatedMs = 0;     // ver Note::updatedMs
+    QString glyph;            ///< Empty (none) or one of glyphs().
+    int pos = 0;              ///< Position in the tab strip.
+    qint64 updatedMs = 0;     ///< See Note::updatedMs.
 
-    // La que se crea sola para las notas que ya existían antes de las áreas.
-    // Tiene id fijo para que dos equipos que la crean cada uno por su lado
-    // acaben con la misma y no con dos "Personal". Las notas de esa área no
-    // guardan la clave "area" (ver Note::area), así que no cambian de bytes.
+    /// Id of the area created for notes that predate areas. It is fixed so two
+    /// machines creating it independently end up with one, and notes in it do not
+    /// store the "area" key (see Note::area), so their bytes do not change.
     static constexpr auto kDefaultId = "default";
 
     static const QStringList &glyphs() {

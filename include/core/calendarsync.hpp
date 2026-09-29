@@ -16,37 +16,25 @@ class DriveSync;
 class Store;
 class QNetworkReply;
 
-// El planificador con Google Calendar, en los dos sentidos.
-//
-// No es una conexión aparte: usa la cuenta de Google Drive (DriveSync), que
-// pide además los permisos de calendario cuando este equipo lo activa, y corre
-// como un paso de cada pasada de Drive — después de mezclar lo que llega de
-// los otros equipos y antes de subir lo de aquí, así lo que traiga Google sale
-// hacia los otros equipos en la misma pasada.
-//
-// Cada calendario de Google que se sigue es una categoría del planificador
-// ("gcal:<id del calendario>", con su nombre y su color). Seguirlo o dejar de
-// seguirlo es crearla o borrarla, y como las categorías viajan por Drive, todos
-// los equipos siguen los mismos. Un evento en esa categoría vive en ese
-// calendario; los de las categorías de Tagoror se suben al calendario de
-// destino (target), que es de cada equipo.
-//
-// Qué cambió se decide por contenido, no por fechas: Event::gcalHash es la
-// huella (fingerprint) de lo que los dos lados tenían la última vez que
-// coincidieron. Si lo de aquí ya no da esa huella, se editó aquí; si lo de
-// Google no la da, se editó allí; si las dos, gana el más reciente. Con fechas
-// dos equipos que traen lo mismo de Google se lo devolverían el uno al otro
-// sin fin, porque cada uno lo marca con su propia hora al guardarlo.
-//
-// Las repeticiones de Google que Tagoror sabe decir (diaria, semanal, mensual,
-// anual, con o sin fin) son una serie; las demás (cada dos semanas, lunes y
-// miércoles, el segundo martes) se traen vuelta a vuelta, un año por delante,
-// y la serie queda escondida (Event::gcalExpanded). Una vuelta de una serie que
-// se canceló o se movió en Google es un día saltado en la serie (Event::skip),
-// y la que se movió, además, un evento suelto.
-//
-// Lo borrado aquí se borra en Google, pero solo lo que borró alguien: dejar de
-// seguir un calendario quita sus eventos de Tagoror y en Google no los toca.
+/// Two-way sync of the planner with Google Calendar.
+///
+/// It uses DriveSync's account and runs as one step of every Drive pass,
+/// between the Drive merge and the upload, so what Google brings reaches the
+/// other machines in the same pass.
+///
+/// Each followed calendar is a planner category "gcal:<calendarId>"; since
+/// categories travel through Drive, every machine follows the same ones.
+/// Events in Tagoror's own categories are uploaded to the per-machine target
+/// calendar.
+///
+/// Changes are detected by content, never by timestamps: Event::gcalHash is
+/// the fingerprint of what both sides had when they last agreed. Timestamps
+/// made two machines importing the same thing bounce it back and forth.
+///
+/// Rules that fit Event::Repeat become a series; others are imported
+/// occurrence by occurrence and the series is hidden (Event::gcalExpanded).
+/// Local deletions reach Google only when someone deleted the event:
+/// unfollowing a calendar never deletes anything there.
 class CalendarSync : public QObject {
     Q_OBJECT
 
@@ -57,66 +45,66 @@ public:
         QColor color;
         bool writable = false;
         bool primary = false;
-        int defaultRemind = -1;   // aviso de serie en minutos, -1 ninguno
+        int defaultRemind = -1;   ///< Default alert in minutes, -1 for none.
     };
 
     CalendarSync(DriveSync *drive, Store *store);
 
-    // El interruptor de este equipo. Encenderlo sin el permiso de calendario
-    // no sincroniza nada hasta que se vuelva a autorizar la cuenta.
+    /// This machine's switch. Without the calendar scope nothing syncs until the
+    /// account is authorised again.
     bool enabled() const { return m_enabled; }
     void setEnabled(bool on);
 
-    // La lista de calendarios de la cuenta, tal como llegó en la última pasada.
+    /// The account's calendars as listed on the last pass.
     const QList<Calendar> &calendars() const { return m_calendars; }
     const Calendar *calendar(const QString &id) const;
     bool isFollowed(const QString &calId) const;
-    // Crea su categoría (con el nombre y el color de Google). La de dejar de
-    // seguirlo la borra Panel, que es quien sabe qué repintar después.
+    /// Creates the calendar's category (Google's name and colour). Unfollowing is
+    /// done by Panel, which knows what to repaint.
     void follow(const QString &calId);
     Event::Category *categoryFor(const QString &calId) const;
 
-    // Adónde se suben los eventos de las categorías de Tagoror. Vacío = a
-    // ninguno: se quedan aquí.
+    /// Calendar that events in Tagoror's own categories are uploaded to. Empty
+    /// means none: they stay local.
     QString target() const;
     void setTarget(const QString &calId);
 
     QString lastError() const { return m_error; }
 
-    // Un paso de la pasada de Drive. Llama a done() siempre, falle lo que falle
-    // de Calendar: eso no puede dejar a medias la copia de las notas.
+    /// One step of the Drive pass. Always calls @p done, whatever fails, so
+    /// Calendar can never leave the notes' sync half done.
     void run(std::function<void()> done);
-    // Al desconectar la cuenta: se olvida todo lo de este equipo.
+    /// On disconnect: forgets everything stored for this machine.
     void forget();
 
     static QString categoryId(const QString &calId) { return "gcal:" + calId; }
-    // Lo que se comparte de un evento, resumido. Ver Event::gcalHash.
+    /// Digest of an event's shared fields. See Event::gcalHash.
     static QString fingerprint(const Event &e);
-    // El evento de Google, como evento de Tagoror. 'base' da lo que Google no
-    // sabe (id, avisos ya dados, días saltados); lo demás viene de allí.
+    /// A Google event as a Tagoror event. The base supplies what Google does not
+    /// know (id, alerts already given, skipped days).
     struct Mapped {
         Event event;
-        bool representable = true;   // su repetición cabe en Event::Repeat
-        QString tagororId;           // lo puso Tagoror al subirlo
+        bool representable = true;   ///< Its repetition fits Event::Repeat.
+        QString tagororId;           ///< Set by Tagoror when it uploaded the event.
         qint64 updatedMs = 0;
     };
     static Mapped fromGoogle(const QJsonObject &item, const Event *base,
                              const QString &defaultCategory, int defaultRemind,
                              const QSet<QString> &knownCategories);
-    // Y al revés. Una vuelta de una serie no lleva repetición ni id propio.
+    /// The reverse. An occurrence of a series carries no repetition or own id.
     static QJsonObject toGoogle(const Event &e);
 
 signals:
-    // Han cambiado eventos: el planificador y las alarmas tienen que mirarlo.
+    /// Events changed: the planner and the alarms must look again.
     void eventsChanged();
-    // Ha cambiado lo que enseñan los ajustes (lista, destino, error).
+    /// What the settings show changed (list, target, error).
     void changed();
 
 private:
     using Done = std::function<void(QNetworkReply *)>;
     void request(const QByteArray &verb, const QString &path, const QString &query,
                  const QJsonObject &body, Done done);
-    // Respuesta 2xx. Si no, apunta el error (el de Google, si lo dice).
+    /// True on 2xx; otherwise records the error (Google's, if given).
     bool ok(QNetworkReply *r, const QString &what);
     static int status(QNetworkReply *r);
 
@@ -124,13 +112,14 @@ private:
     void listEvents(int index, const QString &pageToken);
     void apply();
     void handleItem(const QString &cal, const QJsonObject &item);
-    // Deja el evento de aquí como diga el de allí, salvo que lo de aquí sea
-    // una edición más reciente (que se sube después). Devuelve el de aquí.
+    /// Makes the local event match the remote one, unless the local one is a
+    /// newer edit (uploaded later).
+    /// @return The local event.
     Event *upsert(Event *local, const Mapped &m, const QString &cal, const QString &gid);
     void removeLocal(Event *e);
     void expandNext();
-    // Por id y no por puntero: entre petición y respuesta el usuario ha podido
-    // borrar eventos, y un puntero de antes podría no valer ya.
+    // By id, not by pointer: between request and reply the user may have
+    // deleted events, and an earlier pointer may no longer be valid.
     void fetchInstances(const QString &cal, const QString &masterGid, const QString &pageToken,
                         std::shared_ptr<QSet<QString>> seen);
     void planPushes();
@@ -146,44 +135,46 @@ private:
     Event *byId(const QString &id) const;
     static QString derivedId(const QString &cal, const QString &gid);
     QSet<QString> knownCategories() const;
+    bool deletedHere(const QString &cal, const QString &id, qint64 remoteUpdatedMs) const;
     void load();
     void saveState();
 
     DriveSync *m_drive = nullptr;
     Store *m_store = nullptr;
     bool m_enabled = false;
-    bool m_seeded = false;   // la primera vez se sigue el principal
+    bool m_seeded = false;   ///< The first time the primary calendar is followed.
     QString m_target;
     QList<Calendar> m_calendars;
-    QHash<QString, QString> m_tokens;     // calendario -> syncToken
-    // id de evento enlazado -> "calendario\nid de Google", de la última
-    // pasada: así se sabe qué hay que borrar en Google cuando desaparece aquí.
+    QHash<QString, QString> m_tokens;     ///< calendar -> syncToken
+    /// Linked event id -> "calendar\ngoogleId" at the end of the last pass: tells
+    /// what to delete in Google when an event disappears here.
     QHash<QString, QString> m_links;
-    QHash<QString, QString> m_expandedDay;   // serie -> día de la última expansión
+    QHash<QString, QString> m_expandedDay;   ///< series -> day of the last expansion
+    QHash<QString, QString> m_followedAt;    ///< calendar -> ms when it was followed here
     QString m_error;
 
-    // Pasada en curso. m_pass descarta las respuestas de una pasada anterior
-    // que ya no espera nadie (Drive falló a medias y empezó otra).
+    /// Pass in progress. m_pass drops replies from an older pass nobody waits
+    /// for any more.
     std::function<void()> m_done;
     int m_pass = 0;
     bool m_running = false;
-    bool m_applied = false;                // se llegó a mezclar
-    QList<Calendar> m_listing;             // la lista de calendarios, a medio leer
+    bool m_applied = false;                ///< The merge was reached.
+    QList<Calendar> m_listing;             ///< Calendar list, partially read.
     QStringList m_active;
     QHash<QString, QList<QJsonObject>> m_fetched;
     QHash<QString, QString> m_newTokens;
-    QSet<QString> m_full;                  // calendarios leídos enteros
-    QSet<QString> m_failed;                // calendarios que no se pudieron leer
-    QList<QPair<QString, QString>> m_expandQueue;   // calendario, serie
-    QSet<QString> m_touched;               // series expandidas que cambiaron ahora
+    QSet<QString> m_full;                  ///< Calendars read in full.
+    QSet<QString> m_failed;                ///< Calendars that could not be read.
+    QList<QPair<QString, QString>> m_expandQueue;   ///< calendar, series
+    QSet<QString> m_touched;               ///< Expanded series that changed now.
     struct Push {
         enum Kind { Insert, Patch, Move } kind;
         QString eventId;
-        QString cal;       // Insert: dónde; Move: adónde
+        QString cal;       ///< Insert: where; Move: where to.
     };
     QList<Push> m_pushes;
     struct Delete {
-        QString id;    // de Tagoror; vacío en una copia duplicada
+        QString id;    ///< Tagoror's; empty for a duplicate copy.
         QString cal;
         QString gid;
     };

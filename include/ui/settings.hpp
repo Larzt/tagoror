@@ -14,50 +14,42 @@ class QFrame;
 class QToolButton;
 class QVBoxLayout;
 
-// Página de ajustes: la cuarta de m_body, hermana del calendario y de los
-// cumpleaños. Antes era un Popup colgando del botón del engranaje, y se le
-// quedó pequeño: una lista de menú no tiene sitio para un interruptor, un
-// deslizador y la ruta de una carpeta sin convertirse en una columna larguísima
-// que además tapaba el panel entero.
-//
-// Como las otras páginas no toca disco ni guarda nada: lee del Store —que es de
-// quien son las preferencias— y avisa hacia arriba de cada cambio para que el
-// Panel lo aplique y lo guarde.
+/// The settings page. It used to be a Popup and outgrew it: a menu row has no
+/// room for a switch, a slider and a folder path.
+///
+/// Like the other pages it touches no disk: it reads the Store and emits one
+/// signal per change for Panel to apply and save.
 class SettingsView : public QWidget {
     Q_OBJECT
 
 public:
     explicit SettingsView(const Theme &theme, QWidget *parent = nullptr);
 
-    // El Store vive más que esta vista; se guarda el puntero para leer las
-    // preferencias en cada repintado en vez de copiarlas.
+    /// The Store outlives this view; preferences are read on every repaint rather
+    /// than copied.
     void setSource(const Store *store);
-    // No rehace la página, a diferencia de las otras vistas: el deslizador de
-    // la opacidad aplica en vivo, y cada movimiento acaba aquí — reconstruir
-    // destruiría el propio deslizador que se está arrastrando. Lo que depende
-    // del acento se repinta, que es todo lo que hace falta.
+    /// Does not rebuild the page, unlike the other views: the opacity slider
+    /// applies live and each step lands here, so rebuilding would destroy the
+    /// slider being dragged. Only what depends on the accent is repainted.
     void setTheme(const Theme &theme);
 
     void refresh();
     void retranslate() { refresh(); }
 
-    // Estado del buscador de actualizaciones. Se escribe encima de la tarjeta
-    // ya montada en vez de rehacer la página: la comprobación diaria puede
-    // terminar en cualquier momento, y si eso reconstruyera los ajustes se
-    // llevaría por delante el deslizador que se estuviera arrastrando.
+    /// Update-check state, written over the existing card instead of rebuilding
+    /// the page: the daily check may finish mid-drag of the slider.
     void setUpdateState(bool busy, const QString &error);
 
-    // La copia en Drive cambia de estado sola (una subida que termina, un
-    // token que caduca): como con las actualizaciones, se reescribe la tarjeta
-    // en su sitio. Solo si pasa de conectada a no conectada, o al revés, se
-    // rehace la página, porque entonces cambia lo que hay debajo.
+    /// Drive state changes on its own (an upload finishing, a token expiring), so
+    /// the card is rewritten in place. Only switching between connected and not
+    /// connected rebuilds the page, since what is below changes.
     void setDrive(const DriveSync *drive);
     void refreshDrive();
 
 signals:
     void accentPicked(const QColor &c);
     void accentEditorRequested(QWidget *anchor);
-    void opacityChanged(int value);          // en vivo, mientras se arrastra
+    void opacityChanged(int value);          ///< Live, while dragging.
     void languagePicked(Lang::Code code);
     void textScalePicked(int percent);
     void onTopToggled(bool on);
@@ -76,16 +68,16 @@ signals:
     void driveSyncRequested();
     void driveDisconnectRequested();
     void calendarToggled(bool on);
-    void calendarGrantRequested();   // volver a autorizar con el permiso de Calendar
+    void calendarGrantRequested();   ///< Re-authorise with the Calendar scope.
     void calendarFollowToggled(const QString &calId, bool on);
     void calendarTargetRequested(QWidget *anchor);
 
 private:
-    // Abre una sección: cabecera con icono y un grupo donde van sus filas.
+    /// Opens a section: a header with an icon and a group for its rows.
     void beginGroup(const QString &title, const QString &icon);
-    // Añade una fila al grupo abierto, con una línea encima si no es la primera.
+    /// Adds a row to the open group, with a divider above unless it is the first.
     void addToGroup(QWidget *row);
-    // Fila del grupo apilada en vertical, para los ajustes con mandos propios.
+    /// A vertically stacked group row, for settings with their own controls.
     QVBoxLayout *addBlock();
     void addAppearance();
     void addLanguage();
@@ -95,19 +87,19 @@ private:
     void addUpdates();
     void addDrive();
     void addCalendar();
-    // Lo que enseña la sección de Calendar: si cambia, se rehace la página.
+    /// What the Calendar section shows; when it changes the page is rebuilt.
     QString calendarSignature() const;
     void addQuit();
-    // Lo que dice la tarjeta de actualizaciones ahora mismo.
+    /// What the update card says right now.
     QString updateSubtitle(bool busy, const QString &error) const;
-    // Fila con interruptor: rótulo a la izquierda, el mando a la derecha.
+    /// A row with a switch: label on the left, control on the right.
     void addToggle(const QString &label, const QString &hint, bool on,
                    std::function<void(bool)> changed);
-    // Control segmentado: de sus opciones solo una está elegida.
+    /// Segmented control: exactly one of its options is chosen.
     QWidget *segments(const QStringList &labels, int chosen, std::function<void(int)> picked,
                       QList<QToolButton *> *out = nullptr);
-    // Fila con un texto y un botón: la carpeta de datos, las copias, Drive y
-    // la versión. Devuelve el botón, y en subOut el subtítulo si se pide.
+    /// A row with a text and a button.
+    /// @return The button; the subtitle label goes to @p subOut if given.
     QToolButton *addAction(const QString &title, const QString &subtitle,
                                  const QString &action, bool enabled,
                                  std::function<void(QWidget *)> clicked,
@@ -115,11 +107,11 @@ private:
 
     Theme m_theme;
     const Store *m_store = nullptr;
-    QVBoxLayout *m_layout = nullptr;   // contenido + stretch final
-    class QFrame *m_group = nullptr;   // el grupo de la sección que se está montando
+    QVBoxLayout *m_layout = nullptr;   ///< Content plus the trailing stretch.
+    class QFrame *m_group = nullptr;   ///< Group of the section being built.
     QVBoxLayout *m_groupLayout = nullptr;
 
-    // De la tarjeta de actualizaciones, para reescribirla sin rehacer nada.
+    /// Pieces of the update card, rewritten without rebuilding.
     class ElidedLabel *m_updateSub = nullptr;
     class QToolButton *m_updateBtn = nullptr;
     bool m_updateBusy = false;
@@ -129,5 +121,5 @@ private:
     class ElidedLabel *m_driveSub = nullptr;
     class QToolButton *m_driveBtn = nullptr;
     bool m_driveBuiltConnected = false;
-    QString m_calendarBuilt;   // calendarSignature() con la que se montó
+    QString m_calendarBuilt;   ///< calendarSignature() the section was built with.
 };

@@ -11,7 +11,7 @@
 namespace {
 
 constexpr int kRate = 44100;
-constexpr int kBeeps = 2;        // dos pitidos y un silencio, y vuelta a empezar
+constexpr int kBeeps = 2;        // two beeps and a pause, then again
 constexpr int kBeepMs = 180;
 constexpr int kGapMs = 140;
 constexpr int kTailMs = 900;
@@ -25,8 +25,7 @@ Alarm::Alarm(QObject *parent) : QObject(parent) {
     connect(m_limit, &QTimer::timeout, this, &Alarm::stop);
 }
 
-// Dos pitidos cortos a 880 Hz con envolvente suave (sin clics) y una cola de
-// silencio para que el bucle no resulte agobiante.
+/// Two short 880 Hz beeps with a soft envelope (no clicks) and a silent tail.
 QString Alarm::ensureToneFile() {
     const QString path = appDataDir() + "/alarm.wav";
     if (QFile::exists(path)) return path;
@@ -37,7 +36,7 @@ QString Alarm::ensureToneFile() {
         for (int i = 0; i < frames; ++i) {
             qreal v = 0.0;
             if (sound) {
-                // Rampa de 6 ms a la entrada y a la salida.
+                // 6 ms ramp in and out.
                 const int ramp = kRate * 6 / 1000;
                 qreal env = 1.0;
                 if (i < ramp) env = qreal(i) / ramp;
@@ -65,8 +64,8 @@ QString Alarm::ensureToneFile() {
 }
 
 void Alarm::start() {
-    // Un aviso nuevo mientras ya suena vuelve a contar el minuto: es otro
-    // aviso, y tiene derecho al suyo entero.
+    // A new alarm while already ringing restarts the minute: it is entitled to a
+    // full one.
     m_limit->start();
     if (isRinging()) return;
 

@@ -12,22 +12,16 @@
 
 #include "ui/theme.hpp"
 
-// Miniatura de una imagen adjunta: una vista previa pequeña, con el tamaño
-// tomado de la proporción de la foto sobre un alto fijo.
-//
-// Ocupaba todo el ancho de la tarjeta y hasta 190 px de alto, que para dos o
-// tres capturas es una tarjeta entera de imagen; ahora es una miniatura que se
-// deja mirar de un vistazo y se abre con un clic si se quiere verla de verdad.
-//
-// No es un QLabel con un pixmap por lo mismo que el texto de las listas no vive
-// dentro del QCheckBox: el sizeHint de un QLabel con imagen es el tamaño de la
-// imagen, y como la lista no tiene barra horizontal, una captura de 1920 px
-// ensancharía la tarjeta -- y con ella toda la lista -- muy por encima del
-// panel. Aquí el ancho no pasa nunca de kMaxWidth.
+/// Thumbnail of an attached image: a fixed height, the width taken from the
+/// photo's aspect ratio and clamped.
+///
+/// Not a QLabel with a pixmap: a QLabel's size hint is its image's size, and
+/// since the list has no horizontal scrollbar, one 1920px screenshot would
+/// widen every card. Here the width never exceeds kMaxWidth.
 class ImageThumb : public QWidget {
 public:
-    static constexpr int kHeight = 92;      // alto de la vista previa
-    static constexpr int kMaxWidth = 156;   // tope de ancho: la tarjeta manda
+    static constexpr int kHeight = 92;      ///< Preview height.
+    static constexpr int kMaxWidth = 156;   ///< Width cap: the card decides.
     static constexpr int kMinWidth = 56;
 
     ImageThumb(const QString &path, int height = kHeight, QWidget *parent = nullptr)
@@ -36,9 +30,8 @@ public:
         setCursor(Qt::PointingHandCursor);
         setToolTip(path);
         keynav::activatable(this, [this] { if (activate) activate(); });
-        // Fijar el tamaño no cambia la política, y una política Expanding se
-        // propaga hacia arriba: la tarjeta pediría alto de más y lo repartiría
-        // en el hijo flexible de abajo (ver autoGrow en notecard.cpp).
+        // Fixing the size leaves the policy alone, and an Expanding policy propagates
+        // upwards (see autoGrow() in notecard.cpp).
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         setFixedSize(previewSize());
     }
@@ -72,8 +65,8 @@ protected:
         clip.addRoundedRect(QRectF(rect()), 8, 8);
 
         if (m_pixmap.isNull()) {
-            // El fichero se ha borrado o no se puede leer: se dice, en vez de
-            // dejar un hueco vacío que parece un fallo de pintado.
+            // Missing or unreadable file: say so instead of leaving a gap that looks like
+            // a painting bug.
             p.setPen(Qt::NoPen);
             p.setBrush(QColor(255, 255, 255, 10));
             p.drawPath(clip);
@@ -83,8 +76,7 @@ protected:
         }
 
         p.setClipPath(clip);
-        // Se recorta al centro en vez de deformarse: una captura apaisada
-        // dentro de una tarjeta estrecha se lee mejor recortada que estirada.
+        // Cropped to the centre rather than distorted.
         const QPixmap scaled = m_pixmap.scaled(size() * devicePixelRatioF(),
                                                Qt::KeepAspectRatioByExpanding,
                                                Qt::SmoothTransformation);
@@ -99,9 +91,8 @@ protected:
     }
 
 private:
-    // El ancho sale de la proporción de la foto, acotado por los dos extremos:
-    // un panorama no puede ensanchar la tarjeta y un retrato no puede quedarse
-    // en una tira de dos píxeles.
+    /// Width from the aspect ratio, clamped at both ends: a panorama cannot widen
+    /// the card and a portrait cannot shrink to a sliver.
     QSize previewSize() const {
         if (m_pixmap.isNull() || m_pixmap.height() <= 0) return QSize(120, m_h);
         const int w = int(qreal(m_h) * m_pixmap.width() / m_pixmap.height());

@@ -6,39 +6,33 @@
 class QNetworkAccessManager;
 class QNetworkReply;
 
-// Mira si hay una versión publicada más nueva que la que se está ejecutando.
-//
-// No descarga nada ni instala nada: pregunta por la última release, compara y
-// avisa. Lo que se haga con la respuesta es cosa del Panel, y lo único que
-// ofrece al usuario es abrir la página de la novedad en su navegador —
-// descargar un ejecutable y lanzarlo es otra cosa, y sin binarios firmados no
-// toca hacerla.
-//
-// Vive en core porque no sabe nada de widgets. Con la copia en Drive
-// (DriveSync) es lo único de la aplicación que habla por red, y solo cuando su
-// dueño se lo pide.
+/// Checks whether a newer release than the running one has been published.
+///
+/// It downloads and installs nothing: it asks GitHub for the latest release,
+/// compares and reports. Together with DriveSync it is the only code that
+/// goes to the network, and only when enabled.
 class Updater : public QObject {
     Q_OBJECT
 
 public:
     explicit Updater(QObject *parent = nullptr);
 
-    // Lanza la consulta. Si ya hay una en vuelo no hace nada: el botón de
-    // "buscar ahora" se puede pulsar dos veces seguidas.
+    /// Starts the query. Does nothing if one is already in flight.
     void check();
     bool busy() const { return m_reply != nullptr; }
 
-    // La versión compilada, sin la 'v' de la etiqueta.
+    /// The compiled version, without the tag's leading 'v'.
     static QString current();
 
-    // Compara dos versiones tipo "2.0.0" o "v2.0.0". Devuelve <0, 0 o >0.
-    // Lo que no sea un número se ignora, así que una etiqueta rara no hace
-    // creer que hay actualización: en la duda, empata.
+    /// Compares two versions such as "2.0.0" or "v2.0.0".
+    /// @return <0, 0 or >0. Non-numeric parts are ignored, so an odd tag ties
+    ///         rather than inventing an update.
     static int compare(const QString &a, const QString &b);
 
 signals:
-    // Con error vacío, 'version' es la última publicada y 'url' su página.
-    // Con error, los otros dos vienen vacíos y el texto ya está traducido.
+    /// @param version Latest published version (empty on error).
+    /// @param url     Its release page (empty on error).
+    /// @param error   Translated error text, empty on success.
     void finished(const QString &version, const QString &url, const QString &error);
 
 private:

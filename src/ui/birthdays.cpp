@@ -19,36 +19,32 @@
 
 namespace {
 
-constexpr int kAvatarRow = 28;     // círculo de una fila
-constexpr int kAvatarCard = 38;    // el de la tarjeta de hoy
-constexpr int kSoonDays = 7;       // hasta aquí, la cuenta atrás va en el acento
+constexpr int kAvatarRow = 28;     // avatar of a row
+constexpr int kAvatarCard = 38;    // avatar of the highlighted card
+constexpr int kSoonDays = 7;       // up to here the countdown is in the accent
 
-// Tono estable por persona. Sale del nombre y no de la posición en la lista
-// para que el color de alguien no cambie al añadir o quitar a otro; y se
-// calcula aquí en vez de con qHash porque Qt6 la siembra al azar en cada
-// arranque, así que el mismo nombre saldría de un color distinto cada vez que
-// se abre el panel.
+/// A stable tint per person, derived from the name (not the position) so it
+/// does not change when others are added. Hand-rolled rather than qHash,
+/// which Qt 6 seeds randomly per process.
 QColor nameTint(const QString &name) {
     unsigned h = 2166136261u;
     for (const QChar &c : name) {
         h ^= unsigned(c.unicode());
         h *= 16777619u;
     }
-    // Saturación y brillo fijos: lo único que cambia es el tono, así ninguna
-    // persona sale con un color que se lea peor que el de las demás sobre el
-    // fondo oscuro.
+    // Fixed saturation and value: only the hue varies, so nobody's colour reads
+    // worse than the others' on the dark background.
     return QColor::fromHsv(int(h % 360u), 95, 205);
 }
 
-// El nombre del mes, en el idioma de la interfaz y en mayúsculas. Nunca
-// QLocale::system(): el idioma lo manda el ajuste, no el entorno.
+/// Month name in the interface language, upper case. Never
+/// QLocale::system(): the language is the setting.
 QString monthName(int month) {
     return Lang::locale().toString(QDate(2000, month, 1), "MMMM").toUpper();
 }
 
-// Círculo con las iniciales. Es un QWidget pintado a mano y no un QLabel
-// porque un QLabel pide el ancho de su texto (ver *Card widths* en CLAUDE.md)
-// y aquí el ancho tiene que ser exactamente el del círculo.
+/// Circle with the initials. Painted rather than a QLabel, which would demand
+/// the width of its text (see *Card widths* in CLAUDE.md).
 class Avatar : public QWidget {
 public:
     Avatar(const QString &initials, const QColor &tint, int px, QWidget *parent = nullptr)
@@ -81,8 +77,8 @@ private:
     int m_px;
 };
 
-// Fila de la lista. Igual que DayRow en el calendario: un QWidget liso con
-// WA_StyledBackground para que la hoja de estilos le pinte el realce.
+/// A list row: a plain QWidget with WA_StyledBackground so the stylesheet
+/// paints its highlight.
 class BirthdayRow : public QWidget {
 public:
     explicit BirthdayRow(QWidget *parent = nullptr) : QWidget(parent) {
@@ -93,8 +89,7 @@ public:
         keynav::activatable(this, [this] { if (click) click(); });
     }
 
-    // Se asigna después de construir: el popup se ancla a la propia fila, que
-    // hasta entonces no existe.
+    /// Assigned after construction: the popup anchors to the row itself.
     std::function<void()> click;
 
 protected:
@@ -105,8 +100,6 @@ protected:
 };
 
 }  // namespace
-
-// ---------------------------------------------------------------------------
 
 BirthdayView::BirthdayView(const Theme &theme, QWidget *parent)
     : QWidget(parent), m_theme(theme) {
@@ -151,12 +144,9 @@ void BirthdayView::setByMonth(bool on) {
     refresh();
 }
 
-// Ordenados por lo que falta para cada uno: en diciembre lo próximo es enero, y
-// ordenar por mes del año dejaría los de enero al final de la página. Es el
-// orden de "qué viene ahora", y también el que decide quién va destacado.
-//
-// Con los días empatados manda el nombre, para que dos personas del mismo día
-// no bailen de sitio entre un repintado y el siguiente.
+/// Sorted by time left: in December the next one is in January. This is also
+/// what decides who is highlighted. Ties are broken by name so two people on
+/// the same day do not swap places between repaints.
 QList<Birthday *> BirthdayView::sorted() const {
     QList<Birthday *> found;
     if (!m_list) return found;
@@ -171,9 +161,7 @@ QList<Birthday *> BirthdayView::sorted() const {
     return found;
 }
 
-// El otro orden: el calendario de siempre, de enero a diciembre, sin que el mes
-// de hoy sea nada especial. Es la agenda del año entera, que es como se escribe
-// una lista de cumpleaños en un papel.
+/// The other order: January to December, the whole year's agenda.
 QList<Birthday *> BirthdayView::byCalendar() const {
     QList<Birthday *> found;
     if (!m_list) return found;
@@ -190,9 +178,8 @@ QList<Birthday *> BirthdayView::byCalendar() const {
 }
 
 void BirthdayView::refresh() {
-    // Se vacía todo menos el stretch final. Se ocultan además de borrarlas:
-    // sacarlas del layout no las quita de la pantalla, y siguen pintadas (y
-    // aceptando eventos) hasta que corre deleteLater().
+    // Clear everything but the trailing stretch. Hidden as well as deleted: out
+    // of the layout they stay painted and event-handling until deleteLater() runs.
     while (m_layout->count() > 1) {
         QLayoutItem *item = m_layout->takeAt(0);
         if (QWidget *w = item->widget()) {
@@ -202,24 +189,23 @@ void BirthdayView::refresh() {
         delete item;
     }
 
-    // El destacado sale siempre del orden por cercanía, mande el que mande en
-    // la lista: "quién es el siguiente" no depende de cómo se esté mirando.
+    // The highlighted one always comes from the closeness order: "who is next"
+    // does not depend on how the list is viewed.
     const QList<Birthday *> all = sorted();
     int at = 0;
 
     if (all.isEmpty()) {
         auto *empty = new QLabel(L("Todavía no hay cumpleaños"));
         empty->setObjectName("meta");
-        empty->setWordWrap(true);   // ver *Card widths*: no puede pedir su ancho
+        empty->setWordWrap(true);   // see *Card widths*: it must not demand its width
         empty->setContentsMargins(7, 8, 7, 4);
         m_layout->insertWidget(at++, empty);
         m_layout->insertWidget(at++, buildAddRow());
         return;
     }
 
-    // Destacados: los que empatan en ser los más cercanos. Casi siempre es uno
-    // solo; son varios cuando dos personas caen el mismo día, y entonces
-    // destacar a una y no a la otra sería elegir por el usuario.
+    // Highlighted: those tied for soonest. Usually one; several when people share
+    // the day, and picking one would be choosing for the user.
     const int soonest = all.first()->daysUntil();
     int highlighted = 0;
     while (highlighted < all.size() && all.at(highlighted)->daysUntil() == soonest) {
@@ -232,17 +218,16 @@ void BirthdayView::refresh() {
     line->setFixedHeight(1);
     m_layout->insertWidget(at++, line);
 
-    // Por meses la lista es la agenda del año entera, destacados incluidos:
-    // faltar alguien de su mes porque está en la tarjeta de arriba se lee como
-    // un fallo, no como un resumen. Por cercanía es la continuación de lo de
-    // arriba, y entonces repetirlo sí sobra.
+    // By month the list is the whole year, highlighted ones included: someone
+    // missing from their month reads as a bug. By closeness it continues the card
+    // above, so repeating them is redundant.
     const QList<Birthday *> list = m_byMonth ? byCalendar() : all.mid(highlighted);
     m_layout->insertWidget(at++, buildHeader(int(list.size())));
 
     int lastMonth = 0;
     for (Birthday *b : list) {
-        // Por cercanía, el mes es el de la vuelta que toca —así tras diciembre
-        // viene el enero que viene—; por calendario es el suyo y ya está.
+        // By closeness the month is that of the next turn (so next January follows
+        // December); by calendar it is simply theirs.
         const int month = m_byMonth ? b->month : b->nextDate().month();
         if (month != lastMonth) {
             lastMonth = month;
@@ -262,9 +247,7 @@ void BirthdayView::refresh() {
     m_layout->insertWidget(at++, buildAddRow());
 }
 
-// Separador de mes: el nombre y una línea que llega hasta el borde. Es lo que
-// convierte una lista larga en una agenda, y era como venía escrita la lista
-// que estrenó la página.
+/// Month separator: the name and a rule to the edge.
 QWidget *BirthdayView::buildMonthHeader(int month) {
     auto *row = new QWidget;
     auto *l = new QHBoxLayout(row);
@@ -288,9 +271,7 @@ QWidget *BirthdayView::buildHeader(int listed) {
     l->setContentsMargins(4, 6, 4, 2);
     l->setSpacing(4);
 
-    // Los dos órdenes, como dos pestañas pequeñas. El encendido hace de rótulo
-    // de la sección, así que la cabecera dice a la vez qué estás mirando y cómo
-    // cambiarlo, sin gastar una fila más.
+    // The two orders as two small tabs; the lit one doubles as the section title.
     auto tab = [this, l](const QString &text, bool chosen, bool value) {
         auto *b = new QToolButton;
         b->setObjectName("bdayTab");
@@ -309,9 +290,8 @@ QWidget *BirthdayView::buildHeader(int listed) {
     tab(L("MESES"), m_byMonth, true);
     l->addStretch();
 
-    // El recuento dice cuántos hay ahí abajo, y eso no es lo mismo en los dos
-    // órdenes: por cercanía son los que quedan tras el destacado, por meses son
-    // todos. Dos rótulos distintos lo dejan claro sin explicar nada.
+    // The count differs between orders: by closeness, those after the highlighted
+    // card; by month, all of them. Two different labels make that visible.
     auto *count = new QLabel(listed == 0 ? QString()
                                          : (m_byMonth ? L("%1 EN TOTAL").arg(listed)
                                                       : L("%1 MÁS").arg(listed)));
@@ -327,8 +307,8 @@ QWidget *BirthdayView::buildHighlightCard(Birthday *b) {
     auto *card = new BirthdayRow;
     card->setObjectName("bdayToday");
     card->setCursor(Qt::PointingHandCursor);
-    // Pulsar la tarjeta abre la misma ficha que pulsar una fila. Los botones de
-    // dentro se quedan con su propio clic, así que no se pisan.
+    // Clicking the card opens the same editor as a row; the buttons inside keep
+    // their own clicks.
     card->click = [this, b, card] { emit editRequested(b, card); };
 
     auto *col = new QVBoxLayout(card);
@@ -351,8 +331,8 @@ QWidget *BirthdayView::buildHighlightCard(Birthday *b) {
     name->setToolTip(b->name);
     texts->addWidget(name);
 
-    // El de hoy no necesita fecha —es hoy—; el que está por venir sí, porque la
-    // píldora solo dice cuánto falta y "en 3 semanas" no es un día del mes.
+    // Today's needs no date; an upcoming one does, since the chip only says how
+    // long is left and "in 3 weeks" is not a day of the month.
     QStringList meta;
     if (!isToday) meta << b->dateLabel();
     if (const QString sub = b->subtitle(); !sub.isEmpty()) meta << sub;
@@ -361,30 +341,29 @@ QWidget *BirthdayView::buildHighlightCard(Birthday *b) {
     texts->addWidget(metaLabel);
     head->addLayout(texts, 1);
 
-    // Píldora: o ya está felicitado, o cuánto falta.
+    // Chip: already greeted, or how long is left.
     auto *chip = new QLabel(b->greeted() ? L("FELICITADO") : b->whenLabel().toUpper());
     chip->setObjectName(b->greeted() ? "bdayDoneChip" : "bdayTodayChip");
     head->addWidget(chip, 0, Qt::AlignTop);
     col->addLayout(head);
 
-    // Los botones van en una fila propia, no al lado del nombre: llevan texto,
-    // y una fila de anchos fijos es justo la trampa de *Card widths*.
+    // The buttons get a row of their own: they carry text, and a row of fixed
+    // widths is the *Card widths* trap.
     auto *actions = new QHBoxLayout;
     actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(6);
 
-    // Sonando manda pararlo: un botón de felicitar mientras suena la alarma
-    // deja al usuario sin la única acción que quiere en ese momento.
+    // While ringing, stopping it comes first.
     if (b->ringing) {
         auto *stop = new QPushButton(L("Detener aviso"));
         stop->setFocusPolicy(Qt::TabFocus);
-        stop->setObjectName("bdayStop");   // el rojo vive en la hoja, no aquí
+        stop->setObjectName("bdayStop");   // the red lives in the stylesheet
         stop->setCursor(Qt::PointingHandCursor);
         connect(stop, &QPushButton::clicked, this, [this, b] { emit dismissRequested(b); });
         actions->addWidget(stop);
     } else if (isToday) {
-        // Solo el día que toca: felicitar a alguien con tres meses de antelación
-        // no quiere decir nada, y la marca se guarda por año.
+        // Only on the day itself: greeting months early means nothing, and the mark
+        // is stored per year.
         auto *greet = new QPushButton(b->greeted() ? L("Sin felicitar") : L("Felicitar"));
         greet->setCursor(Qt::PointingHandCursor);
         greet->setFocusPolicy(Qt::TabFocus);
@@ -428,8 +407,7 @@ QWidget *BirthdayView::buildRow(Birthday *b) {
     name->setToolTip(b->name);
     texts->addWidget(name);
 
-    // La segunda línea puede quedar vacía (sin año y sin relación): entonces no
-    // se monta, en vez de dejar un hueco bajo el nombre.
+    // The second line may be empty (no year, no relation): then it is not built.
     if (const QString sub = b->subtitle(); !sub.isEmpty()) {
         auto *meta = new ElidedLabel(sub, QColor(Theme::muted()));
         meta->setObjectName("meta");
@@ -437,8 +415,7 @@ QWidget *BirthdayView::buildRow(Birthday *b) {
     }
     l->addLayout(texts, 1);
 
-    // Campana pequeña si tiene aviso puesto: es lo que distingue un cumpleaños
-    // que va a sonar de uno que solo está apuntado.
+    // A small bell when an alarm is set.
     if (b->remindAt.isValid()) {
         auto *bell = new QLabel;
         bell->setFixedSize(11, 11);
@@ -459,8 +436,8 @@ QWidget *BirthdayView::buildRow(Birthday *b) {
     auto *when = new QLabel(b->whenLabel());
     when->setObjectName("bdayWhen");
     when->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    // Lo de esta semana en el acento; lo que queda lejos, apagado. Una página
-    // entera de texto en color de acento no destaca nada.
+    // This week's in the accent, the rest dimmed: a page full of accent colour
+    // highlights nothing.
     when->setProperty("soon", b->daysUntil() <= kSoonDays);
     right->addWidget(when);
     l->addLayout(right);
@@ -468,8 +445,7 @@ QWidget *BirthdayView::buildRow(Birthday *b) {
     return row;
 }
 
-// Fila de alta, con el mismo aspecto que las demás para que se lea como "la
-// siguiente" y no como un botón suelto al final de la página.
+/// The add row, styled like the others so it reads as "the next one".
 QWidget *BirthdayView::buildAddRow() {
     auto *add = new BirthdayRow;
     auto *l = new QHBoxLayout(add);

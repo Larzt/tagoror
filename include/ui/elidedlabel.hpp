@@ -6,10 +6,9 @@
 #include <QLabel>
 #include <QPainter>
 
-// Etiqueta que recorta el texto con puntos suspensivos en vez de exigir su
-// ancho completo. Es lo que evita que un texto largo ensanche su tarjeta por
-// encima del panel: la lista no tiene barra horizontal, así que el mínimo de
-// un hijo se convierte en el mínimo de toda la lista (ver CLAUDE.md).
+/// A label that elides its text instead of demanding its full width. The note
+/// list has no horizontal scrollbar, so one child's minimum becomes the whole
+/// list's (see *Card widths* in CLAUDE.md).
 class ElidedLabel : public QLabel {
 public:
     ElidedLabel(const QString &text, const QColor &color, QWidget *parent = nullptr)
@@ -22,7 +21,7 @@ public:
         update();
     }
 
-    // Subraya al pasar por encima; para lo que se puede pulsar.
+    /// Underlines on hover, for clickable labels.
     void setUnderlineOnHover(bool on) { m_underline = on; }
 
     QSize minimumSizeHint() const override { return QSize(24, sizeHint().height()); }

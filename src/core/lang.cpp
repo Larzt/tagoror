@@ -6,12 +6,12 @@ namespace {
 
 Lang::Code g_current = Lang::Es;
 
-// Español -> inglés. La clave es el literal tal cual aparece en el código,
-// marcadores de posición incluidos ("%1 DE %2"), porque el .arg() se aplica
-// después de traducir. Lo que no esté aquí se queda en español.
+/// Spanish -> English. The key is the literal exactly as written in the
+/// source, placeholders included ("%1 DE %2"), since .arg() runs after the
+/// lookup. Anything missing stays in Spanish.
 const QHash<QString, QString> &table() {
     static const QHash<QString, QString> t = {
-        // --- panel: cabecera, pie y estado vacío ---------------------------
+        // Panel: header, footer and empty state
         {"Buscar", "Search"},
         {"Nueva nota", "New note"},
         {"Calendario", "Calendar"},
@@ -32,14 +32,14 @@ const QHash<QString, QString> &table() {
         {"Abrir Tagoror · arrastra para mover", "Open Tagoror · drag to move"},
         {"Recordatorio vencido · clic para parar", "Reminder overdue · click to stop"},
 
-        // --- modo aplicación -------------------------------------------------
+        // App mode
         {"Modo aplicación", "App mode"},
         {"Ventana normal, en la barra de tareas", "Regular window, in the taskbar"},
         {"Widget sin marco en el escritorio", "Frameless widget on the desktop"},
         {"Como cualquier otra ventana", "Like any other window"},
         {"Minimizar", "Minimize"},
 
-        // --- áreas de trabajo ------------------------------------------------
+        // Workspace areas
         {"Área nueva", "New area"},
         {"Nueva área", "New area"},
         {"Nueva área…", "New area…"},
@@ -79,7 +79,7 @@ const QHash<QString, QString> &table() {
         {"Aún no hay notas en %1", "No notes in %1 yet"},
         {"%1 · %2 NOTAS", "%1 · %2 NOTES"},
 
-        // --- selector de nueva nota ----------------------------------------
+        // New-note selector
         {"Texto", "Text"},
         {"Una nota libre", "A free-form note"},
         {"Checklist", "Checklist"},
@@ -89,11 +89,11 @@ const QHash<QString, QString> &table() {
         {"Nota de voz", "Voice note"},
         {"Graba desde el micrófono", "Records from the microphone"},
 
-        // --- títulos de las notas nuevas ------------------------------------
+        // Titles of new notes
         {"Nueva lista", "New list"},
         {"Nuevo recordatorio", "New reminder"},
 
-        // --- ajustes --------------------------------------------------------
+        // Settings
         {"ACENTO", "ACCENT"},
         {"APARIENCIA", "APPEARANCE"},
         {"Opacidad", "Opacity"},
@@ -170,7 +170,7 @@ const QHash<QString, QString> &table() {
         {"Ocultar", "Hide"},
         {"Recordatorio vencido", "Reminder overdue"},
 
-        // --- tarjetas -------------------------------------------------------
+        // Cards
         {"Nota", "Note"},
         {"Lista", "List"},
         {"Sin título", "Untitled"},
@@ -189,7 +189,7 @@ const QHash<QString, QString> &table() {
         {"Eliminar lista", "Delete list"},
         {"Ya está todo hecho: quitar esta nota", "All done: remove this note"},
 
-        // --- fechas y avisos -------------------------------------------------
+        // Dates and alerts
         {"Sin fecha", "No date"},
         {"Clic para cambiar la fecha", "Click to change the date"},
         {"Cambiar fecha", "Change date"},
@@ -207,7 +207,7 @@ const QHash<QString, QString> &table() {
         {"p. ej. 20:30", "e.g. 20:30"},
         {"Ya pasado", "Already past"},
 
-        // --- repetición de recordatorios --------------------------------------
+        // Reminder repetition
         {"Repetir", "Repeat"},
         {"No repetir", "Do not repeat"},
         {"Suena una vez", "Rings once"},
@@ -218,13 +218,13 @@ const QHash<QString, QString> &table() {
         {"Clic para cambiar la repetición", "Click to change how often it repeats"},
         {"%1 · clic para cambiarlo", "%1 · click to change it"},
 
-        // --- detalles de un recordatorio --------------------------------------
+        // Reminder details
         {"+ Añadir detalles", "+ Add details"},
         {"Añadir detalles", "Add details"},
         {"Escribir detalles del recordatorio", "Write the reminder's details"},
         {"Escribe bajo la fecha", "Writes under the date"},
 
-        // --- imágenes adjuntas -------------------------------------------------
+        // Attached images
         {"Imágenes", "Images"},
         {"Añadir imagen…", "Add image…"},
         {"Elegir imágenes", "Choose images"},
@@ -236,13 +236,13 @@ const QHash<QString, QString> &table() {
         {"Ocultar imágenes", "Hide images"},
         {"Quitar imagen", "Remove image"},
 
-        // --- orden de las tarjetas ---------------------------------------------
+        // Card order
         {"Orden", "Order"},
         {"Subir", "Move up"},
         {"Bajar", "Move down"},
         {"Arrastra para reordenar", "Drag to reorder"},
 
-        // --- enlaces ---------------------------------------------------------
+        // Links
         {"Enlace", "Link"},
         {"Nuevo enlace", "New link"},
         {"Editar enlace", "Edit link"},
@@ -257,7 +257,7 @@ const QHash<QString, QString> &table() {
         {"Sin nombre", "No name"},
         {"Quitar enlace", "Remove link"},
 
-        // --- notas de voz ------------------------------------------------------
+        // Voice notes
         {"Grabar", "Record"},
         {"Regrabar", "Re-record"},
         {"Sustituye la toma actual", "Replaces the current take"},
@@ -272,7 +272,7 @@ const QHash<QString, QString> &table() {
         {"No se pudo escribir ", "Could not write "},
         {"No se pudo abrir el micrófono", "Could not open the microphone"},
 
-        // --- calendario ---------------------------------------------------------
+        // Calendar
         {"Mes anterior", "Previous month"},
         {"Mes siguiente", "Next month"},
         {"Hoy", "Today"},
@@ -284,7 +284,7 @@ const QHash<QString, QString> &table() {
         {"Mostrar los avisos del día", "Show the day's reminders"},
         {"Plegar los avisos del día", "Fold away the day's reminders"},
 
-        // --- cumpleaños -----------------------------------------------------------
+        // Birthdays
         {"PRÓXIMOS", "COMING UP"},
         {"MESES", "MONTHS"},
         {"%1 MÁS", "%1 MORE"},
@@ -316,14 +316,14 @@ const QHash<QString, QString> &table() {
         {"en %1 sem", "in %1 wk"},
         {"en %1 meses", "in %1 mo"},
 
-        // --- notas de ejemplo del primer arranque ---------------------------------
+        // First-run demo notes
         {"Escribir changelog", "Write the changelog"},
         {"Publicar en el foro", "Post on the forum"},
         {"Escalado en Wayland", "Wayland scaling"},
         {"El escalado fraccional emborrona el widget en el panel 4K.",
          "Fractional scaling blurs the widget on the 4K panel."},
 
-        // --- planificador --------------------------------------------------
+        // Planner
         {"Temporizadores", "Timers"},
         {"Día", "Day"},
         {"Semana", "Week"},
@@ -374,7 +374,7 @@ const QHash<QString, QString> &table() {
         {"%1 EVENTOS", "%1 EVENTS"},
         {"%1 · empieza a las %2", "%1 · starts at %2"},
 
-        // --- temporizadores ------------------------------------------------
+        // Timers
         {"%1 TEMPORIZADORES", "%1 TIMERS"},
         {"ACTIVOS", "ACTIVE"},
         {"EN PAUSA", "PAUSED"},
@@ -401,7 +401,7 @@ const QHash<QString, QString> &table() {
         {"Temporizador %1", "Timer %1"},
         {"Todavía no hay temporizadores. Crea uno abajo o elige un tiempo rápido.", "No timers yet. Create one below or pick a quick time."},
 
-        // --- ajustes: tamaño de texto --------------------------------------
+        // Settings: text size
         {"TAMAÑO DE TEXTO", "TEXT SIZE"},
         {"Pequeño", "Small"},
         {"Normal", "Normal"},
@@ -410,10 +410,10 @@ const QHash<QString, QString> &table() {
         {"Comprar pan y café", "Buy bread and coffee"},
         {"Así se verán las notas, las listas y el planificador.", "This is how notes, lists and the planner will look."},
 
-        // --- markdown ------------------------------------------------------
+        // Markdown
         {"Escribe… admite Markdown", "Write… Markdown works"},
 
-        // --- copia en Google Drive -------------------------------------------
+        // Google Drive
         {"GOOGLE DRIVE", "GOOGLE DRIVE"},
         {"Copia en Google Drive", "Google Drive copy"},
         {"No incluida en esta compilación", "Not included in this build"},
@@ -439,6 +439,36 @@ const QHash<QString, QString> &table() {
         {"No queda espacio en tu Google Drive.", "Your Google Drive is out of space."},
         {"Google Drive respondió con un error (%1).", "Google Drive answered with an error (%1)."},
         {"Sincronizar con Google Drive", "Sync with Google Drive"},
+        // Google Calendar
+        {"GOOGLE CALENDAR", "GOOGLE CALENDAR"},
+        {"Sincronizar el planificador", "Sync the planner"},
+        {"Eventos y tareas, en los dos sentidos", "Events and tasks, both ways"},
+        {"Falta el permiso de Calendar", "Calendar permission missing"},
+        {"Vuelve a autorizar la cuenta para concederlo", "Authorize the account again to grant it"},
+        {"Autorizar", "Authorize"},
+        {"Los calendarios de la cuenta aparecen tras la próxima sincronización.", "The account's calendars show up after the next sync."},
+        {"Principal", "Primary"},
+        {"Solo lectura", "Read-only"},
+        {"Eventos nuevos de Tagoror", "New Tagoror events"},
+        {"Se guardan en «%1»", "Saved to “%1”"},
+        {"En ninguno · se quedan en Tagoror", "None · they stay in Tagoror"},
+        {"Ninguno", "None"},
+        {"Los eventos de Tagoror se quedan aquí", "Tagoror events stay here"},
+        {"Último error", "Last error"},
+        {"Google Calendar: %1 (%2)", "Google Calendar: %1 (%2)"},
+        {"sin conexión", "no connection"},
+        {"no se pudo leer la lista de calendarios", "couldn't read the calendar list"},
+        {"no se pudo leer «%1»", "couldn't read “%1”"},
+        {"no se pudieron leer las repeticiones de un evento", "couldn't read an event's occurrences"},
+        {"no se pudo crear un evento", "couldn't create an event"},
+        {"no se pudo guardar un evento", "couldn't save an event"},
+        {"no se pudo mover un evento de calendario", "couldn't move an event to another calendar"},
+        {"no se pudo borrar un evento", "couldn't delete an event"},
+        {"Dejar de seguir este calendario", "Stop following this calendar"},
+        {"Sus eventos se quitan de aquí; en Google siguen", "Its events leave Tagoror; they stay in Google"},
+        {"Todo el día", "All day"},
+        {"ÚLTIMO DÍA", "LAST DAY"},
+        {"El último día tiene que ser dd/mm/aaaa, y no antes de la fecha.", "The last day must be dd/mm/yyyy, and not before the date."},
         {"Tus equipos conectados a esta cuenta comparten notas, tareas, cumpleaños y temporizadores a través de la carpeta Tagoror de tu Drive.", "Your computers connected to this account share notes, tasks, birthdays and timers through the Tagoror folder in your Drive."},
         {"Sin conectar · las notas se quedan en este equipo", "Not connected · notes stay on this computer"},
         {"sincronizando…", "syncing…"},

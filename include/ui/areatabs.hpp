@@ -10,17 +10,13 @@
 
 class QLineEdit;
 
-// La tira de pestañas de las áreas de trabajo, entre la cabecera y la lista.
-//
-// Es un QWidget pintado a mano y no un QTabBar: tiene que pintar el glifo de
-// cada área, el punto rojo de las que tienen algo sonando y un «+N» con las que
-// no caben. Y no se desplaza en horizontal: un scroll lateral esconde pestañas
-// sin dar pistas y se lleva mal con la rueda. Se enseñan las que caben (dos o
-// tres a 300 px), la activa siempre, y el resto va a «+N», que hereda el punto
-// rojo de las que esconde.
-//
-// Como las piezas del planificador, habla por std::function y no por señales:
-// no hay Q_OBJECT ni moc que tocar para añadir una.
+/// The strip of workspace-area tabs between the header and the list.
+///
+/// Painted by hand rather than a QTabBar: it draws each area's glyph, the red
+/// dot of areas with something ringing and a "+N" for the ones that do not
+/// fit, and never scrolls sideways. The active tab is always shown; hidden
+/// ones go behind "+N", which inherits their red dot. Talks through
+/// std::function rather than signals, so no moc.
 class AreaTabs : public QWidget {
 public:
     struct Tab {
@@ -30,24 +26,24 @@ public:
         bool ringing = false;
     };
 
-    // El Theme es un puntero al del panel, igual que en ajustes: así un cambio
-    // de acento se ve con un update() y sin rehacer nada.
+    /// @p theme points at the panel's own, so an accent change only needs an
+    /// update().
     explicit AreaTabs(const Theme *theme, QWidget *parent = nullptr);
 
     void setTabs(const QList<Tab> &tabs, const QString &active);
     QString active() const { return m_active; }
 
-    // Deja el nombre de esa pestaña en edición, sobre la propia pestaña.
-    // Intro confirma, Escape cancela y perder el foco también confirma.
+    /// Edits that tab's name in place. Enter or losing focus confirms, Escape
+    /// cancels.
     void beginRename(const QString &id);
 
-    // Para soltar una tarjeta encima: el área bajo ese punto de la pantalla,
-    // o vacío. setDropTarget() la resalta mientras dura el arrastre.
+    /// Area under a screen point, or empty; used to drop a card on a tab.
+    /// setDropTarget() highlights it during the drag.
     QString areaAt(const QPoint &globalPos) const;
     void setDropTarget(const QString &id);
 
-    // Dónde abrir el menú de una pestaña o el de «+N», en coordenadas de
-    // pantalla (la esquina de abajo a la izquierda).
+    /// Where to open a tab's (or "+N"'s) menu: its bottom-left corner, in screen
+    /// coordinates.
     QPoint menuPoint(const QString &id) const;
 
     std::function<void(const QString &)> activated;
@@ -59,8 +55,8 @@ public:
     std::function<void(const QString &, int)> moveRequested;
 
     QSize sizeHint() const override;
-    // Pequeño a propósito: la tira no puede exigir el ancho de sus nombres o
-    // ensancharía el panel entero (ver *Card widths*). Lo que no cabe va a «+N».
+    /// Small on purpose: the strip must not demand the width of its names or it
+    /// would widen the whole panel (see *Card widths*).
     QSize minimumSizeHint() const override;
 
 protected:
@@ -77,17 +73,16 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
-    // Qué hay en cada sitio de la tira, recalculado al cambiar el ancho o las
-    // pestañas. index es la posición en m_tabs.
+    /// What occupies each slot of the strip; @c index is the position in m_tabs.
     struct Slot {
         int index;
         QRect rect;
-        QString text;   // el nombre, ya recortado si hacía falta
+        QString text;   ///< The name, already elided if needed.
     };
     void relayout();
     int tabWidth(const Tab &t, QString *elided) const;
     int indexOf(const QString &id) const;
-    // -2 el «+», -3 el «+N», -1 nada; si no, el índice de la pestaña.
+    /// @return -2 for "+", -3 for "+N", -1 for nothing, else the tab index.
     int hitTest(const QPoint &pos) const;
     void activate(int index);
     void finishRename(bool commit);

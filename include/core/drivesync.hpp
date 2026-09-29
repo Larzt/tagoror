@@ -18,55 +18,39 @@ class QNetworkReply;
 class QTcpServer;
 class QTcpSocket;
 
-// Sincronización de las notas entre equipos a través de Google Drive.
-//
-// Cada equipo guarda en local como siempre, y además comparte una carpeta
-// "Tagoror" en la unidad del usuario. Sincronizar es: bajar lo que haya allí,
-// mezclarlo con lo de aquí elemento a elemento (Store::mergeRemote: gana la
-// versión más reciente de cada nota, evento, cumpleaños o temporizador; lo
-// borrado se borra), guardar, y subir el resultado. Nunca se sustituye un
-// fichero entero por otro, que es lo que haría que un equipo pisara al otro.
-//
-// Si dos equipos suben a la vez, el que queda pisado en Drive sigue teniendo lo
-// suyo en local y lo vuelve a poner en la siguiente pasada: nada se pierde, a
-// lo sumo tarda una vuelta más.
-//
-// Los adjuntos (audio/, images/) viajan con sus notas: se bajan los que faltan
-// aquí o los de las notas cuya versión buena vino de fuera, y se suben los
-// demás. Solo se transfiere lo que difiere (MD5 local contra el de Drive), y un
-// JSON de fuera que no ha cambiado desde la última mezcla ni se baja.
-//
-// La autorización es la de las aplicaciones de escritorio de Google: se abre
-// el navegador, Google redirige a un puerto local que escucha aquí (loopback)
-// y el código se canjea con PKCE. El permiso pedido es drive.file, el más
-// estrecho que hay: la aplicación solo ve los ficheros que ella misma crea, no
-// el resto de la unidad.
-//
-// Necesita un ID de cliente OAuth registrado en Google Cloud, que se pone al
-// compilar (TAGOROR_GOOGLE_CLIENT_ID y _SECRET en CMake). Sin él, configured()
-// es falso y ajustes enseña la fila desactivada.
-//
-// El token de refresco se guarda en QSettings y no en notes.json: la cuenta es
-// del equipo, no de la carpeta de datos, y así no viaja al pendrive ni entra en
-// las copias de seguridad.
+/// Syncs the data between machines through a "Tagoror" folder in the user's
+/// Google Drive.
+///
+/// A pass downloads what is there, merges it element by element with the
+/// local data (Store::mergeRemote()), saves and uploads the result. A whole
+/// file never replaces another, which is how one machine would overwrite the
+/// other. If two machines upload at once, the overwritten one still has its
+/// data locally and puts it back on the next pass.
+///
+/// Attachments follow their notes, and only what differs (by MD5) is
+/// transferred. Authorisation is Google's desktop flow: loopback redirect plus
+/// PKCE, with the narrow `drive.file` scope. The OAuth client comes from CMake
+/// (TAGOROR_GOOGLE_CLIENT_ID/_SECRET); without it configured() is false. The
+/// refresh token is kept in QSettings, not in notes.json, so it never travels
+/// with the data folder or into backups.
 class DriveSync : public QObject {
     Q_OBJECT
 
 public:
     enum State {
-        Unavailable,    // compilado sin ID de cliente
+        Unavailable,    ///< Built without a client ID.
         Disconnected,
-        Authorizing,    // esperando al navegador
-        Idle,           // conectado
+        Authorizing,    ///< Waiting for the browser.
+        Idle,           ///< Connected.
         Syncing,
-        Failed,         // conectado, pero la última subida falló
+        Failed,         ///< Connected, but the last pass failed.
     };
 
     explicit DriveSync(Store *store, QObject *parent = nullptr);
 
-    // Lo pregunta antes de mezclar: si el usuario está escribiendo, mezclar
-    // rehace la lista y le quita el cursor. Con false, la pasada se deja para
-    // la siguiente (deferred()).
+    /// Asked before merging: merging rebuilds the list and would steal the
+    /// cursor from a user who is typing. When false the pass is dropped and
+    /// deferred() is emitted.
     std::function<bool()> canApply;
 
     static bool configured();
@@ -77,25 +61,23 @@ public:
     QDateTime lastSync() const { return m_lastSync; }
     QString lastError() const { return m_error; }
 
-    // Conecta (o vuelve a conectar) la cuenta. Si Google Calendar está
-    // encendido en este equipo, pide también sus permisos.
+    /// Connects (or reconnects) the account. If Google Calendar is enabled on
+    /// this machine, its scopes are requested too.
     void connectAccount();
     void cancel();
     void disconnectAccount();
-    // Una pasada completa: bajar, mezclar, subir. Si ya hay una en marcha, se
-    // apunta y se repite al terminar: lo guardado entre medias también cuenta.
+    /// A full pass: download, merge, upload. A request during a pass is
+    /// remembered and runs when it ends.
     void syncNow();
 
-    // Google Calendar: un paso más de cada pasada, con esta misma cuenta.
+    /// Google Calendar: one more step of every pass, with this same account.
     CalendarSync *calendar() { return m_calendar; }
     const CalendarSync *calendar() const { return m_calendar; }
-    // Si Google dio los permisos de calendario. Se pueden desmarcar en la
-    // pantalla de consentimiento, y una cuenta conectada antes de que
-    // existiera esto no los tiene: entonces hay que volver a autorizar.
+    /// Whether Google granted the calendar scopes. They can be unticked on the
+    /// consent screen, and accounts connected before this lack them.
     bool hasCalendarScope() const;
 
-    // Las direcciones de Google. Son configurables solo para poder probar la
-    // subida contra un servidor falso; la aplicación usa las de serie.
+    /// Google endpoints. Configurable only to test against a local mock.
     struct Endpoints {
         QString auth = "https://accounts.google.com/o/oauth2/v2/auth";
         QString token = "https://oauth2.googleapis.com/token";
@@ -107,25 +89,25 @@ public:
     static Endpoints &endpoints();
 
 signals:
-    // El panel abre esto en el navegador: core no sabe de escritorio.
+    /// Asks the panel to open @p url in the browser (core knows no desktop).
     void openUrl(const QUrl &url);
     void changed();
-    // Han llegado adjuntos de otro equipo: las tarjetas que los enseñan se
-    // construyeron sin ellos.
+    /// Attachments arrived from another machine: cards built without them must
+    /// be rebuilt.
     void attachmentsArrived();
-    // No se ha podido mezclar porque el usuario estaba escribiendo.
+    /// The merge was skipped because the user was typing.
     void deferred();
 
 private:
-    friend class CalendarSync;   // usa api() y el token de esta cuenta
+    friend class CalendarSync;   // uses api() and this account's token
 
     struct Transfer {
         bool download = false;
-        QString path;       // en disco
-        QString name;       // en Drive
+        QString path;       ///< On disk.
+        QString name;       ///< In Drive.
         QString folderId;
-        QString fileId;     // al subir, vacío = crearlo
-        QByteArray data;    // al subir: si no está vacío, esto y no el fichero
+        QString fileId;     ///< Upload: empty means create it.
+        QByteArray data;    ///< Upload: when not empty, sent instead of the file.
     };
     struct Remote {
         QString id;
@@ -141,58 +123,60 @@ private:
     void fetchAccount();
     void saveSettings();
 
-    // Pide (o renueva) el token de acceso y sigue.
+    /// Obtains (or refreshes) the access token, then continues.
     void withToken(std::function<void()> next);
-    // Una petición a la API con el token puesto. Un 401 renueva el token y la
-    // repite una vez: caducan cada hora.
+    /// An API request with the token. A 401 refreshes the token and retries once.
     void api(const QByteArray &verb, const QUrl &url, const QByteArray &body,
              const QByteArray &contentType, Done done, bool retried = false);
-    // Ok = respuesta 2xx; si no, fail() con el mensaje de Google y false.
+    /// True on a 2xx reply; otherwise calls fail() with Google's message.
     bool ok(QNetworkReply *reply);
 
-    // Pasos de una pasada.
+    /// @name Steps of a pass
+    /// @{
     void findFolder(const QString &name, const QString &parent,
                     std::function<void(const QString &)> next);
     void listFolder(const QString &folderId, const QString &pageToken,
                     QHash<QString, Remote> *into, std::function<void()> next);
-    void fetchRemoteJson(int index);   // los tres JSON, uno detrás de otro
+    void fetchRemoteJson(int index);   ///< The three JSON files, one after another.
     void mergeAndPlan();
-    // Después de Calendar: lo que hay que subir, que ya incluye lo que trajo.
+    /// After Calendar: what to upload, including what it brought.
     void planUploads();
-    void planAttachments(int index);   // audio/ e images/
+    void planAttachments(int index);   ///< audio/ and images/
     void transferNext();
     void finishSync();
-    // El MD5 del JSON de fuera que ya se mezcló: si no ha cambiado, no se baja.
+    /// @}
+
+    /// MD5 of the remote JSON last merged: unchanged ones are not downloaded.
     QString seenMd5(const QString &name) const;
     void setSeenMd5(const QString &name, const QString &md5);
 
     QNetworkAccessManager *m_net = nullptr;
     State m_state = Disconnected;
     QString m_refresh;
-    QString m_scopes;   // los que concedió Google, separados por espacios
+    QString m_scopes;   ///< Granted scopes, space-separated.
     QString m_access;
     QDateTime m_accessUntil;
     QString m_account;
     QDateTime m_lastSync;
     QString m_error;
 
-    // Autorización en curso.
+    // Authorisation in progress.
     QTcpServer *m_server = nullptr;
     QString m_verifier;
     QString m_stateToken;
     QString m_redirect;
-    bool m_authorized = false;   // el código ya llegó: lo demás es el navegador repitiendo
-    int m_attempt = 0;   // para que un tiempo de espera viejo no cancele uno nuevo
+    bool m_authorized = false;   ///< The code arrived: the rest is the browser re-requesting.
+    int m_attempt = 0;   ///< So a stale timeout does not cancel a newer attempt.
 
     Store *m_store = nullptr;
     CalendarSync *m_calendar = nullptr;
 
-    // Pasada en curso.
+    // Pass in progress.
     QList<Transfer> m_queue;
     bool m_again = false;
-    bool m_gotFiles = false;               // se bajó algún adjunto
+    bool m_gotFiles = false;               ///< Some attachment was downloaded.
     QString m_rootId;
-    QHash<QString, Remote> m_rootFiles;    // lo que hay en la carpeta Tagoror
-    QList<QJsonObject> m_remoteJson;       // notes, birthdays, events (vacío = nada nuevo)
-    QSet<QString> m_pull;                  // adjuntos que hay que bajar sí o sí
+    QHash<QString, Remote> m_rootFiles;    ///< Contents of the Tagoror folder.
+    QList<QJsonObject> m_remoteJson;       ///< notes, birthdays, events (empty = nothing new).
+    QSet<QString> m_pull;                  ///< Attachments that must be downloaded regardless.
 };

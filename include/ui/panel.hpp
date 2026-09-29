@@ -32,11 +32,10 @@ class PlannerView;
 class SettingsView;
 class TimerView;
 
-// Ventana única del widget: dibuja su propio chrome (sin decoración del WM) y
-// presenta lo que guarda el Store, que es quien sabe de disco. El
-// QStackedWidget exterior alterna entre el panel expandido y el icono plegado;
-// dentro, otro alterna entre la lista de notas, el planificador, los
-// temporizadores, los cumpleaños y los ajustes.
+/// The single window: draws its own chrome and presents what the Store keeps.
+/// An outer stack swaps the expanded panel for the folded dock; inside it,
+/// another swaps between the note list, the planner, the timers, the
+/// birthdays and the settings.
 class Panel : public QWidget {
     Q_OBJECT
 
@@ -44,278 +43,298 @@ public:
     Panel();
     ~Panel() override;
 
-    // La llama la segunda instancia a través del socket: en vez de abrir otro
-    // panel, se despliega y se trae al frente el que ya estaba.
+    /// Called by a second instance through the socket: instead of opening another
+    /// panel, this one is unfolded and raised.
     void bringToFront();
 
 protected:
-    // Cerrar esconde en la bandeja en vez de terminar: es lo que se espera de
-    // algo que vive ahí. Sin bandeja disponible sí se sale, o no habría manera
-    // de recuperar la ventana.
+    /// Closing hides to the tray instead of quitting. Without a tray it quits, or
+    /// there would be no way to get the window back.
     void closeEvent(QCloseEvent *e) override;
-    // Cada vez que se mapea la ventana hay que volver a pedir que la barra de
-    // tareas la ignore: cambiar de flags destruye la ventana nativa y con ella
-    // la propiedad.
+    /// Asks again on every map for the window to be kept out of the taskbar:
+    /// changing flags destroys the native window and the property with it.
     void showEvent(QShowEvent *e) override;
-    // El sitio de la ventana es del usuario: se apunta en cuanto cambia, sin
-    // esperar al destructor. Al apagar el equipo la sesión mata el proceso y
-    // ese último guardado no llega nunca.
+    /// Saves the position as it changes: on shutdown the session kills the
+    /// process and the destructor's save never happens.
     void moveEvent(QMoveEvent *e) override;
-    // Escape vuelve a las notas desde cualquier otra página, que es lo que
-    // anuncia el pie mientras se está en una.
+    /// Escape goes back to the notes from any other page.
     void keyPressEvent(QKeyEvent *e) override;
 
 private:
-    // --- construcción de la interfaz ---
+    /// @name Building the interface
+    /// @{
     void buildShell();
     QFrame *buildHeader();
     QWidget *buildBody();
     QFrame *buildFooter();
     QWidget *buildBadge();
+    /// @}
 
-    // --- estado visual ---
+    /// @name Visual state
+    /// @{
     void applyTheme();
-    // Cambia el idioma de la interfaz y la vuelve a escribir entera.
+    /// Changes the interface language and rewrites the whole interface.
     void setLanguage(Lang::Code code);
     void retranslate();
     void rebuildList();
     void refreshFooter();
     void refreshFooterHint();
     QList<NoteCard *> cards() const;
+    /// @}
 
-    // --- notas ---
+    /// @name Notes
+    /// @{
     void addNote(Note::Type type);
     void removeNote(Note *n);
+    /// @}
 
-    // --- áreas de trabajo ---
-    // La lista enseña solo las notas del área abierta; la tira de pestañas
-    // cambia de una a otra. Ver area.hpp.
+    /// @name Workspace areas
+    /// The list shows only the open area's notes; the tab strip switches between
+    /// them. See area.hpp.
+    /// @{
     QString currentArea() const;
     void switchArea(const QString &id);
     void refreshAreaTabs();
     void newArea();
     void openAreaMenu(const QString &id, const QPoint &globalPos);
     void openAreaOverflow(const QPoint &globalPos);
-    // Pregunta dentro de un menú qué hacer con sus notas: por defecto se
-    // mueven a otra área; borrarlas es una opción explícita.
+    /// Asks inside a menu what to do with its notes: by default they move to
+    /// another area; deleting them is an explicit option.
     void confirmDeleteArea(const QString &id);
     void openMoveNoteMenu(Note *n, const QPoint &globalPos);
     void moveNoteToArea(Note *n, const QString &areaId);
+    /// @}
 
-    // --- reordenar ---
-    // El orden lo lleva la pantalla y el Store lo copia: arrastrar mueve la
-    // tarjeta dentro del layout y de ahí sale la lista que se guarda, así no
-    // hay dos ideas del orden que puedan discrepar.
-    void moveNote(Note *n, int steps);        // un paso, desde el menú
+    /// @name Reordering
+    /// The screen holds the order and the Store copies it: dragging moves the
+    /// card within the layout and the saved list comes from there, so there are
+    /// never two ideas of the order that could disagree.
+    /// @{
+    void moveNote(Note *n, int steps);        ///< One step, from the menu.
     void beginCardDrag(NoteCard *card);
     void dragCardTo(NoteCard *card, const QPoint &globalPos);
     void endCardDrag(NoteCard *card);
     void commitOrder();
+    /// @}
 
-    // --- páginas del cuerpo ---
-    // Cada página con su botón de la cabecera y su nombre: abrir, cerrar,
-    // encender el botón y poner el título salen de esta lista y no de una
-    // función por página.
+    /// A body page with its header button and its name. Opening, closing,
+    /// lighting the button and setting the title all walk pages().
     struct Page {
         QWidget *page;
         QToolButton *button;
-        const char *name;    // en español; se traduce al usarlo
+        const char *name;    ///< Spanish; translated when used.
     };
     QList<Page> pages() const;
     void togglePage(QWidget *page);
-    // Enciende o apaga el botón de una página. El icono no cambia -- dice
-    // adónde lleva --, lo que cambia es el realce, que dice dónde estás.
+    /// Lights a page's button on or off. The icon says where it leads; the
+    /// highlight says where you are.
     void setPageActive(QToolButton *button, bool on,
                        const QString &tipOn, const QString &tipOff);
     void refreshPageButtons();
-    // El rótulo de la cabecera dice en qué página estás, como en el diseño.
+    /// The header title names the page that is open.
     void refreshTitle();
     void showNotes();
     void createReminder(const QString &title, const QDateTime &when);
-    void revealNote(Note *n);       // del planificador a su tarjeta en la lista
+    void revealNote(Note *n);       ///< From the planner to its card in the list.
     void refreshPlanner();
+    /// Deletes a planner category. For a Google calendar this is unfollowing it,
+    /// which removes its events (and stops whatever of them was ringing).
+    void removeCategory(Event::Category *c);
+    /// Which Google calendar new Tagoror events go to.
+    void openCalendarTarget(QWidget *anchor);
 
-    // El planificador necesita ancho: la ventana se ensancha al abrirlo y
-    // vuelve a lo que medía al salir, si el usuario no la ha tocado entre
-    // medias (la misma regla que m_grownFrom con el alto).
+    /// The planner needs width: the window widens on entering and returns to its
+    /// previous size on leaving, unless the user resized it meanwhile (the same
+    /// rule as m_grownFrom for the height).
     void enterWide();
     void leaveWide();
 
-    // Tamaño por página (Prefs::sizePerPage). Al salir de una página se apunta
-    // cómo era la ventana, y al entrar en otra se le pone el suyo; la lista
-    // tiene el suyo en m_listSize. Con esto encendido, los apuntes de
-    // m_grownFrom y m_narrowGeom sobran: cada página se queda como la dejaron.
+    /// Size per page (Prefs::sizePerPage): leaving a page records the window
+    /// size, entering one applies its own; the list keeps m_listSize. With this
+    /// on, the m_grownFrom and m_narrowGeom notes are dropped.
     bool sizePerPage() const;
-    QString pageKey(const QWidget *page) const;   // vacío para la lista
+    QString pageKey(const QWidget *page) const;   ///< Empty for the list.
     void rememberPageSize(QWidget *page);
-    // Devuelve false si esa página no tiene tamaño guardado todavía.
+    /// @return false if the page has no stored size yet.
     bool applyPageSize(QWidget *page);
-    // Pone al día m_pageHome al salir de una página: si el usuario la ha
-    // movido, la lista se mueve con ella; si no, se queda donde estaba.
+    /// Updates m_pageHome when leaving a page: if the user moved it, the list
+    /// moves with it; otherwise it stays.
     void syncPageHome(QWidget *from);
-    // El cambio de página entero, con o sin tamaño por página.
+    /// The whole page switch, with or without size per page.
     void switchBodyPage(QWidget *page);
 
-    // --- temporizadores ---
+    /// @name Timers
+    /// @{
     void createTimer(const QString &name, qint64 ms);
     void toggleTimer(Timer *t);
     void resetTimer(Timer *t);
     void removeTimer(Timer *t);
-    void onTimersChanged();         // repinta todo lo que enseña temporizadores
-    void tickTimers();              // cada medio segundo mientras algo cuenta
+    void onTimersChanged();         ///< Repaints everything that shows timers.
+    void tickTimers();              ///< Every half second while something runs.
     void refreshFooterTimer();
-    // La tira roja de "tiempo cumplido" / "empieza ya": los temporizadores y
-    // los eventos no tienen tarjeta en la lista con un botón de parar, así que
-    // su aviso vive aquí. Detener calla todo lo que enseña.
+    /// The red "time's up" / "starting now" strip: timers and events have no card
+    /// with a stop button, so their alarm lives here. Stop silences all of it.
     void refreshAlarmBar();
     void stopBarAlarms();
     void silenceEvent(Event *e);
+    /// @}
 
-    // --- cumpleaños ---
+    /// @name Birthdays
+    /// @{
     void refreshBirthdays();
-    // Alta y edición comparten popup: con b nulo es uno nuevo. Así el formato
-    // de la fecha y lo que se pide se escriben una sola vez.
+    /// Adding and editing share one popup: a null @p b is a new one.
     void openBirthdayEditor(Birthday *b, QWidget *anchor);
     void askBirthdayReminder(Birthday *b, QWidget *anchor);
     void removeBirthday(Birthday *b);
     void toggleGreeted(Birthday *b);
     void dismissBirthday(Birthday *b);
-    // Calla el aviso de un cumpleaños: queda apuntado el año para que no
-    // vuelva a sonar hasta el que viene.
+    /// Silences a birthday alarm; the year is recorded so it does not ring again
+    /// until the next.
     void silenceBirthday(Birthday *b);
+    /// @}
 
-    // --- recordatorios ---
-    void checkReminders();          // ¿alguno ha vencido? → suena y avisa
-    void dismissNote(Note *n);      // el usuario para el aviso
-    void rescheduleNote(Note *n);   // le cambió la fecha mientras sonaba
-    // Calla un aviso: los que se repiten no quedan como avisados, saltan a su
-    // siguiente vuelta. Lo comparten el botón de parar y abrir el panel.
+    /// @name Reminders
+    /// @{
+    void checkReminders();          ///< Anything due? Then ring and show it.
+    void dismissNote(Note *n);      ///< The user stops the alarm.
+    void rescheduleNote(Note *n);   ///< Its date changed while it was ringing.
+    /// Silences a reminder: repeating ones are not marked as fired, they move to
+    /// their next turn. Shared by the stop button and opening the panel.
     void silence(Note *n);
-    void refreshDueCards();         // repinta el estado sin rehacer la lista
-    void applyBadgeAlert();         // el dock avisa aunque esté plegado
+    void refreshDueCards();         ///< Repaints the state without rebuilding the list.
+    void applyBadgeAlert();         ///< The dock shows the alert even when folded.
     bool anyRinging() const;
+    /// @}
 
-    // --- selectores ---
+    /// @name Menus and settings
+    /// @{
     void openNewNoteMenu(QWidget *anchor);
     void refreshSettings();
     void openAccentEditor(QWidget *anchor);
     void chooseDataFolder();
-    // Apuntar a una carpeta que ya tiene notas es ambiguo: puede querer decir
-    // "llévame las mías allí" o "abre las que hay". Se pregunta en vez de
-    // suponer, porque suponer lo primero borra las del destino.
+    /// Picking a folder that already holds notes is ambiguous ("take mine there"
+    /// or "open those"), so it asks: assuming the first overwrites the
+    /// destination.
     void confirmDataFolder(const QString &to);
-    void openBackups(QWidget *anchor);            // el menú propio de las copias
-    static QString backupPeriodLabel(int days);   // "Cada día", "Cada 3 días"…
-    void pollBackup();                            // ¿toca copia programada?
+    void openBackups(QWidget *anchor);            ///< The backups menu.
+    static QString backupPeriodLabel(int days);   ///< "Every day", "Every 3 days"…
+    void pollBackup();                            ///< Is a scheduled backup due?
+    /// @}
 
-    // --- actualizaciones ---
-    void pollUpdates();               // ¿toca mirar? una vez al día
-    void checkUpdatesNow();           // el botón de ajustes
+    /// @name Updates
+    /// @{
+    void pollUpdates();               ///< Due for a check? Once a day.
+    void checkUpdatesNow();           ///< The settings button.
     void onUpdateChecked(const QString &version, const QString &url, const QString &error);
     void openLatestRelease();
-    // Enseña u oculta la tira de "hay una versión nueva".
+    /// Shows or hides the "new version available" strip.
     void refreshUpdateBanner();
     bool updateAvailable() const;
     void confirmRestore(const QString &file);
+    /// @}
 
-    // --- carpeta de datos ---
-    // Vuelve a mirar si la carpeta configurada ha aparecido: un pendrive se
-    // monta cuando su dueño lo abre, mucho después del arranque de sesión.
+    /// @name Data folder
+    /// @{
+
+    /// Checks again whether the configured folder has appeared: a USB stick is
+    /// mounted when its owner opens it, long after login.
     void pollDataDir();
-    // La lista y las preferencias son otras tras recuperar la carpeta.
+    /// The lists and preferences were replaced after recovering the folder.
     void onStoreReloaded();
-    // Han llegado cambios de otro equipo (Drive). Los objetos que ya existían
-    // son los mismos, actualizados en su sitio; lo que cambia es la lista.
+    /// Changes arrived from another machine (Drive). Existing objects were
+    /// updated in place; what changes is the list.
     void onStoreMerged();
-    // ¿Se puede rehacer la lista ahora? No mientras el usuario escribe en un
-    // campo del panel: se quedaría sin cursor a media frase.
+    /// Whether the list may be rebuilt now: not while the user types in one of
+    /// the panel's fields, or they would lose the cursor mid-sentence.
     bool userIdle() const;
-    // Enseña u oculta el cartel de "no se está guardando".
+    /// Shows or hides the "not saving" banner.
     void refreshDataWarning();
+    /// @}
 
-    // --- bandeja del sistema ---
-    // El widget vive ahí en vez de en la barra de tareas: el icono es lo que
-    // queda cuando la ventana se esconde, igual que en Discord o Telegram.
+    /// @name System tray
+    /// The widget lives there instead of in the taskbar: the icon is what is left
+    /// when the window is hidden.
+    /// @{
     void buildTray();
-    void buildTrayMenu();           // se rehace entero al cambiar de idioma
+    void buildTrayMenu();           ///< Rebuilt wholesale on a language change.
     void toggleFromTray();
+    /// @}
 
-    // --- ventana ---
-    void applyWindowFlags();        // encima de todo o pegado al escritorio
-    // Widget sin marco o ventana normal de escritorio (Prefs::appMode). En
-    // modo aplicación no hay hueco para la sombra ni dock: «–» minimiza.
+    /// @name Window
+    /// @{
+    void applyWindowFlags();        ///< Always on top or on the desktop.
+    /// Frameless widget or ordinary desktop window (Prefs::appMode). In app mode
+    /// there is no shadow margin and no dock: "–" minimises.
     void setAppMode(bool on);
-    void applyAppModeChrome();      // márgenes, sombra, marco y botón «–»
+    void applyAppModeChrome();      ///< Margins, shadow, frame and the "–" button.
     bool appMode() const { return m_store.prefs().appMode; }
     int shadowMargin() const;
-    // Desde la bandeja o una segunda instancia: también si está minimizada.
+    /// From the tray or a second instance: also when minimised.
     void showRestored();
-    void keepOnScreen();            // que plegar/desplegar no la saque de la pantalla
-    // Devuelve la ventana al sitio guardado en el arranque. Sin esto reaparece
-    // donde la ponga el gestor, que no es donde la dejó su dueño.
+    void keepOnScreen();            ///< Keeps folding/unfolding from pushing it off screen.
+    /// Puts the window back where it was saved. Without this it reappears
+    /// wherever the window manager puts it.
     void restoreWindowPos();
-    // Dónde deja el gestor de ventanas poner la ventana, que no es toda la
-    // pantalla: ver placementArea() en el .cpp. Sin pantalla se toma la de la
-    // propia ventana; se pasa una cuando se coloca en un monitor que todavía
-    // no es el suyo.
+    /// Where the window manager lets the window be, which is not the whole screen
+    /// (see the definition). Without @p sc the window's own screen is used.
     QRect placementArea(const QScreen *sc = nullptr) const;
-    // Esquina por la que crece o encoge la ventana: el panel se abre hacia el
-    // centro de la pantalla, no siempre hacia abajo y a la derecha.
+    /// The corner the window grows or shrinks from: it keeps the top-left unless
+    /// growing from there would leave the placement area.
     QPoint anchoredTopLeft(const QRect &before, const QSize &after) const;
+    /// @}
 
-    // --- búsqueda y plegado ---
+    /// @name Search and folding
+    /// @{
     void toggleSearch();
     void applyFilter(const QString &q);
     void collapse();
     void expand();
-    void showPage(QWidget *page);   // ajusta el tamaño a la página visible
-    // Lo mismo para las páginas de dentro (lista, calendario, cumpleaños y
-    // ajustes): la que no se ve no puede imponer su mínimo a la que sí.
+    void showPage(QWidget *page);   ///< Sizes the window to the visible page.
+    /// Same for the body pages: the hidden one must not impose its minimum on
+    /// the visible one.
     void showBodyPage(QWidget *page);
-    // El alto mínimo que pide el layout de la página visible, y aplicarlo.
-    // No es una constante: el calendario necesita más que la lista, y con la
-    // lista del día abierta necesita más todavía.
+    /// The minimum height the visible page's layout needs, and applying it. Not a
+    /// constant: the planner needs more than the list.
     int shellMinimumHeight() const;
     void syncShellMinimum();
+    /// @}
 
-    // --- persistencia ---
-    // El tamaño de la ventana solo lo sabe el panel, así que se vuelca en las
-    // preferencias justo antes de cada guardado.
+    /// Copies what only the panel knows (the window geometry) into the
+    /// preferences; runs right before every save.
     void syncPrefs();
     void scheduleSave();
     void save();
 
     Store m_store;
 
-    QStackedWidget *m_stack = nullptr;   // panel expandido / icono plegado
+    QStackedWidget *m_stack = nullptr;   ///< Expanded panel / folded dock.
     QFrame *m_shell = nullptr;
     QWidget *m_badge = nullptr;
     QLabel *m_badgeCount = nullptr;
-    // Cartel rojo bajo la cabecera: la carpeta de notas no está y nada de lo
-    // que se escriba se va a guardar. Sin él, el panel abría vacío sin decir
-    // por qué, que es como se pierden las notas sin enterarse.
+    /// Red banner under the header: the notes folder is missing and nothing
+    /// typed will be saved. Without it the panel opened empty without saying why.
     QLabel *m_dataWarn = nullptr;
-    // Tira bajo la cabecera cuando hay versión nueva. Va debajo del aviso de
-    // carpeta ausente: ese dice que ahora mismo no se guarda nada, y manda.
+    /// Strip under the header when a new version exists. It goes below the
+    /// missing-folder warning, which outranks it.
     QWidget *m_updateBar = nullptr;
     QLabel *m_updateText = nullptr;
 
-    // Aviso de temporizador o evento sonando (ver refreshAlarmBar).
+    /// Alarm of a ringing timer or event (see refreshAlarmBar()).
     QWidget *m_alarmBar = nullptr;
     QLabel *m_alarmText = nullptr;
     QToolButton *m_alarmPlus = nullptr;
 
-    QStackedWidget *m_body = nullptr;    // lista de notas / páginas
+    QStackedWidget *m_body = nullptr;    ///< Note list / pages.
     QScrollArea *m_scroll = nullptr;
     QWidget *m_listHost = nullptr;
-    QVBoxLayout *m_listLayout = nullptr;   // tarjetas + stretch final
+    QVBoxLayout *m_listLayout = nullptr;   ///< Cards plus the trailing stretch.
     PlannerView *m_planner = nullptr;
     TimerView *m_timerView = nullptr;
     BirthdayView *m_birthdays = nullptr;
     SettingsView *m_settings = nullptr;
 
     QLabel *m_titleLabel = nullptr;
-    QWidget *m_empty = nullptr;            // cartel de "no hay notas"
+    QWidget *m_empty = nullptr;            ///< "No notes" placeholder.
     QLabel *m_emptyText = nullptr;
     QPushButton *m_emptyBtn = nullptr;
     QLabel *m_footerHint = nullptr;
@@ -324,7 +343,7 @@ private:
     QLabel *m_footerText = nullptr;
     QToolButton *m_calendarBtn = nullptr;
     QToolButton *m_timersBtn = nullptr;
-    QToolButton *m_footerTimer = nullptr;   // cuenta atrás en el pie
+    QToolButton *m_footerTimer = nullptr;   ///< Countdown in the footer.
     QToolButton *m_birthdayBtn = nullptr;
     QToolButton *m_settingsBtn = nullptr;
     QList<QToolButton *> m_headerButtons;
@@ -335,43 +354,40 @@ private:
     QSystemTrayIcon *m_tray = nullptr;
     QMenu *m_trayMenu = nullptr;
 
-    NoteCard *m_dragCard = nullptr;        // tarjeta que se está arrastrando
-    // Área sobre cuya pestaña está la tarjeta que se arrastra: al soltar, la
-    // nota se muda allí en vez de reordenarse.
+    NoteCard *m_dragCard = nullptr;        ///< Card being dragged.
+    /// Area whose tab the dragged card is over: on release the note moves there
+    /// instead of being reordered.
     QString m_dropArea;
     AreaTabs *m_areaTabs = nullptr;
-    QTimer *m_dueTimer = nullptr;          // vigilancia de recordatorios
-    QTimer *m_tick = nullptr;              // temporizadores en marcha
+    QTimer *m_dueTimer = nullptr;          ///< Reminder heartbeat.
+    QTimer *m_tick = nullptr;              ///< Running timers.
     Alarm *m_alarm = nullptr;
     Updater *m_updater = nullptr;
-    // Copia en Google Drive. Sube un rato después de cada guardado, para que
-    // una ráfaga de tecleo sea una subida y no cincuenta.
+    /// Google Drive sync. Runs a while after each save, so a burst of typing is
+    /// one upload and not fifty.
     DriveSync *m_drive = nullptr;
     QTimer *m_driveTimer = nullptr;
-    // Cada cuánto se mira si otro equipo ha cambiado algo. Mirar es listar una
-    // carpeta; bajar solo se baja lo que ha cambiado.
+    /// How often to check whether another machine changed something. Checking
+    /// lists a folder; only what changed is downloaded.
     QTimer *m_drivePoll = nullptr;
-    QString m_latestUrl;              // la página de la última publicada
+    QString m_latestUrl;              ///< Page of the latest release.
     Theme m_theme;
-    QSize m_expandedSize;                  // se restaura al desplegar (y se guarda)
-    QSize m_listSize;                      // el de la lista, con tamaño por página
-    QPoint m_dockOffset;                   // por qué punto del panel entra y sale el dock
-    bool m_posRestored = false;            // la posición guardada solo se repone al mapear
-    // Lo que la ventana medía antes de estirarse para que cupiera la lista del
-    // día, y cómo se quedó al estirarla. Plegar la lista devuelve la primera,
-    // pero solo si la segunda sigue siendo la geometría actual: si el usuario
-    // ha tocado la ventana desde entonces, el tamaño es suyo y no se toca.
+    QSize m_expandedSize;                  ///< Restored when unfolding (and saved).
+    QSize m_listSize;                      ///< The list's, with size per page.
+    QPoint m_dockOffset;                   ///< The point of the panel the dock goes in and out through.
+    bool m_posRestored = false;            ///< The saved position is restored only on map.
+    /// The geometry before the window was stretched to fit a page's minimum, and
+    /// the one it was left at. Leaving restores the first, but only if the second
+    /// is still the current geometry: once the user resizes, the size is theirs.
     QRect m_grownFrom;
     QRect m_grownTo;
-    // Lo mismo con el ancho del planificador (ver enterWide).
+    /// The same for the planner's width (see enterWide()).
     QRect m_narrowGeom;
     QRect m_wideGeom;
-    // Con tamaño por página, todas las páginas se colocan a partir de la
-    // geometría de la lista (m_pageHome), no de la página de la que se viene:
-    // si no, una página grande que se abre hacia la izquierda o hacia arriba
-    // arrastraba la esquina, y la siguiente página salía desde ahí. Así cada
-    // página cae siempre en el mismo sitio. m_pagePlaced es cómo quedó la
-    // página abierta al colocarla, para saber si el usuario la ha movido.
+    /// With size per page, every page is placed from the list's geometry
+    /// (m_pageHome), never from the page being left: otherwise a large page that
+    /// opened leftwards or upwards dragged the corner along. m_pagePlaced is
+    /// where the open page was placed, to tell whether the user moved it.
     QRect m_pageHome;
     QRect m_pagePlaced;
 };

@@ -44,7 +44,7 @@ void Waveform::paintEvent(QPaintEvent *) {
     const int barCount = qMax(1, (width() + kGap) / (kBar + kGap));
     const qreal mid = height() / 2.0;
 
-    // Sin datos todavía: una línea base tenue en lugar de un hueco vacío.
+    // No data yet: a faint baseline instead of an empty gap.
     if (m_peaks.isEmpty()) {
         p.setBrush(QColor(139, 144, 154, 90));
         for (int i = 0; i < barCount; ++i)
@@ -52,8 +52,8 @@ void Waveform::paintEvent(QPaintEvent *) {
         return;
     }
 
-    // Al grabar interesa la cola (lo que se acaba de decir); al reproducir, la
-    // toma entera comprimida en el ancho disponible.
+    // Recording shows the tail (what was just said); playback shows the whole
+    // take squeezed into the available width.
     const int from = m_live ? qMax(0, int(m_peaks.size()) - barCount) : 0;
     const int count = m_live ? qMin(barCount, int(m_peaks.size())) : barCount;
 
@@ -62,7 +62,7 @@ void Waveform::paintEvent(QPaintEvent *) {
         if (m_live) {
             value = m_peaks.at(from + i);
         } else {
-            // Repartir todos los picos entre las barras visibles.
+            // Spread all the peaks over the visible bars.
             const int a = int(qint64(i) * m_peaks.size() / count);
             const int b = qMax(a + 1, int(qint64(i + 1) * m_peaks.size() / count));
             value = 0;

@@ -3,15 +3,12 @@
 #include <QLocale>
 #include <QString>
 
-// Idioma de la interfaz: español o inglés.
-//
-// Los literales se siguen escribiendo en español en el código -- es el idioma
-// del proyecto -- y L() los cambia por su equivalente inglés cuando ese es el
-// elegido. Así el código se lee igual que antes y un texto que falte en la
-// tabla sale en español en vez de desaparecer.
-//
-// No se usa QTranslator: obligaría a un paso de lupdate/lrelease y a instalar
-// unos .qm junto al binario, y aquí toda la interfaz cabe en una tabla.
+/// Interface language (Spanish or English).
+///
+/// Literals are written in Spanish in the source and L() swaps them for the
+/// English entry when that language is chosen; a key missing from the table
+/// falls back to Spanish instead of coming out empty. QTranslator is not used:
+/// it would need a lupdate/lrelease step and .qm files next to the binary.
 namespace Lang {
 
 enum Code { Es, En };
@@ -19,24 +16,22 @@ enum Code { Es, En };
 Code current();
 void setCurrent(Code c);
 
-// Con qué idioma arranca una instalación nueva: el del sistema si habla
-// español, inglés en cualquier otro caso. Los ficheros ya existentes no pasan
-// por aquí (ver Store::load): quien ya tenía el panel en español lo conserva.
+/// Language for a fresh install: Spanish if the system speaks it, English
+/// otherwise. Existing data files never go through this (see Store::load).
 Code systemDefault();
 
 Code fromString(const QString &s, Code fallback);
 QString toString(Code c);
 
-// El idioma con el que se escriben las fechas. El formato ("ddd d MMM") es el
-// mismo en ambos; lo que cambia son los nombres de día y mes. Nunca
-// QLocale::system(): el idioma lo manda el ajuste, no el entorno.
+/// Locale used to format dates. Never use QLocale::system(): the language is
+/// the setting, not the environment.
 QLocale locale();
 
-// Inicial de cada columna del calendario, de lunes a domingo (la semana
-// empieza en lunes también en inglés: es la rejilla que dibuja MonthGrid).
+/// Initial of each calendar column, Monday to Sunday (the week starts on
+/// Monday in both languages).
 QString weekdayInitial(int column);
 
 }  // namespace Lang
 
-// Un texto de interfaz, escrito en español.
+/// Translates an interface text written in Spanish.
 QString L(const QString &es);

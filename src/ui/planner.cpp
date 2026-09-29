@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include <QApplication>
 #include <QCheckBox>
 #include <QFrame>
 #include <QGridLayout>
@@ -38,7 +39,7 @@ const QColor kRed("#ff7a6b");
 const QColor kAmber("#f2b757");
 const QColor kPink("#ff8fc2");
 
-// Por debajo de esto el lateral no cabe al lado de una semana legible.
+/// Below this width the side panel does not fit next to a readable week.
 constexpr int kWideFrom = 620;
 
 QString hhmm(qreal hours) {
@@ -66,11 +67,10 @@ QFont sansFont(const QFont &base, qreal px, bool bold = false) {
     return f;
 }
 
-// El lunes de la semana de ese día: la rejilla empieza en lunes en los dos
-// idiomas, igual que la de antes.
+/// Monday of that day's week: the grid starts on Monday in both languages.
 QDate mondayOf(const QDate &d) { return d.addDays(1 - d.dayOfWeek()); }
 
-// Primer día de la rejilla de 6x7 de un mes: el lunes de la semana del día 1.
+/// First day of a month's 6x7 grid: the Monday of the week of the 1st.
 QDate gridStart(const QDate &anyDay) { return mondayOf(QDate(anyDay.year(), anyDay.month(), 1)); }
 
 QToolButton *navButton(const QString &kind, const QString &tip) {
@@ -99,8 +99,8 @@ void setChosen(QToolButton *b, bool on) {
     b->style()->polish(b);
 }
 
-// La antelación de un aviso, en minutos; -1 es "sin aviso". Tres por fila en
-// el formulario: en una sola no caben en el ancho mínimo del panel.
+/// Alert lead time in minutes; -1 is "no alert". Three per row in the form:
+/// one row does not fit at the panel's minimum width.
 struct AlertChoice {
     int minutes;
     const char *label;
@@ -110,6 +110,21 @@ constexpr AlertChoice kAlertChoices[] = {
     {10, "10 min"},    {15, "15 min"},    {30, "30 min"},
     {60, "1 h"},       {120, "2 h"},      {24 * 60, "1 día"},
 };
+
+/// What can be dragged to another time or day. Not a birthday: it is a
+/// person's date, not an appointment.
+bool movable(const Item &it) {
+    return it.source == Item::FromEvent || it.source == Item::FromReminder;
+}
+
+/// The same element on the same day: the dragged item, recognised again
+/// after a refresh rebuilds the list.
+bool sameItem(const Item &a, const Item &b) {
+    return a.source == b.source && a.event == b.event && a.note == b.note && a.day == b.day;
+}
+
+/// Drags move in quarter-hour steps.
+qreal snapQuarter(qreal hours) { return std::round(hours * 4) / 4.0; }
 
 QIcon colorDot(const QColor &color) {
     QPixmap dot(16, 16);
@@ -125,14 +140,11 @@ QIcon colorDot(const QColor &color) {
 
 }  // namespace
 
-// ===========================================================================
-// TimeGrid: día o semana, con las horas en vertical.
-//
-// Se pinta entero en un widget, como el mes de antes: los bloques no tienen
-// estado propio que merezca un widget cada uno, y así el solapamiento, la
-// línea de "ahora" y la franja de día entero se colocan con la misma cuenta.
-// Para el teclado lleva su propio índice de foco (ver focusNextPrevChild).
-// ===========================================================================
+/// Day or week view, hours running down.
+///
+/// Painted whole in one widget: the blocks have no state worth a widget each,
+/// and overlaps, the "now" line and the layout share the same maths. It keeps
+/// its own focus index for the keyboard (see focusNextPrevChild()).
 
 class TimeGrid : public QWidget {
 public:
@@ -143,7 +155,9 @@ public:
     std::function<void(const Item &)> onActivate;
     std::function<void(const Item &)> onToggle;
     std::function<void(const QDate &, qreal)> onEmpty;
-    std::function<void(const QRect &)> onReveal;   // que el scroll lo enseñe
+    std::function<void(const QRect &)> onReveal;   ///< Asks the scroll area to show a rect.
+    /// Called on drop after a drag: the new day and hours (decimal).
+    std::function<void(const Item &, const QDate &, qreal, qreal)> onMove;
 
     explicit TimeGrid(const Theme *theme, QWidget *parent = nullptr)
         : QWidget(parent), m_theme(theme) {
@@ -172,9 +186,8 @@ public:
         update();
     }
 
-    // Los de día entero no van aquí sino en la cabecera (WeekHead): arriba
-    // del todo de la rejilla quedaban fuera de la vista en cuanto se bajaba
-    // a las ocho de la mañana, que es donde se abre.
+    // All-day items are not here but in WeekHead: at the top of the grid they
+    // were out of view as soon as it scrolled to 08:00, which is where it opens.
     int yFor(qreal hours) const { return int(hours * kHour); }
 
     QSize sizeHint() const override { return {kGutter + 7 * 40, 24 * kHour + 1}; }
@@ -185,13 +198,46 @@ public:
 protected:
     void paintEvent(QPaintEvent *) override;
 
+    // A press only records the block: moving before release is a drag (move, or
+    // resize from the bottom edge), otherwise the usual click on release.
+    void mousePressEvent(QMouseEvent *e) override {
+        m_pressed = false;
+        if (e->button() != Qt::LeftButton) return;
+        const QPoint at = e->position().toPoint();
+        const int hit = blockAt(at);
+        if (hit < 0) return;
+        const Block &b = m_blocks.at(hit);
+        const QRect r = blockRect(b);
+        if (!movable(b.item) || (b.item.task && checkRect(r).adjusted(-4, -4, 4, 4).contains(at)))
+            return;
+        m_pressed = true;
+        m_dragItem = b.item;
+        m_pressPos = at;
+        m_grab = at.y() / qreal(kHour) - b.item.start;
+        m_resizing = onResizeEdge(b, at);
+    }
+
     void mouseMoveEvent(QMouseEvent *e) override {
-        const int hit = blockAt(e->position().toPoint());
+        const QPoint at = e->position().toPoint();
+        if (m_pressed && (e->buttons() & Qt::LeftButton)) {
+            if (!m_dragging &&
+                (at - m_pressPos).manhattanLength() >= QApplication::startDragDistance()) {
+                m_dragging = true;
+                m_hover = -1;
+                QToolTip::hideText();
+            }
+            if (m_dragging) {
+                dragTo(at);
+                return;
+            }
+        }
+        const int hit = blockAt(at);
         if (hit != m_hover) {
             m_hover = hit;
             update();
         }
-        setCursor(hit >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+        if (hit >= 0 && onResizeEdge(m_blocks.at(hit), at)) setCursor(Qt::SizeVerCursor);
+        else setCursor(hit >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
     }
 
     void leaveEvent(QEvent *) override {
@@ -221,6 +267,11 @@ protected:
     void mouseReleaseEvent(QMouseEvent *e) override {
         if (e->button() != Qt::LeftButton) return;
         const QPoint at = e->position().toPoint();
+        if (m_dragging) {
+            finishDrag();
+            return;
+        }
+        m_pressed = false;
         if (const int hit = blockAt(at); hit >= 0) {
             const Block &b = m_blocks.at(hit);
             if (b.item.task && checkRect(b.rect).adjusted(-4, -4, 4, 4).contains(at)) {
@@ -230,15 +281,15 @@ protected:
             }
             return;
         }
-        // Un hueco: un evento nuevo a esa hora, redondeada a la media hora.
+        // An empty slot: a new event at that time, rounded to the half hour.
         const int col = columnAt(at.x());
         if (col < 0) return;
         const qreal hours = qBound<qreal>(0, at.y() / qreal(kHour), 23.5);
         if (onEmpty) onEmpty(m_days.at(col), std::floor(hours * 2) / 2.0);
     }
 
-    // Tab recorre los bloques uno a uno antes de salir de la rejilla. Es lo
-    // que hace alcanzables con el teclado unos bloques que no son widgets.
+    // Tab walks the blocks one by one before leaving the grid, which is what makes
+    // blocks that are not widgets reachable by keyboard.
     bool focusNextPrevChild(bool next) override {
         if (!hasFocus() || m_blocks.isEmpty()) return QWidget::focusNextPrevChild(next);
         const int to = m_focus + (next ? 1 : -1);
@@ -279,6 +330,14 @@ protected:
                 if (valid && m_blocks.at(m_focus).item.task && onToggle)
                     onToggle(m_blocks.at(m_focus).item);
                 return;
+            case Qt::Key_Escape:
+                if (m_dragging) {   // drop without moving anything
+                    m_pressed = m_dragging = false;
+                    update();
+                    return;
+                }
+                QWidget::keyPressEvent(e);
+                return;
             default:
                 QWidget::keyPressEvent(e);
         }
@@ -293,10 +352,52 @@ private:
         QRect rect;
     };
 
-    // Los que se pisan se reparten el ancho de la columna. Se agrupan por
-    // racimos (cadenas de solapes) y dentro de cada uno cada bloque va a la
-    // primera subcolumna libre: así tres eventos donde solo dos coinciden a la
-    // vez usan dos carriles, no tres.
+    /// Resizing: only an event (a reminder is an instant) that starts and ends
+    /// on the same day, grabbed by the block's last pixels.
+    bool onResizeEdge(const Block &b, const QPoint &at) const {
+        if (b.item.source != Item::FromEvent || !b.item.event) return false;
+        const Event *e = b.item.event;
+        if (e->endDate.isValid() && e->endDate > e->date) return false;
+        const QRect r = blockRect(b);
+        return r.height() >= 18 && at.y() >= r.bottom() - 5 && r.contains(at);
+    }
+
+    void dragTo(const QPoint &at) {
+        const qreal y = at.y() / qreal(kHour);
+        if (m_resizing) {
+            m_dragCol = qMax(0, int(m_days.indexOf(m_dragItem.day)));
+            m_dragStart = m_dragItem.start;
+            m_dragEnd = qBound(m_dragStart + 0.25, snapQuarter(y), 24.0);
+        } else {
+            const int w = columnWidth();
+            m_dragCol = w > 0 ? qBound(0, (at.x() - kGutter) / w, int(m_days.size()) - 1) : 0;
+            const qreal length = m_dragItem.end - m_dragItem.start;
+            // A reminder has no end: the last quarter hour is its latest start.
+            const qreal latest = length > 0 ? 24.0 - length : 23.75;
+            m_dragStart = qBound<qreal>(0, snapQuarter(y - m_grab), qMax<qreal>(0, latest));
+            m_dragEnd = m_dragStart + length;
+        }
+        setCursor(m_resizing ? Qt::SizeVerCursor : Qt::ClosedHandCursor);
+        // Near the edge of the visible area, scroll along.
+        if (onReveal) onReveal(QRect(at.x(), at.y() - 10, 1, 20));
+        update();
+    }
+
+    void finishDrag() {
+        const Item item = m_dragItem;
+        const QDate day = m_days.value(m_dragCol);
+        const qreal start = m_dragStart, end = m_dragEnd;
+        m_pressed = m_dragging = false;
+        setCursor(Qt::ArrowCursor);
+        update();
+        const bool changed = day != item.day || std::abs(start - item.start) > 1e-6 ||
+                             std::abs(end - item.end) > 1e-6;
+        if (changed && day.isValid() && onMove) onMove(item, day, start, end);
+    }
+
+    /// Overlapping blocks share the column width. They are grouped in clusters of
+    /// transitive overlaps and each block takes the first free lane, so three
+    /// events where only two coincide use two lanes, not three.
     void layoutColumn(int col, QList<Item> items) {
         std::sort(items.begin(), items.end(), [](const Item &a, const Item &b) {
             return a.start != b.start ? a.start < b.start : a.end > b.end;
@@ -323,8 +424,8 @@ private:
         }
     }
 
-    // Un recordatorio es un instante: se le da un alto mínimo para que se vea
-    // y se pueda pulsar, sin que cuente como media hora ocupada de verdad.
+    /// A reminder is an instant: it gets a minimum height to be visible and
+    /// clickable without counting as busy time.
     static qreal visualEnd(const Item &it) {
         return qMax(it.end, it.start + 0.4);
     }
@@ -367,6 +468,17 @@ private:
     QList<Block> m_blocks;
     int m_hover = -1;
     int m_focus = -1;
+    // Drag state: a copy of the item, not an index, since the 5 s heartbeat may
+    // rebuild the blocks mid-drag.
+    bool m_pressed = false;
+    bool m_dragging = false;
+    bool m_resizing = false;
+    Item m_dragItem;
+    QPoint m_pressPos;
+    qreal m_grab = 0;   ///< Where it was grabbed, in hours from the block's start.
+    int m_dragCol = 0;
+    qreal m_dragStart = 0;
+    qreal m_dragEnd = 0;
 };
 
 void TimeGrid::paintEvent(QPaintEvent *) {
@@ -377,7 +489,7 @@ void TimeGrid::paintEvent(QPaintEvent *) {
     const QColor faint(255, 255, 255, 14);
     const int w = columnWidth();
 
-    // Horas: la etiqueta a la izquierda y una línea tenue por la rejilla.
+    // Hours: label on the left and a faint line across the grid.
     p.setFont(monoFont(font(), 9.5));
     for (int h = 0; h <= 24; ++h) {
         const int y = h * kHour;
@@ -389,25 +501,27 @@ void TimeGrid::paintEvent(QPaintEvent *) {
                        QString("%1:00").arg(h, 2, 10, QChar('0')));
         }
     }
-    // Separadores de día.
+    // Day separators.
     for (int c = 0; c <= m_days.size(); ++c) {
         p.setPen(faint);
         p.drawLine(kGutter + c * w, 0, kGutter + c * w, height());
     }
-    // Hoy, un poco más claro, para encontrarlo en una semana.
+    // Today slightly lighter, to find it in a week.
     const QDate today = QDate::currentDate();
     for (int c = 0; c < m_days.size(); ++c)
         if (m_days.at(c) == today && m_days.size() > 1)
             p.fillRect(QRect(kGutter + c * w + 1, 0, w - 1, height()),
                        withAlpha(m_theme->accent, 10));
 
-    // Bloques.
     for (int i = 0; i < m_blocks.size(); ++i) {
         Block &b = m_blocks[i];
         b.rect = blockRect(b);
         const Item &it = b.item;
         const QRect r = b.rect;
         const bool hot = i == m_hover;
+        // The dragged block stays in place, dimmed, while its shadow shows where it
+        // goes.
+        p.setOpacity(m_dragging && sameItem(it, m_dragItem) ? 0.35 : 1.0);
         const QColor color = it.alert ? kRed : it.color;
 
         QPainterPath path;
@@ -418,7 +532,7 @@ void TimeGrid::paintEvent(QPaintEvent *) {
         p.setPen(border);
         p.setBrush(Qt::NoBrush);
         p.drawRoundedRect(QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5), 7, 7);
-        // Barra del color a la izquierda: se lee aunque el bloque sea bajito.
+        // Colour bar on the left: readable even on a short block.
         p.save();
         p.setClipPath(path);
         p.fillRect(QRect(r.left(), r.top(), 3, r.height()), color);
@@ -464,7 +578,43 @@ void TimeGrid::paintEvent(QPaintEvent *) {
         }
     }
 
-    // La hora de ahora, en rojo, sobre la columna de hoy.
+    p.setOpacity(1.0);
+
+    // Shadow of the dragged block, with the time it will get on drop.
+    if (m_dragging && m_dragCol < m_days.size()) {
+        const Item &it = m_dragItem;
+        const int top = yFor(m_dragStart);
+        const int bottom = qMax(yFor(qMax(m_dragEnd, m_dragStart + 0.4)) - 2, top + 20);
+        const QRect r(kGutter + m_dragCol * w + 2, top + 1, w - 4, bottom - top);
+        const QColor color = it.color;
+        QPainterPath path;
+        path.addRoundedRect(QRectF(r), 7, 7);
+        p.fillPath(path, withAlpha(color, 95));
+        p.setPen(QPen(color, 1.4));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5), 7, 7);
+        const int textW = r.width() - 12;
+        if (textW >= 8) {
+            QFont tf = sansFont(font(), m_theme->fs(11), true);
+            p.setFont(tf);
+            p.setPen(fg);
+            const int lineH = QFontMetrics(tf).height();
+            p.drawText(QRect(r.left() + 8, r.top() + 4, textW, lineH), Qt::AlignLeft | Qt::AlignVCenter,
+                       p.fontMetrics().elidedText(it.title, Qt::ElideRight, textW));
+            const QString when = it.source == Item::FromEvent
+                                     ? hhmm(m_dragStart) + "–" + hhmm(m_dragEnd)
+                                     : hhmm(m_dragStart);
+            p.setFont(monoFont(font(), 9.5));
+            if (r.height() >= lineH + 20)
+                p.drawText(QRect(r.left() + 8, r.top() + 4 + lineH, textW, 14), Qt::AlignLeft | Qt::AlignVCenter,
+                           p.fontMetrics().elidedText(when, Qt::ElideRight, textW));
+            else
+                p.drawText(QRect(r.left() + 8, r.top() + 4, textW, lineH),
+                           Qt::AlignRight | Qt::AlignVCenter, when);
+        }
+    }
+
+    // Current time in red over today's column.
     const QTime now = QTime::currentTime();
     for (int c = 0; c < m_days.size(); ++c) {
         if (m_days.at(c) != today) continue;
@@ -476,7 +626,7 @@ void TimeGrid::paintEvent(QPaintEvent *) {
         p.drawEllipse(QPointF(kGutter + c * w, y), 3.5, 3.5);
     }
 
-    // Un día sin nada: se dice, en vez de dejar solo una rejilla vacía.
+    // An empty day says so instead of showing a bare grid.
     if (m_blocks.isEmpty() && m_days.size() == 1) {
         const int y = yFor(9);
         p.setFont(sansFont(font(), 12, true));
@@ -489,10 +639,8 @@ void TimeGrid::paintEvent(QPaintEvent *) {
     }
 }
 
-// ===========================================================================
-// Cabecera de la semana: el día y su número encima de cada columna. Va fuera
-// del desplazamiento para no perderse al bajar por las horas.
-// ===========================================================================
+/// The week header: weekday and number above each column, plus a band with
+/// the all-day items. Outside the scroll area so it never scrolls away.
 
 class WeekHead : public QWidget {
 public:
@@ -502,13 +650,13 @@ public:
     std::function<void(const QDate &)> onPick;
     std::function<QList<Item>(const QDate &)> source;
     std::function<void(const Item &)> onActivate;
+    /// Called on drop on another day: same item, same time, another date.
+    std::function<void(const Item &, const QDate &)> onMove;
 
     WeekHead(const Theme *theme, QWidget *parent = nullptr) : QWidget(parent), m_theme(theme) {
         setFixedHeight(kDays);
         setMouseTracking(true);
     }
-    // Con el día entero (los cumpleaños) en una franja debajo de los números:
-    // aquí fuera del desplazamiento se ven siempre.
     void setDays(const QList<QDate> &days, const QDate &selected) {
         m_days = days;
         m_selected = selected;
@@ -519,16 +667,38 @@ public:
         setFixedHeight(kDays + (m_band.isEmpty() ? 0 : kBand));
         update();
     }
-    // La barra de desplazamiento de la rejilla se come ancho por la derecha:
-    // las columnas de aquí tienen que medir lo mismo que las de allí.
+    /// The grid's scrollbar takes width on the right: columns here must match.
     void setRightInset(int px) {
         m_inset = px;
         update();
     }
 
 protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        m_pressed = false;
+        if (e->button() != Qt::LeftButton) return;
+        const QPoint at = e->position().toPoint();
+        for (int i = 0; i < m_band.size(); ++i)
+            if (bandRect(i).contains(at) && movable(m_band.at(i).first)) {
+                m_pressed = true;
+                m_dragItem = m_band.at(i).first;
+                m_pressPos = at;
+                return;
+            }
+    }
+
     void mouseReleaseEvent(QMouseEvent *e) override {
         const QPoint at = e->position().toPoint();
+        if (m_dragging) {
+            const Item item = m_dragItem;
+            const QDate day = m_days.value(m_dragCol);
+            m_pressed = m_dragging = false;
+            setCursor(Qt::ArrowCursor);
+            update();
+            if (day.isValid() && day != item.day && onMove) onMove(item, day);
+            return;
+        }
+        m_pressed = false;
         for (int i = 0; i < m_band.size(); ++i)
             if (bandRect(i).contains(at)) {
                 if (onActivate) onActivate(m_band.at(i).first);
@@ -539,6 +709,18 @@ protected:
     }
     void mouseMoveEvent(QMouseEvent *e) override {
         const QPoint at = e->position().toPoint();
+        if (m_pressed && (e->buttons() & Qt::LeftButton)) {
+            if ((at - m_pressPos).manhattanLength() >= QApplication::startDragDistance())
+                m_dragging = true;
+            if (m_dragging) {
+                const int w = columnWidth();
+                m_dragCol = w > 0 ? qBound(0, (at.x() - TimeGrid::kGutter) / w, int(m_days.size()) - 1)
+                                  : 0;
+                setCursor(Qt::ClosedHandCursor);
+                update();
+                return;
+            }
+        }
         bool hot = columnAt(at.x()) >= 0 && at.y() < kDays;
         for (int i = 0; i < m_band.size() && !hot; ++i) hot = bandRect(i).contains(at);
         setCursor(hot ? Qt::PointingHandCursor : Qt::ArrowCursor);
@@ -586,6 +768,7 @@ protected:
         for (int i = 0; i < m_band.size(); ++i) {
             const Item &it = m_band.at(i).first;
             const QRect r = bandRect(i);
+            p.setOpacity(m_dragging && sameItem(it, m_dragItem) ? 0.35 : 1.0);
             p.setPen(Qt::NoPen);
             p.setBrush(withAlpha(it.alert ? kRed : it.color, 60));
             p.drawRoundedRect(r, 5, 5);
@@ -593,6 +776,18 @@ protected:
             p.setPen(QColor(Theme::fg()));
             p.drawText(r.adjusted(7, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft,
                        p.fontMetrics().elidedText(it.title, Qt::ElideRight, r.width() - 11));
+        }
+        p.setOpacity(1.0);
+        // The shadow, across the column it would land in.
+        if (m_dragging && m_dragCol < m_days.size()) {
+            const int w = columnWidth();
+            const QRect r(TimeGrid::kGutter + m_dragCol * w + 2, kDays + 1, w - 4, kBand - 4);
+            p.setPen(QPen(m_dragItem.color, 1.2));
+            p.setBrush(withAlpha(m_dragItem.color, 95));
+            p.drawRoundedRect(QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5), 5, 5);
+            p.setPen(QColor(Theme::fg()));
+            p.drawText(r.adjusted(7, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft,
+                       p.fontMetrics().elidedText(m_dragItem.title, Qt::ElideRight, r.width() - 11));
         }
     }
 
@@ -612,25 +807,30 @@ private:
     QDate m_selected;
     QList<QPair<Item, int>> m_band;
     int m_inset = 0;
+    bool m_pressed = false;
+    bool m_dragging = false;
+    Item m_dragItem;
+    QPoint m_pressPos;
+    int m_dragCol = 0;
 };
 
-// ===========================================================================
-// MonthBoard: el mes en grande, con lo que cae cada día escrito dentro.
-// ===========================================================================
+/// The month view, with what falls on each day written inside.
 
 class MonthBoard : public QWidget {
 public:
     std::function<QList<Item>(const QDate &)> source;
-    std::function<void(const QDate &)> onPick;      // abre ese día
-    std::function<void(const QDate &)> onSelect;    // solo lo marca
-    std::function<void(int)> onShift;               // mes anterior/siguiente
+    std::function<void(const QDate &)> onPick;      ///< Opens that day.
+    std::function<void(const QDate &)> onSelect;    ///< Only selects it.
+    std::function<void(int)> onShift;               ///< Previous/next month.
+    /// An item dropped on another day: same time, another date.
+    std::function<void(const Item &, const QDate &)> onMove;
 
     explicit MonthBoard(const Theme *theme, QWidget *parent = nullptr)
         : QWidget(parent), m_theme(theme) {
         setMouseTracking(true);
         setFocusPolicy(Qt::TabFocus);
-        // Filas bajas en mínimo: el panel no puede pedir más alto que la lista
-        // de notas solo por estar en el mes (ver *Window behavior*).
+        // Low rows at minimum: the month must not make the panel taller than the
+        // note list needs (see *Window behavior*).
         setMinimumSize(7 * 30, 20 + 6 * 32);
     }
 
@@ -657,8 +857,48 @@ protected:
         return -1;
     }
 
+    // Chip geometry, the same maths paintEvent() uses.
+    int chipHeight() const { return QFontMetrics(sansFont(font(), m_theme->fs(9.5))).height() + 3; }
+    int shownIn(int cell) const {
+        const int room = qMax(0, (cellRect(cell).height() - 20) / chipHeight());
+        const int count = int(m_items.value(cell).size());
+        return count > room ? qMax(0, room - 1) : count;
+    }
+    QRect chipRect(int cell, int k) const {
+        const QRect r = cellRect(cell);
+        const int chipH = chipHeight();
+        return QRect(r.left() + 3, r.top() + 18 + k * chipH, r.width() - 6, chipH - 2);
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        m_pressed = false;
+        if (e->button() != Qt::LeftButton) return;
+        const QPoint at = e->position().toPoint();
+        const int c = cellAt(at);
+        if (c < 0) return;
+        for (int k = 0; k < shownIn(c); ++k)
+            if (chipRect(c, k).contains(at) && movable(m_items.at(c).at(k))) {
+                m_pressed = true;
+                m_dragItem = m_items.at(c).at(k);
+                m_pressPos = at;
+                return;
+            }
+    }
+
     void mouseMoveEvent(QMouseEvent *e) override {
-        const int c = cellAt(e->position().toPoint());
+        const QPoint at = e->position().toPoint();
+        if (m_pressed && (e->buttons() & Qt::LeftButton)) {
+            if ((at - m_pressPos).manhattanLength() >= QApplication::startDragDistance())
+                m_dragging = true;
+            if (m_dragging) {
+                m_dropCell = cellAt(at);
+                m_dragPos = at;
+                setCursor(Qt::ClosedHandCursor);
+                update();
+                return;
+            }
+        }
+        const int c = cellAt(at);
         if (c != m_hover) {
             m_hover = c;
             update();
@@ -671,16 +911,26 @@ protected:
     }
     void mouseReleaseEvent(QMouseEvent *e) override {
         const int c = cellAt(e->position().toPoint());
+        if (m_dragging) {
+            const Item item = m_dragItem;
+            m_pressed = m_dragging = false;
+            setCursor(Qt::ArrowCursor);
+            update();
+            const QDate day = c >= 0 ? m_start.addDays(c) : QDate();
+            if (day.isValid() && day != item.day && onMove) onMove(item, day);
+            return;
+        }
+        m_pressed = false;
         if (c >= 0 && onPick) onPick(m_start.addDays(c));
     }
     void wheelEvent(QWheelEvent *e) override {
-        // Rueda: de mes en mes, como el calendario de antes.
+        // Wheel: month by month.
         if (onShift && e->angleDelta().y() != 0) onShift(e->angleDelta().y() > 0 ? -1 : 1);
     }
     void focusInEvent(QFocusEvent *e) override { QWidget::focusInEvent(e); update(); }
     void focusOutEvent(QFocusEvent *e) override { QWidget::focusOutEvent(e); update(); }
 
-    // Flechas: moverse por los días; Intro: abrirlo; Re Pág / Av Pág: de mes.
+    // Arrows move between days, Enter opens one, PageUp/PageDown change month.
     void keyPressEvent(QKeyEvent *e) override {
         int step = 0;
         switch (e->key()) {
@@ -728,8 +978,11 @@ protected:
             QColor bg = out ? QColor(0, 0, 0, 0) : QColor(255, 255, 255, 8);
             if (i == m_hover) bg = QColor(255, 255, 255, 18);
             if (sel) bg = withAlpha(m_theme->accent, 26);
-            p.setPen(sel ? QPen(withAlpha(m_theme->accent, 130), 1)
-                         : d == today ? QPen(QColor(255, 255, 255, 40), 1) : QPen(Qt::NoPen));
+            const bool drop = m_dragging && i == m_dropCell;
+            if (drop) bg = withAlpha(m_theme->accent, 40);
+            p.setPen(drop  ? QPen(m_theme->accent, 1.4)
+                     : sel ? QPen(withAlpha(m_theme->accent, 130), 1)
+                     : d == today ? QPen(QColor(255, 255, 255, 40), 1) : QPen(Qt::NoPen));
             p.setBrush(bg);
             p.drawRoundedRect(QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8);
             if (sel && keynav::showsFocus(this)) {
@@ -745,7 +998,7 @@ protected:
             p.drawText(r.adjusted(6, 3, -4, 0), Qt::AlignLeft | Qt::AlignTop,
                        QString::number(d.day()));
 
-            // Lo que cabe, y "+N más" si no cabe todo.
+            // What fits, and "+N more" if not everything does.
             const QList<Item> &items = m_items.at(i);
             const int room = qMax(0, (r.height() - 20) / chipH);
             const bool overflow = items.size() > room;
@@ -754,6 +1007,7 @@ protected:
             for (int k = 0; k < shown; ++k) {
                 const Item &it = items.at(k);
                 const QRect chip(r.left() + 3, r.top() + 18 + k * chipH, r.width() - 6, chipH - 2);
+                p.setOpacity(m_dragging && sameItem(it, m_dragItem) ? 0.35 : 1.0);
                 const QColor color = it.alert ? kRed : it.color;
                 p.setPen(Qt::NoPen);
                 p.setBrush(withAlpha(color, out ? 26 : 44));
@@ -767,6 +1021,7 @@ protected:
                 p.drawText(chip.adjusted(5, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft,
                            QFontMetrics(cf).elidedText(text, Qt::ElideRight, chip.width() - 7));
             }
+            p.setOpacity(1.0);
             if (overflow && items.size() - shown > 0) {
                 p.setFont(monoFont(font(), 9));
                 p.setPen(muted);
@@ -774,6 +1029,22 @@ protected:
                            Qt::AlignVCenter | Qt::AlignLeft,
                            L("+%1 más").arg(items.size() - shown));
             }
+        }
+
+        // The dragged chip follows the pointer, one day wide.
+        if (m_dragging) {
+            const Item &it = m_dragItem;
+            const int cw = qMax(40, int(width() / 7.0) - 6);
+            QRect chip(0, 0, cw, chipH - 2);
+            chip.moveCenter(m_dragPos);
+            p.setPen(QPen(it.color, 1.2));
+            p.setBrush(withAlpha(it.color, 110));
+            p.drawRoundedRect(QRectF(chip).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
+            p.setFont(chipFont);
+            p.setPen(fg);
+            const QString text = it.allDay ? it.title : hhmm(it.start) + " " + it.title;
+            p.drawText(chip.adjusted(5, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft,
+                       QFontMetrics(chipFont).elidedText(text, Qt::ElideRight, chip.width() - 7));
         }
     }
 
@@ -783,12 +1054,16 @@ private:
     QDate m_start;
     QList<QList<Item>> m_items;
     int m_hover = -1;
+    bool m_pressed = false;
+    bool m_dragging = false;
+    Item m_dragItem;
+    QPoint m_pressPos;
+    QPoint m_dragPos;
+    int m_dropCell = -1;
 };
 
-// ===========================================================================
-// MiniMonth: el mes en pequeño del lateral, con un punto en los días que
-// tienen algo. Elegir un día mueve la vista sin cambiar de vista.
-// ===========================================================================
+/// The small month in the side panel, with a dot on days that have
+/// something. Picking a day moves the view without changing it.
 
 class MiniMonth : public QWidget {
 public:
@@ -886,8 +1161,6 @@ private:
     QDate m_shown = QDate(QDate::currentDate().year(), QDate::currentDate().month(), 1);
 };
 
-// ===========================================================================
-
 PlannerView::PlannerView(const Theme &theme, QWidget *parent)
     : QWidget(parent), m_theme(theme) {
     setObjectName("planner");
@@ -918,7 +1191,7 @@ void PlannerView::build() {
     col->addWidget(m_stack, 1);
     root->addWidget(main, 1);
 
-    // --- día y semana ---
+    // Day and week
     m_gridPage = new QWidget;
     auto *gl = new QVBoxLayout(m_gridPage);
     gl->setContentsMargins(0, 0, 0, 0);
@@ -930,6 +1203,7 @@ void PlannerView::build() {
     };
     head->source = [this](const QDate &d) { return itemsOn(d); };
     head->onActivate = [this](const Item &it) { activate(it); };
+    head->onMove = [this](const Item &it, const QDate &d) { moveItem(it, d, -1, -1); };
     m_weekHead = head;
     gl->addWidget(head);
 
@@ -938,10 +1212,13 @@ void PlannerView::build() {
     m_grid->onActivate = [this](const Item &it) { activate(it); };
     m_grid->onToggle = [this](const Item &it) { toggleDone(it); };
     m_grid->onEmpty = [this](const QDate &d, qreal h) { openEditor(nullptr, d, h); };
+    m_grid->onMove = [this](const Item &it, const QDate &d, qreal start, qreal end) {
+        moveItem(it, d, start, end);
+    };
     m_gridScroll = new QScrollArea;
     m_gridScroll->setWidget(m_grid);
-    // setWidget() le enciende el relleno de fondo, y la rejilla salía en el
-    // blanco de la paleta en vez de dejar ver el panel translúcido.
+    // setWidget() turns background filling on, and the grid came out in the
+    // palette's white instead of showing the translucent panel.
     m_grid->setAutoFillBackground(false);
     m_gridScroll->setWidgetResizable(true);
     m_gridScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -954,7 +1231,7 @@ void PlannerView::build() {
     gl->addWidget(m_gridScroll, 1);
     m_stack->addWidget(m_gridPage);
 
-    // --- mes ---
+    // Month
     m_month = new MonthBoard(&m_theme);
     m_month->source = [this](const QDate &d) { return itemsOn(d); };
     m_month->onPick = [this](const QDate &d) {
@@ -963,6 +1240,7 @@ void PlannerView::build() {
     };
     m_month->onSelect = [this](const QDate &d) { goTo(d); };
     m_month->onShift = [this](int dir) { shift(dir); };
+    m_month->onMove = [this](const Item &it, const QDate &d) { moveItem(it, d, -1, -1); };
     m_stack->addWidget(m_month);
 
     buildEditor();
@@ -1037,7 +1315,7 @@ void PlannerView::buildToolbar(QVBoxLayout *col) {
     connect(m_todayBtn, &QToolButton::clicked, this, [this] { goTo(QDate::currentDate()); });
     m_bar1->addWidget(m_todayBtn);
 
-    // El rango no puede pedir su ancho (ver *Card widths*): se recorta.
+    // The range must not demand its width (see *Card widths*): it is elided.
     m_range = new ElidedLabel(QString(), QColor(Theme::fg()));
     m_range->setObjectName("calMonth");
     m_bar1->addWidget(m_range, 1);
@@ -1072,7 +1350,7 @@ void PlannerView::buildToolbar(QVBoxLayout *col) {
     m_bar1->addWidget(m_newBtn);
     col->addLayout(m_bar1);
 
-    // Segunda fila, solo en estrecho: la de las vistas se muda aquí.
+    // Second row, only when narrow: the view buttons move here.
     m_bar2Host = new QWidget;
     m_bar2 = new QHBoxLayout(m_bar2Host);
     m_bar2->setContentsMargins(0, 0, 0, 0);
@@ -1108,8 +1386,7 @@ void PlannerView::buildEditor() {
     m_fTitle->setPlaceholderText(L("Título"));
     col->addWidget(m_fTitle);
 
-    // Qué es: evento, tarea o recordatorio. El tercero crea una nota de las
-    // de siempre, que es lo que hacía el calendario de antes al pulsar un día.
+    // Kind: event, task or reminder. The third creates a regular reminder note.
     auto *kinds = new QHBoxLayout;
     kinds->setSpacing(4);
     const char *kindNames[] = {"Evento", "Tarea", "Recordatorio"};
@@ -1123,9 +1400,8 @@ void PlannerView::buildEditor() {
     }
     col->addLayout(kinds);
 
-    // Fecha y horas en campos de texto: el mismo formato que ya se escribe en
-    // los recordatorios, y sin la rueda de un QDateEdit que en una tarjeta de
-    // 300 px no se deja manejar.
+    // Date and times as text fields, the same format reminders already use; a
+    // QDateEdit spinner is unusable in a 300px card.
     auto *when = new QGridLayout;
     when->setHorizontalSpacing(6);
     when->setVerticalSpacing(2);
@@ -1145,8 +1421,7 @@ void PlannerView::buildEditor() {
     m_fDate = field(L("dd/mm/aaaa"));
     m_fStart = field("09:00");
     m_fEnd = field("10:00");
-    // Uno de todo el día no tiene horas: en su sitio va hasta qué día dura,
-    // que es lo que tienen unas vacaciones (y lo que traen de Google).
+    // An all-day event has no times: in their place goes its last day.
     m_fLastDay = field(L("dd/mm/aaaa"));
     when->addWidget(caption("FECHA"), 0, 0);
     m_fStartBox = caption("INICIO");
@@ -1173,8 +1448,8 @@ void PlannerView::buildEditor() {
     });
     col->addWidget(m_fAllDayBtn);
 
-    // Repetición y categoría en rejillas de dos: en una fila no caben las
-    // cuatro con sus nombres en el ancho mínimo del panel.
+    // Repetition and category in two-column grids: one row does not fit at the
+    // panel's minimum width.
     auto *repTitle = caption("REPETICIÓN");
     col->addWidget(repTitle);
     m_repeatBox = new QWidget;
@@ -1197,8 +1472,8 @@ void PlannerView::buildEditor() {
     col->addWidget(m_repeatBox);
 
     col->addWidget(caption("CATEGORÍA"));
-    // Los botones los pone rebuildCatButtons(): la lista cambia cuando el
-    // usuario crea o borra una.
+    // rebuildCatButtons() fills it: the list changes when the user creates or
+    // deletes a category.
     m_catBox = new QWidget;
     auto *cg = new QGridLayout(m_catBox);
     cg->setContentsMargins(0, 0, 0, 0);
@@ -1207,8 +1482,7 @@ void PlannerView::buildEditor() {
     cg->setColumnStretch(1, 1);
     col->addWidget(m_catBox);
 
-    // Cuánto antes avisa. Sustituye a la casilla de "10 min antes", que era
-    // la única antelación posible.
+    // Alert lead time.
     col->addWidget(caption("AVISO"));
     auto *alertBox = new QWidget;
     alertBox->setObjectName("plannerAlertBox");
@@ -1236,7 +1510,7 @@ void PlannerView::buildEditor() {
     m_fDesc->setPlaceholderText(L("Descripción"));
     m_fDesc->setTabChangesFocus(true);
     m_fDesc->setFixedHeight(64);
-    m_fDesc->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);   // ver *Fixed height*
+    m_fDesc->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);   // see *Fixed height*
     col->addWidget(m_fDesc);
 
     m_fError = new QLabel;
@@ -1283,8 +1557,6 @@ void PlannerView::buildEditor() {
     scroll->viewport()->setObjectName("scrollViewport");
     outer->addWidget(scroll);
 }
-
-// ---------------------------------------------------------------------------
 
 void PlannerView::setSources(const QList<Event *> *events, const QList<Note *> *notes,
                              const QList<Birthday *> *birthdays,
@@ -1403,8 +1675,7 @@ QList<Item> PlannerView::itemsOn(const QDate &day) const {
             it.end = it.start;
             it.title = n->title.isEmpty() ? L("Sin título") : n->title;
             it.color = kAmber;
-            // Pasado no es vencido: solo el que suena, o uno suelto que ya
-            // pasó sin repetirse (la misma regla que el calendario de antes).
+            // Past is not overdue: only ringing, or a non-repeating one already past.
             it.alert = n->ringing || (!n->repeats() && n->dueAtMs <= nowMs);
             out.append(it);
         }
@@ -1418,9 +1689,8 @@ QList<Item> PlannerView::itemsOn(const QDate &day) const {
 
 void PlannerView::refresh() {
     if (!m_stack) return;
-    // Tras recargar el Store (restaurar una copia, cambiar de carpeta) el que
-    // se estaba editando puede no existir ya: guardarlo escribiría en memoria
-    // liberada. Se cierra el formulario sin más.
+    // After the Store reloads (restoring a backup, changing folder) the event
+    // being edited may be gone: saving would write to freed memory.
     if (m_editing && m_events && !m_events->contains(m_editing)) {
         m_editing = nullptr;
         m_stack->setCurrentWidget(m_view == Month ? static_cast<QWidget *>(m_month) : m_gridPage);
@@ -1439,8 +1709,8 @@ void PlannerView::refresh() {
             const QDate monday = mondayOf(m_cursor);
             for (int i = 0; i < 7; ++i) days << monday.addDays(i);
         }
-        // En el día el nombre ya lo dice la barra; la cabecera solo hace falta
-        // si hay algo de día entero que enseñar.
+        // In the day view the toolbar already names the day; the head is only needed
+        // for all-day items.
         m_weekHead->setVisible(m_view == Week ||
                                std::any_of(days.begin(), days.end(), [this](const QDate &d) {
                                    const QList<Item> items = itemsOn(d);
@@ -1450,8 +1720,8 @@ void PlannerView::refresh() {
         auto *head = static_cast<WeekHead *>(m_weekHead);
         head->setDays(days, m_cursor);
         m_grid->setDays(days);
-        // La primera vez, a una hora útil: la de ahora si hoy está a la vista,
-        // si no las ocho. Después se respeta lo que haya desplazado el usuario.
+        // The first time, scroll to a useful hour: now if today is visible, else
+        // 08:00. After that the user's scroll is kept.
         if (!m_scrolledOnce) {
             m_scrolledOnce = true;
             const bool todayShown = days.contains(QDate::currentDate());
@@ -1487,20 +1757,20 @@ void PlannerView::refreshToolbar() {
 }
 
 void PlannerView::refreshSide() {
-    if (!m_wide) return;   // escondido: se rellena al volver a verse
+    if (!m_wide) return;   // hidden: filled when shown again
     m_mini->setCursor(m_cursor);
 
     auto clear = [](QVBoxLayout *l) {
         while (QLayoutItem *it = l->takeAt(0)) {
             if (QWidget *w = it->widget()) {
-                w->hide();   // ver *Removing rows*
+                w->hide();   // see *Removing rows*
                 w->deleteLater();
             }
             delete it;
         }
     };
 
-    // Las tareas de hoy: lo único del lateral sobre lo que se actúa.
+    // Today's tasks: the only actionable part of the side panel.
     clear(m_todayList);
     const QDate today = QDate::currentDate();
     int tasks = 0;
@@ -1533,13 +1803,18 @@ void PlannerView::refreshSide() {
         m_todayList->addWidget(none);
     }
 
-    // Filtro de categorías, con los recordatorios y los cumpleaños como dos
-    // más: también se quieren esconder para ver solo el horario.
+    // Category filter, with reminders and birthdays as two more: they may be
+    // hidden too, to see only the schedule.
     clear(m_catList);
-    QList<CatInfo> cats = allCategories();
+    // Tagoror's first (reminders and birthdays included) and, under their own
+    // title, the followed Google calendars, which are created, edited and deleted
+    // differently.
+    QList<CatInfo> cats, google;
+    for (const CatInfo &cat : allCategories())
+        (cat.id.startsWith("gcal:") ? google : cats).append(cat);
     cats.append({kReminders, L("Recordatorios"), kAmber, nullptr});
     cats.append({kBirthdays, L("Cumpleaños"), kPink, nullptr});
-    for (const CatInfo &cat : cats) {
+    auto addCat = [&](const CatInfo &cat) {
         const QString &id = cat.id;
         auto *box = new QCheckBox(cat.name);
         box->setObjectName("plannerCat");
@@ -1553,7 +1828,7 @@ void PlannerView::refreshSide() {
         connect(box, &QCheckBox::toggled, this, [this, id = id](bool on) {
             if (on) m_hidden.remove(id);
             else m_hidden.insert(id);
-            // Diferido: el refresco rehace esta misma casilla.
+            // Deferred: the refresh rebuilds this very checkbox.
             QTimer::singleShot(0, this, [this] {
                 refresh();
                 emit hiddenChanged(hidden());
@@ -1561,14 +1836,14 @@ void PlannerView::refreshSide() {
         });
         if (!cat.custom) {
             m_catList->addWidget(box);
-            continue;
+            return;
         }
-        // Las propias llevan su lápiz: nombre, color y borrarla.
+        // Custom ones get a pencil: name, colour and delete.
         auto *row = new QWidget;
         auto *rl = new QHBoxLayout(row);
         rl->setContentsMargins(0, 0, 0, 0);
         rl->setSpacing(2);
-        box->setMinimumWidth(24);   // ver *Card widths*: el nombre lo pone el usuario
+        box->setMinimumWidth(24);   // see *Card widths*: the user picks the name
         box->setToolTip(cat.name);
         rl->addWidget(box, 1);
         auto *edit = new QToolButton;
@@ -1584,7 +1859,8 @@ void PlannerView::refreshSide() {
         });
         rl->addWidget(edit);
         m_catList->addWidget(row);
-    }
+    };
+    for (const CatInfo &cat : cats) addCat(cat);
 
     auto *add = new QToolButton;
     add->setObjectName("todayBtn");
@@ -1597,6 +1873,13 @@ void PlannerView::refreshSide() {
     connect(add, &QToolButton::clicked, this, [this, add] { openCategoryEditor(nullptr, add, false); });
     m_catList->addSpacing(4);
     m_catList->addWidget(add, 0, Qt::AlignLeft);
+
+    if (google.isEmpty()) return;
+    auto *head = new QLabel(L("GOOGLE CALENDAR"));
+    head->setObjectName("setSection");
+    m_catList->addSpacing(8);
+    m_catList->addWidget(head);
+    for (const CatInfo &cat : google) addCat(cat);
 }
 
 void PlannerView::rebuildCatButtons() {
@@ -1604,7 +1887,7 @@ void PlannerView::rebuildCatButtons() {
     const QList<CatInfo> cats = allCategories();
     QString sig = m_theme.accent.name();
     for (const CatInfo &c : cats) sig += '|' + c.id + ':' + c.name + ':' + c.color.name();
-    // La categoría elegida puede haberse borrado (aquí o en otro equipo).
+    // The chosen category may have been deleted (here or on another machine).
     if (!std::any_of(cats.begin(), cats.end(),
                      [this](const CatInfo &c) { return c.id == m_fCategory; }))
         m_fCategory = Event::kFallbackCategory;
@@ -1614,23 +1897,25 @@ void PlannerView::rebuildCatButtons() {
     auto *grid = static_cast<QGridLayout *>(m_catBox->layout());
     while (QLayoutItem *it = grid->takeAt(0)) {
         if (QWidget *w = it->widget()) {
-            w->hide();   // ver *Removing rows*
+            w->hide();   // see *Removing rows*
             w->deleteLater();
         }
         delete it;
     }
     m_catButtons.clear();
 
+    // As in the side panel: Tagoror's with their "New…" and, below with a title,
+    // the Google calendars.
     int i = 0;
-    for (const CatInfo &c : cats) {
+    int row = 0;
+    auto addButton = [&](const CatInfo &c, int index) {
         auto *b = segButton(c.name);
-        // Las dos columnas a partes iguales, pida lo que pida el texto: el
-        // nombre de una propia puede ser largo, y con su ancho natural se
-        // comía la otra columna (ver *Card widths*).
+        // Both columns get equal width whatever the text asks: a custom name can be
+        // long and would eat the other column (see *Card widths*).
         b->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         b->setMinimumWidth(24);
-        // Solo las de serie se traducen: el nombre de una propia es del usuario.
-        if (!c.custom) b->setProperty("tip", Event::categories().at(i).label);
+        // Only built-in names are translated: a custom name is the user's.
+        if (!c.custom) b->setProperty("tip", Event::categories().at(index).label);
         b->setProperty("category", c.id);
         b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         b->setIconSize(QSize(8, 8));
@@ -1640,15 +1925,20 @@ void PlannerView::rebuildCatButtons() {
             refreshEditorChoices();
         });
         if (c.custom) {
-            // Clic derecho para cambiarla sin salir del formulario, que es
-            // lo único que hay cuando el panel es estrecho y no hay lateral.
+            // Right click edits it without leaving the form, the only way when the panel
+            // is narrow and the side panel is hidden.
             b->setContextMenuPolicy(Qt::CustomContextMenu);
             connect(b, &QToolButton::customContextMenuRequested, this,
                     [this, b, cat = c.custom] { openCategoryEditor(cat, b, false); });
         }
         m_catButtons << b;
-        grid->addWidget(b, i / 2, i % 2);
+        grid->addWidget(b, row + i / 2, i % 2);
         ++i;
+    };
+    QList<CatInfo> google;
+    for (const CatInfo &c : cats) {
+        if (c.id.startsWith("gcal:")) google << c;
+        else addButton(c, i);
     }
     auto *add = segButton(L("Nueva…"));
     add->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
@@ -1656,7 +1946,18 @@ void PlannerView::rebuildCatButtons() {
     add->setProperty("tip", "Nueva…");
     add->setToolTip(L("Nueva categoría"));
     connect(add, &QToolButton::clicked, this, [this, add] { openCategoryEditor(nullptr, add, true); });
-    grid->addWidget(add, i / 2, i % 2);
+    grid->addWidget(add, row + i / 2, i % 2);
+    ++i;
+
+    if (!google.isEmpty()) {
+        row += (i + 1) / 2;
+        i = 0;
+        auto *head = new QLabel(L("GOOGLE CALENDAR"));
+        head->setObjectName("meta");
+        head->setContentsMargins(0, 4, 0, 0);
+        grid->addWidget(head, row++, 0, 1, 2);
+        for (const CatInfo &c : google) addButton(c, -1);
+    }
     refreshEditorChoices();
 }
 
@@ -1666,7 +1967,7 @@ void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool p
     if (c) {
         chosen = int(palette.indexOf(c->color));
     } else {
-        // La primera que no use nadie, para que dos nuevas no salgan iguales.
+        // The first colour nobody uses, so two new categories do not look the same.
         QList<QColor> used;
         for (const CatInfo &info : allCategories()) used << info.color;
         for (int i = 0; i < palette.size(); ++i)
@@ -1678,15 +1979,14 @@ void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool p
 
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(c ? L("Editar categoría") : L("Nueva categoría"));
-    // El puntero se comprueba al volver: el popup puede cerrarse después de
-    // que una sincronización se lleve la categoría.
+    // Checked on return: the popup may close after a sync removed the category.
     QPointer<PlannerView> self(this);
     menu->addNameColor(L("Nombre"), c ? c->label : QString(), palette, chosen,
                        [self, c, chosen, pickForForm](const QString &name, int color) {
         if (!self) return;
         const QColor picked = categoryPalette().value(color < 0 ? chosen : color);
         if (!c) {
-            if (name.isEmpty()) return;   // sin nombre no se crea nada
+            if (name.isEmpty()) return;   // nothing is created without a name
             auto *created = new Event::Category;
             created->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
             created->label = name;
@@ -1697,7 +1997,7 @@ void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool p
             return;
         }
         if (!self->m_categories || !self->m_categories->contains(c)) return;
-        // Un nombre vacío no borra nada: para eso está Eliminar.
+        // An empty name deletes nothing: that is what Delete is for.
         if (!name.isEmpty()) c->label = name;
         if (color >= 0 && picked.isValid()) c->color = picked;
         emit self->categoryChanged(c);
@@ -1743,12 +2043,12 @@ void PlannerView::resizeEvent(QResizeEvent *e) {
     applyWidth();
 }
 
-// Ancho o estrecho. En ancho, el lateral a la vista y la barra en una fila; en
-// estrecho, sin lateral y con las vistas en una segunda fila, porque en una
-// sola no caben con el rango legible (ver *Card widths*).
+/// Wide or narrow. Wide: side panel visible and a one-row toolbar. Narrow: no
+/// side panel and the view buttons on a second row, since one row does not
+/// fit with a readable range (see *Card widths*).
 void PlannerView::applyWidth() {
     const bool wide = width() >= kWideFrom;
-    if (wide == m_wide) return;   // arranca en ancho, que es como se construye
+    if (wide == m_wide) return;   // starts wide, which is how it is built
     m_wide = wide;
     m_side->setVisible(wide);
     if (auto *sep = qobject_cast<QWidget *>(m_side->property("sep").value<QObject *>()))
@@ -1766,8 +2066,6 @@ void PlannerView::applyWidth() {
     if (wide) refreshSide();
 }
 
-// ---------------------------------------------------------------------------
-
 void PlannerView::activate(const Item &item) {
     switch (item.source) {
         case Item::FromEvent:    openEditor(item.event, item.day, item.start); break;
@@ -1780,7 +2078,55 @@ void PlannerView::toggleDone(const Item &item) {
     if (!item.event || item.event->kind != Event::Task) return;
     item.event->setDoneOn(item.day, !item.event->isDoneOn(item.day));
     emit eventChanged(item.event);
-    // Diferido: quien llama puede ser la casilla del lateral que se rehace.
+    // Deferred: the caller may be the side panel's checkbox being rebuilt.
+    QTimer::singleShot(0, this, [this] { refresh(); });
+}
+
+/// What the form does when the date or time changes, without opening it. An
+/// occurrence of a repeating event moves the whole series, as editing does:
+/// start, end and exceptions shift by the same days, so skipped occurrences
+/// and done tasks stay the same ones.
+void PlannerView::moveItem(const Item &item, const QDate &day, qreal start, qreal end) {
+    auto clock = [](qreal hours) {
+        const int min = qBound(0, int(std::lround(hours * 60)), 24 * 60);
+        return min >= 24 * 60 ? QTime(23, 59) : QTime(0, 0).addSecs(min * 60);
+    };
+    const qint64 days = item.day.daysTo(day);
+    if (item.source == Item::FromEvent) {
+        Event *e = item.event;
+        // A sync may have removed it during the drag.
+        if (!m_events || !m_events->contains(e)) return;
+        auto shiftDate = [days](QDate &d) {
+            if (d.isValid()) d = d.addDays(days);
+        };
+        if (days != 0) {
+            shiftDate(e->date);
+            shiftDate(e->endDate);
+            shiftDate(e->until);
+            for (QDate &d : e->skip) shiftDate(d);
+            for (QDate &d : e->doneOn) shiftDate(d);
+        }
+        if (start >= 0 && !e->allDay) {
+            e->start = clock(start);
+            const bool multiDay = e->endDate.isValid() && e->endDate > e->date;
+            if (end >= 0 && !multiDay) e->end = clock(end);
+        }
+        // Another time is another alert, as when saving the form.
+        e->firedMs = 0;
+        e->ringingMs = 0;
+        emit eventChanged(e);
+    } else if (item.source == Item::FromReminder) {
+        Note *n = item.note;
+        if (!m_notes || !m_notes->contains(n)) return;
+        const QDateTime from = n->occurrenceOn(item.day);
+        const QDateTime to(day, start >= 0 ? clock(start) : from.time());
+        // Shifted by the difference rather than set: for a repeating reminder dueAtMs
+        // is the next turn, not the one dragged.
+        emit reminderMoved(n, n->dueAtMs + from.msecsTo(to));
+    } else {
+        return;
+    }
+    // Deferred: the caller is the widget the refresh repaints.
     QTimer::singleShot(0, this, [this] { refresh(); });
 }
 
@@ -1789,8 +2135,8 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
     m_editorTitle->setText(e ? L("Editar") : L("Nuevo evento o tarea"));
     m_fError->hide();
     m_fDelete->setVisible(e != nullptr);
-    // Un evento que ya existe no se convierte en recordatorio: eso sería
-    // borrar uno y crear otra cosa, y para eso está Eliminar.
+    // An existing event does not turn into a reminder: that would be deleting one
+    // and creating something else.
     m_kindButtons.at(2)->setVisible(e == nullptr);
 
     if (e) {
@@ -1838,11 +2184,11 @@ bool PlannerView::closeEditor() {
 
 void PlannerView::setEditorKind(int kind) {
     m_fKind = kind;
-    // Un recordatorio es un instante: sin fin, sin categoría y sin la
-    // repetición de aquí (la suya se elige en la tarjeta, como siempre).
+    // A reminder is an instant: no end, no category and not this repetition (its
+    // own is chosen on the card).
     const bool reminder = kind == 2;
     const bool allDay = m_fAllDay && !reminder;
-    // Una vuelta suelta de una serie de Google no se repite por su cuenta.
+    // A single occurrence of a Google series does not repeat on its own.
     const bool instance = m_editing && m_editing->gcalInstance();
     m_fStart->setVisible(!allDay);
     m_fStartBox->setVisible(!allDay);
@@ -1878,7 +2224,7 @@ void PlannerView::refreshEditorChoices() {
 void PlannerView::saveEditor() {
     const QDate date = QDate::fromString(m_fDate->text().trimmed(), "d/M/yyyy");
     const bool allDay = m_fAllDay && m_fKind != 2;
-    // Todo el día cuenta desde las 00:00: es el inicio del que sale el aviso.
+    // All-day counts from 00:00: that is where the alert counts from.
     const QTime start = allDay ? QTime(0, 0) : QTime::fromString(m_fStart->text().trimmed(), "H:mm");
     const QTime end = allDay ? QTime(23, 59) : QTime::fromString(m_fEnd->text().trimmed(), "H:mm");
     const QString lastText = m_fLastDay->text().trimmed();
@@ -1900,8 +2246,8 @@ void PlannerView::saveEditor() {
     }
     if (allDay && !lastText.isEmpty() && (!lastDay.isValid() || lastDay < date))
         return fail(L("El último día tiene que ser dd/mm/aaaa, y no antes de la fecha."), m_fLastDay);
-    // Uno con hora que venía de Google pasando de un día a otro conserva lo que
-    // dura: se mueve entero con su fecha, y su fin es el del último día.
+    // A timed event from Google spanning days keeps its length: it moves whole
+    // with its date, and its end is on the last day.
     int span = 0;
     if (!allDay && m_editing && !m_editing->allDay && m_editing->endDate.isValid())
         span = int(m_editing->date.daysTo(m_editing->endDate));
@@ -1923,11 +2269,10 @@ void PlannerView::saveEditor() {
     e->repeat = e->gcalInstance() ? Event::Once : Event::Repeat(m_fRepeat);
     e->category = m_fCategory;
     e->remind = m_fAlert >= 0;
-    // Sin aviso se guarda la antelación que tenía: volver a activarlo no
-    // tiene por qué olvidar cuánto antes avisaba.
+    // Without an alert the previous lead is kept, so re-enabling it remembers it.
     if (m_fAlert >= 0) e->remindBeforeMin = m_fAlert;
     e->description = m_fDesc->toPlainText();
-    // Otra hora es otro aviso: el que ya sonó era el de la hora de antes.
+    // Another time is another alert: the one that rang belonged to the old time.
     if (moved) e->firedMs = 0;
 
     closeEditor();

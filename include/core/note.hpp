@@ -15,8 +15,8 @@ struct CheckItem {
     bool done = false;
 };
 
-// Enlace adjunto a una nota. 'label' es opcional: sin él se muestra la propia
-// dirección recortada. Cualquier tipo de nota puede llevarlos.
+/// A link attached to a note. @ref label is optional; without it the address
+/// itself is shown. Any note type can carry links.
 struct Link {
     QString url;
     QString label;
@@ -24,73 +24,60 @@ struct Link {
 
 struct Note {
     enum Type { Text, Check, Reminder, Voice };
-    // Cada cuánto vuelve un recordatorio. Once es lo de siempre: suena una vez
-    // y se acabó. Weekly y Yearly existen para lo que se repite en el
-    // calendario sin tener que volver a escribirlo -- la basura del jueves, un
-    // cumpleaños -- y hacen que la nota aparezca en TODAS sus fechas, no solo
-    // en la próxima.
+    /// How often a reminder comes back. A Weekly or Yearly reminder appears on
+    /// every matching date in the planner, not only on the next one.
     enum Repeat { Once, Weekly, Yearly };
 
     QString id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     Type type = Text;
     QString title;
     QString body;
-    QString due;              // solo Reminder
-    QList<CheckItem> items;   // solo Check
-    QList<Link> links;        // adjuntos de cualquier tipo
-    QList<QString> images;    // adjuntos: nombres de fichero dentro de imageDir()
-    // Las imágenes se pliegan por nota, no por panel: una tarjeta con capturas
-    // se lee mejor cerrada, y esa elección es de quien la escribió.
+    QString due;              ///< Reminder only.
+    QList<CheckItem> items;   ///< Check only.
+    QList<Link> links;        ///< Any note type.
+    QList<QString> images;    ///< File names inside imageDir().
+    /// Whether the image strip is folded. Per note, not per panel.
     bool imagesHidden = false;
-    // Área de trabajo a la que pertenece (ver area.hpp). Vacío es la de serie,
-    // Area::kDefaultId: así las notas de antes de que hubiera áreas no cambian
-    // ni un byte y la sincronización no las ve como editadas.
+    /// Area the note belongs to (see area.hpp). Empty means Area::kDefaultId, so
+    /// notes from before areas keep their bytes and sync does not see them as
+    /// edited. Always assign through Store::setNoteArea().
     QString area;
-    QString audio;            // solo Voice: nombre de fichero dentro de audioDir()
-    qint64 durationMs = 0;    // solo Voice
-    QList<int> peaks;         // solo Voice: onda ya calculada, 0..100
-    // Pico absoluto de la toma (0..100, -1 = desconocido). Los peaks están
-    // normalizados y no sirven para esto: hace falta saber si la grabación
-    // salió muda para poder avisar, también después de reiniciar.
+    QString audio;            ///< Voice only: file name inside audioDir().
+    qint64 durationMs = 0;    ///< Voice only.
+    QList<int> peaks;         ///< Voice only: waveform, 0..100, normalised to the take's loudest point.
+    /// Absolute peak of the take (0..100, -1 unknown). Kept apart from @ref peaks,
+    /// which are normalised and so cannot tell whether the recording was silent.
     int level = -1;
 
-    // Recordatorio: 'due' es la etiqueta que se ve y dueAtMs el instante real.
-    // Si dueAtMs es 0 la fecha es solo texto libre y no dispara alarma.
+    /// Reminder: @ref due is the label shown and dueAtMs the real instant. With
+    /// dueAtMs == 0 the date is free text and never rings.
     qint64 dueAtMs = 0;
-    Repeat repeat = Once;     // solo Reminder, y solo con dueAtMs
-    bool fired = false;       // ya avisó (y se descartó): no vuelve a sonar
-    bool ringing = false;     // solo en memoria: está sonando ahora mismo
-    // Cuándo cambió por última vez, para la sincronización con Drive: entre
-    // dos equipos gana la versión más reciente de cada elemento. No lo pone
-    // quien edita sino Store al guardar (ver Store::stampChanges), así que
-    // ninguna tarjeta tiene que acordarse de tocarlo.
+    Repeat repeat = Once;     ///< Reminder only, and only with dueAtMs.
+    bool fired = false;       ///< Already rang and was dismissed: it does not ring again.
+    bool ringing = false;     ///< Runtime only: ringing right now.
+    /// Last change, for the Drive sync (newest version of each element wins).
+    /// Set by Store::stampChanges() on save, never by the editor.
     qint64 updatedMs = 0;
 
-    // Un pico por debajo del 2% del fondo de escala es inaudible: casi siempre
-    // es micrófono mudo o entrada equivocada.
+    /// A peak below 2% of full scale is inaudible: almost always a muted
+    /// microphone or the wrong input.
     bool isSilentTake() const { return type == Voice && level >= 0 && level < 2; }
 
     bool isDue(qint64 nowMs) const {
         return type == Reminder && dueAtMs > 0 && !fired && nowMs >= dueAtMs;
     }
 
-    // Un recordatorio solo cae en un día del calendario si lleva instante
-    // real; los de fecha libre ('due' suelto) son etiqueta y no se colocan.
+    /// Only a reminder with a real instant is placed on the planner; free-text
+    /// dates are just labels.
     bool isScheduled() const { return type == Reminder && dueAtMs > 0; }
 
-    // Se repite de verdad: sin instante real no hay nada que repetir.
     bool repeats() const { return isScheduled() && repeat != Once; }
 
     QDateTime dueAt() const { return QDateTime::fromMSecsSinceEpoch(dueAtMs); }
 
-    // ¿Cae este recordatorio en ese día? Para uno normal es su fecha y ya;
-    // uno repetido cae en todas las que encajan con el patrón, también las
-    // anteriores a dueAtMs -- así un cumpleaños sigue estando en el año pasado
-    // cuando se retrocede por el calendario, en vez de aparecer y desaparecer
-    // según cuándo sonó por última vez.
-    //
-    // Un 29 de febrero solo encaja en los años que lo tienen: adelantarlo al
-    // 28 sería inventarse una fecha que el usuario no escribió.
+    /// Whether the reminder falls on @p day. A repeating one matches its pattern
+    /// in both directions, dates before dueAtMs included, so it stays on past
+    /// cells when browsing back. A 29 February only matches leap years.
     bool occursOn(const QDate &day) const {
         if (!isScheduled() || !day.isValid()) return false;
         const QDate base = dueAt().date();
@@ -101,20 +88,17 @@ struct Note {
         }
     }
 
-    // El instante que le toca a un día concreto: la misma hora, otra fecha.
+    /// The instant for a given day: same time, other date.
     QDateTime occurrenceOn(const QDate &day) const {
         return QDateTime(day, dueAt().time());
     }
 
-    // El siguiente aviso posterior a 'fromMs'. Cada vuelta se cuenta desde la
-    // fecha original y no desde la anterior: encadenar addYears() sobre un 29
-    // de febrero lo deja en el 28 al pasar por un año normal, y a partir de ahí
-    // el recordatorio se habría mudado de día él solo.
-    //
-    // Se salta de golpe a la vuelta que toca -- la aplicación puede haber
-    // estado cerrada años -- y se afina en el bucle, que además exige que la
-    // fecha encaje de verdad con el patrón: por eso un aviso del 29 de febrero
-    // vuelve cada cuatro años, que es cuando existe ese día.
+    /// The next turn after @p fromMs.
+    ///
+    /// Every turn is counted from the original date, never from the previous one:
+    /// chaining addYears() over a 29 February slides it to the 28th for good. It
+    /// jumps straight to the due turn (the app may have been closed for years)
+    /// and then requires occursOn(), which is why a 29 February waits four years.
     qint64 nextOccurrenceAfter(qint64 fromMs) const {
         if (!repeats()) return dueAtMs;
 
@@ -123,16 +107,14 @@ struct Note {
         int step = 0;
         if (fromMs > baseMs) {
             constexpr qint64 week = 7LL * 24 * 3600 * 1000;
-            // La estimación se queda corta a propósito (división entera, año
-            // contra año): pasarse saltaría una vuelta, quedarse corto solo
-            // cuesta un par de iteraciones.
+            // Deliberately underestimated: overshooting would skip a turn, falling
+            // short only costs a couple of iterations.
             step = repeat == Weekly
                        ? int((fromMs - baseMs) / week)
                        : QDateTime::fromMSecsSinceEpoch(fromMs).date().year() - base.date().year();
         }
 
-        // El tope cubre de sobra lo que falte por afinar, incluidos los cuatro
-        // años de espera de un 29 de febrero.
+        // Enough to refine any estimate, including a 29 February's four years.
         for (int i = 0; i < 16; ++i, ++step) {
             const QDateTime when = repeat == Weekly ? base.addDays(7LL * step)
                                                     : base.addYears(step);
@@ -164,28 +146,23 @@ struct Note {
         return Once;
     }
 
-    // Ruta absoluta de una imagen adjunta.
+    /// Absolute path of an attached image.
     static QString imagePath(const QString &name) { return imageDir() + "/" + name; }
 
-    // Lo que se enseña como fecha. Con instante real se vuelve a escribir en
-    // el idioma de ahora, porque 'due' guarda la etiqueta tal como se generó
-    // -- cambiar de idioma dejaría "vie 21 ago 18:00" en un panel en inglés.
-    // Sin instante, 'due' es texto libre del usuario y se respeta.
+    /// The date as shown. With a real instant it is re-derived in the current
+    /// language (@ref due keeps the label as generated); free text is kept as is.
     QString dueLabel() const {
         if (!isScheduled()) return due;
-        // El anual se enseña sin año: la gracia de un cumpleaños es el día, y
-        // el año que llevara escrito sería siempre el de la próxima vez.
+        // A yearly one is shown without the year, which would always be the next.
         return Lang::locale().toString(dueAt(), repeat == Yearly ? "d MMM HH:mm"
                                                                 : "ddd d MMM HH:mm");
     }
     QDate dueDate() const { return isScheduled() ? dueAt().date() : QDate(); }
 
-    // Ruta absoluta del adjunto; vacía si la nota no tiene audio grabado.
+    /// Absolute path of the voice take; empty if none was recorded.
     QString audioPath() const {
         return audio.isEmpty() ? QString() : audioDir() + "/" + audio;
     }
-
-    // --- serialización -----------------------------------------------------
 
     QJsonObject toJson() const {
         QJsonObject o;
@@ -255,8 +232,6 @@ struct Note {
         }
         return n;
     }
-
-    // --- helpers -----------------------------------------------------------
 
     int doneCount() const {
         int c = 0;

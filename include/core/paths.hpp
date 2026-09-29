@@ -5,34 +5,28 @@
 #include <QStandardPaths>
 #include <QString>
 
-// Dónde viven los datos. Está aparte del modelo (note.hpp) porque es lo único
-// que sabe de disco: quien solo maneja notas no necesita arrastrar esto.
-
-// Carpeta elegida a mano en ajustes. No puede guardarse en notes.json (que
-// vive justamente ahí dentro), así que Store la lee de QSettings al arrancar.
+/// Data folder picked by hand in settings. It cannot live in notes.json (which
+/// lives inside it), so Store reads it from QSettings at startup.
 inline QString &dataDirOverride() {
     static QString dir;
     return dir;
 }
 
-// Si la carpeta configurada se puede usar ahora mismo. Distinguirlo importa,
-// y costó caro averiguarlo: una carpeta elegida a mano puede vivir en un
-// volumen que todavía no está montado —un pendrive se monta cuando el usuario
-// lo abre, mucho después del arranque de sesión— y entonces la ruta no existe.
+/// Whether the configured data folder can be used right now. A hand-picked
+/// folder may sit on a volume that is not mounted yet (a USB stick is mounted
+/// when its owner opens it, long after login), and then the path is missing.
 inline bool dataDirAvailable() {
-    if (dataDirOverride().isEmpty()) return true;   // la estándar siempre se crea
+    if (dataDirOverride().isEmpty()) return true;   // the default folder is always created
     return QFileInfo(dataDirOverride()).isDir();
 }
 
-// Raíz de datos de la app: notes.json y los adjuntos viven aquí. Todo el mundo
-// la calcula desde aquí para que nadie discrepe de la ruta.
-//
-// La carpeta elegida a mano NO se crea nunca aquí, y esa es la diferencia
-// entre esta versión y la que perdió notas: con `mkpath` a ciegas, un pendrive
-// sin montar hacía que se fabricara la ruta entera sobre el punto de montaje
-// vacío, la app arrancaba creyendo que su dueño no tenía ninguna nota, y al
-// aparecer el volumen escribía ese vacío encima de las de verdad. La carpeta
-// se creó al elegirla; si ahora no está, es que no está.
+/// Root of the app data: notes.json and the attachments live here.
+///
+/// A hand-picked folder is never created here. A blind `mkpath` on an
+/// unmounted drive built the whole path on the empty mount point, the app
+/// took it for a fresh install, and later wrote that emptiness over the real
+/// notes. The folder was created when it was picked; if it is missing now,
+/// it is missing.
 inline QString appDataDir() {
     if (!dataDirOverride().isEmpty()) return dataDirOverride();
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -40,10 +34,9 @@ inline QString appDataDir() {
     return dir;
 }
 
-// Los adjuntos, en una carpeta por tipo, para que mudar los datos siga siendo
-// copiar dos directorios. Se crean solo si la raíz está de verdad ahí: `mkpath`
-// crea la cadena entera, así que sin esta guarda volverían a fabricar la ruta
-// fantasma que appDataDir() ya no fabrica.
+/// Attachment folders, one per kind. Created only while the root is really
+/// there: `mkpath` creates the whole chain and would rebuild the phantom path
+/// appDataDir() no longer builds.
 inline QString audioDir() {
     const QString dir = appDataDir() + "/audio";
     if (dataDirAvailable()) QDir().mkpath(dir);
@@ -56,9 +49,8 @@ inline QString imageDir() {
     return dir;
 }
 
-// Las copias de seguridad, dentro de la propia carpeta de datos: así viajan
-// con las notas al pendrive, que es donde de verdad hacen falta. Devuelve
-// vacío si la carpeta no está, para que quien copie sepa que no hay dónde.
+/// Backups, inside the data folder so they travel with the notes.
+/// @return Empty when the data folder is unavailable.
 inline QString backupDir() {
     if (!dataDirAvailable()) return QString();
     const QString dir = appDataDir() + "/backups";

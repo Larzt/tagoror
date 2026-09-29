@@ -13,18 +13,18 @@
 class QFrame;
 class QVBoxLayout;
 
-// Menú propio del widget: sustituye a QMenu en todos los selectores.
-//
-// QMenu es una ventana nativa que no hereda la translucidez del panel, así que
-// con esquinas redondeadas y fondo semitransparente se veía opaco y con los
-// bordes cuadrados. Popup se dibuja como el panel (marco translúcido + sombra)
-// y toma la opacidad del Theme, de modo que todo el widget se ve igual.
+/// The app's own menu, used everywhere instead of QMenu.
+///
+/// QMenu is a native window that does not inherit the panel's translucency,
+/// so against the rounded frame it rendered opaque with square corners. Popup
+/// rebuilds the panel's look (translucent frame plus shadow). Rows are plain
+/// widgets holding a std::function, so adding one needs no moc.
 class Popup : public QWidget {
     Q_OBJECT
 
 public:
-    // Los menús se dibujan opacos aunque el panel sea translúcido: un menú
-    // transparente sobre las tarjetas se lee fatal. Translucent es opt-in.
+    /// Menus render opaque even when the panel is translucent: a see-through menu
+    /// over the cards is unreadable. Translucent is opt-in.
     enum Surface { Opaque, Translucent };
 
     explicit Popup(const Theme &theme, QWidget *anchor = nullptr, Surface surface = Opaque);
@@ -35,53 +35,47 @@ public:
                  std::function<void()> action = nullptr);
     void addEditor(const QString &placeholder, const QString &text,
                    std::function<void(const QString &)> commit);
-    // Varios campos en un mismo popup, confirmados a la vez. Con addEditor no
-    // se puede: cada campo cerraría el popup por su cuenta al pulsar Enter.
+    /// Several fields confirmed together. Two addEditor() calls cannot do this:
+    /// each field would close the popup on its own Enter.
     void addFields(const QStringList &placeholders, const QStringList &values,
                    std::function<void(const QStringList &)> commit);
-    // Botones pequeños en horizontal, dos o tres por fila. Una lista de horas
-    // como filas de menú mide más que el calendario que la abre.
+    /// Small buttons in rows of two or three. A list of hours as menu rows is
+    /// taller than the calendar that opens it.
     void addChips(const QStringList &labels, const QList<bool> &muted,
                   const QString &mutedTip, std::function<void(int)> action);
-    // Chips de los que uno está elegido. Es otra cosa que addChips: aquello es
-    // una lista de acciones (qué hora pongo), esto es un ajuste con estado
-    // (cada cuánto), y el menú tiene que enseñar cuál está puesto.
+    /// Chips with one chosen: a setting with state (how often), unlike
+    /// addChips(), which is a list of actions. The chosen one is marked.
     void addChoice(const QStringList &labels, int chosen, std::function<void(int)> action);
-    // Lo mismo con iconos en vez de texto, todos en una fila: los glifos de
-    // las áreas. 'tips' es lo que dice cada uno al pasar por encima.
+    /// Same with icons instead of text, all in one row (the area glyphs).
     void addIconChoice(const QStringList &iconKinds, const QStringList &tips, int chosen,
                        std::function<void(int)> action);
-    // Un párrafo de texto suelto, para lo que un menú tiene que explicar antes
-    // de ofrecer nada (qué se lleva por delante borrar un área).
+    /// A loose paragraph, for what a menu must explain before offering anything.
     void addText(const QString &text);
-    // Un nombre y un color a la vez, para las categorías del planificador.
-    // Enter confirma con el color marcado; pulsar un color confirma con ese y
-    // con lo que haya escrito, así que crear una es escribir y elegir color.
+    /// A name and a colour at once, for planner categories. Enter confirms with
+    /// the marked colour; clicking a colour confirms with that one and the text.
     void addNameColor(const QString &placeholder, const QString &name,
                       const QList<QColor> &colors, int chosen,
                       std::function<void(const QString &, int)> commit);
     void addSeparator();
 
-    // Sitúa el popup pegado a un widget, corrigiendo si se sale de la pantalla.
+    /// Places the popup under @p anchor, clamped to the screen.
     void showUnder(QWidget *anchor);
-    // Igual, pero con la promesa de no subirse nunca por encima del widget:
-    // antes, un panel cerca del borde inferior hacía que la corrección contra
-    // la pantalla empujara el menú hacia arriba, sobre el calendario.
+    /// Like showUnder(), but never moved up over @p anchor: near the bottom edge
+    /// the clamp used to push the menu over the calendar that opened it.
     void showBelow(QWidget *anchor);
     void showAt(const QPoint &globalPos);
 
 protected:
-    // Flechas arriba y abajo recorren las filas, como en cualquier menú; Tab
-    // también, porque las filas se alcanzan igual que cualquier otro control.
+    /// Up and Down walk the rows, like any menu; Tab too.
     void keyPressEvent(QKeyEvent *e) override;
     void showEvent(QShowEvent *e) override;
 
 private:
-    // La acción se ejecuta tras cerrar: elegir "eliminar" destruye la tarjeta
-    // que abrió el popup, así que no puede correr con el popup todavía vivo.
+    /// Runs @p action after closing: "delete" destroys the card that opened the
+    /// popup, so it cannot run while the popup is alive.
     void run(const std::function<void()> &action);
-    // minY corta la corrección hacia arriba: el popup se saldrá por abajo
-    // antes que taparse el widget que lo abrió.
+    /// @p minY limits the upward correction: the popup rather overflows the
+    /// screen bottom than covers the widget that opened it.
     void place(const QPoint &globalTopLeft, int minY = INT_MIN);
 
     Theme m_theme;
