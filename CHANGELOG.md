@@ -4,6 +4,43 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.0.0] — 2026-09-29
+
+Workspaces, the planner in step with Google Calendar, an ordinary-window mode,
+and events you move by dragging them.
+
+### Added
+
+- **Workspace areas.** The note list is split into tabs (*Personal*, *Work*,
+  whatever you need), each with an optional monochrome glyph. **Ctrl+T**
+  creates one, **Ctrl+1…9** switch, **F2** renames, and dropping a card on a
+  tab moves the note there. Deleting an area asks whether to move its notes or
+  delete them. Areas sync through Google Drive; which one is open is kept per
+  computer.
+- **Sync with Google Calendar**, both ways, as part of the Google Drive sync.
+  Turn it on per computer in *Settings → Google Calendar*; each calendar you
+  follow becomes a planner category with Google's name and colour, and events
+  in Tagoror's own categories go to the calendar you choose. Repeating events,
+  all-day and multi-day events come across; unfollowing a calendar never
+  deletes anything in Google.
+- **App mode** (*Settings → Window*): Tagoror as an ordinary window with the
+  system's title bar, in the taskbar and Alt+Tab, instead of the frameless
+  widget on the desktop. The **–** button minimises instead of folding to the
+  dock.
+- **Drag to reschedule in the planner.** In the day and week views drag an
+  event or reminder to another hour or day (in 15-minute steps), or drag its
+  bottom edge to change when it ends; in the all-day band and the month view,
+  drag it to another day. Moving one occurrence of a repeating event moves the
+  series, as editing it does. Escape cancels the drag.
+- The planner has **all-day and multi-day events** and a **yearly** repeat.
+
+### Changed
+
+- The planner's categories show Google calendars apart from Tagoror's own,
+  under their own heading, both in the side panel and in the event form.
+- New screenshots in the README and on the website, all in English.
+- Code comments are now in English and in Doxygen format.
+
 ## [3.2.0] — 2026-09-27
 
 Checklist items you can reorder, and a website.

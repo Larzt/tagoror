@@ -92,6 +92,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.0.0" date="2026-09-29">
+      <description>
+        <p>Notes can be split into workspace areas shown as tabs. The planner
+           syncs both ways with Google Calendar through the Google Drive
+           connection, supports all-day, multi-day and yearly events, and lets
+           you move events to another time or day by dragging them. A new app
+           mode runs Tagoror as an ordinary window in the taskbar.</p>
+      </description>
+    </release>
     <release version="3.2.0" date="2026-09-27">
       <description>
         <p>Checklist items can be reordered by dragging or with Alt+Up and
