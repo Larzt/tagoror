@@ -92,6 +92,14 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.1.0" date="2026-10-03">
+      <description>
+        <p>The tray menu can bring Tagoror to the front or send it to the back,
+           fold it, open any page directly, and switch always on top and app
+           mode. In app mode the window keeps one size and place for every
+           page.</p>
+      </description>
+    </release>
     <release version="4.0.0" date="2026-09-29">
       <description>
         <p>Notes can be split into workspace areas shown as tabs. The planner

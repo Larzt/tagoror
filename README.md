@@ -222,7 +222,8 @@
   a dock you can also drag around.
 - **Each page keeps its own size**: make the planner or the settings bigger and
   the note list stays as it was. *Size per page* in settings turns it off, back
-  to one size for everything.
+  to one size for everything. It is the widget's thing: in app mode the window
+  keeps whatever size and place you give it, whichever page is open.
 - The panel opens *away* from the nearest screen edge: a dock on the right side
   opens to the left, one near the bottom opens upwards. Folding is the mirror
   image, so the dock appears on the corner the panel will reopen from and

@@ -258,11 +258,16 @@ private:
     void buildTray();
     void buildTrayMenu();           ///< Rebuilt wholesale on a language change.
     void toggleFromTray();
+    /// Above every other window until sent back: the widget leaves the desktop
+    /// layer, which a plain raise() cannot get it out of.
+    void liftToFront();
+    void sendToBack();
     /// @}
 
     /// @name Window
     /// @{
     void applyWindowFlags();        ///< Always on top or on the desktop.
+    void setOnTop(bool on);         ///< Prefs::onTop, from settings or the tray.
     /// Frameless widget or ordinary desktop window (Prefs::appMode). In app mode
     /// there is no shadow margin and no dock: "–" minimises.
     void setAppMode(bool on);
@@ -376,6 +381,9 @@ private:
     QSize m_listSize;                      ///< The list's, with size per page.
     QPoint m_dockOffset;                   ///< The point of the panel the dock goes in and out through.
     bool m_posRestored = false;            ///< The saved position is restored only on map.
+    /// Brought to front from the tray: the widget is out of the desktop layer
+    /// until sent back. Not saved, it does not survive a restart.
+    bool m_lifted = false;
     /// The geometry before the window was stretched to fit a page's minimum, and
     /// the one it was left at. Leaving restores the first, but only if the second
     /// is still the current geometry: once the user resizes, the size is theirs.

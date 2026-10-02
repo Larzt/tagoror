@@ -606,12 +606,7 @@ QWidget *Panel::buildBody() {
         save();
     });
     connect(m_settings, &SettingsView::appModeToggled, this, &Panel::setAppMode);
-    connect(m_settings, &SettingsView::onTopToggled, this, [this](bool on) {
-        m_store.prefs().onTop = on;
-        applyWindowFlags();
-        refreshSettings();
-        save();
-    });
+    connect(m_settings, &SettingsView::onTopToggled, this, &Panel::setOnTop);
     connect(m_settings, &SettingsView::sizePerPageToggled, this, [this](bool on) {
         if (on) {
             // The list's size comes from the old rule (without the planner's widening or
@@ -1313,6 +1308,9 @@ void Panel::setAppMode(bool on) {
     m_listSize += QSize(delta, delta);
     for (QSize &s : m_store.prefs().pageSizes) s += QSize(delta, delta);
     m_grownFrom = m_grownTo = m_narrowGeom = m_wideGeom = QRect();
+    // Size per page is off in app mode, so the window may have moved since the
+    // list's corner was recorded: back in the widget, it starts again from here.
+    m_pageHome = m_pagePlaced = QRect();
     keepOnScreen();
     refreshSettings();
     save();
@@ -1376,7 +1374,9 @@ void Panel::showNotes() {
     refreshTitle();
 }
 
-bool Panel::sizePerPage() const { return m_store.prefs().sizePerPage; }
+/// Widget only: an ordinary window keeps the size and place the user gives it,
+/// whatever page is open. The preference is kept for when it goes back.
+bool Panel::sizePerPage() const { return !appMode() && m_store.prefs().sizePerPage; }
 
 /// Fixed names rather than those of pages(): those are Spanish for
 /// translation, and these are stored in notes.json.
@@ -2335,12 +2335,20 @@ void Panel::buildTrayMenu() {
 
     QAction *toggle = m_trayMenu->addAction(L("Mostrar"));
     connect(toggle, &QAction::triggered, this, &Panel::toggleFromTray);
-    // The label says what will happen, which depends on the window's state when
-    // the menu opens.
-    connect(m_trayMenu, &QMenu::aboutToShow, this,
-            [this, toggle] {
-                toggle->setText(isVisible() && !isMinimized() ? L("Ocultar") : L("Mostrar"));
-            });
+    QAction *front = m_trayMenu->addAction(L("Traer al frente"));
+    connect(front, &QAction::triggered, this, &Panel::liftToFront);
+    QAction *back = m_trayMenu->addAction(L("Enviar al fondo"));
+    connect(back, &QAction::triggered, this, &Panel::sendToBack);
+    QAction *fold = m_trayMenu->addAction(L("Plegar a icono"));
+    connect(fold, &QAction::triggered, this, [this] {
+        if (appMode()) {
+            showMinimized();
+            return;
+        }
+        if (m_stack->currentWidget() == m_badge) expand();
+        else collapse();
+        showRestored();
+    });
 
     m_trayMenu->addSeparator();
     QMenu *create = m_trayMenu->addMenu(L("Nueva nota"));
@@ -2356,8 +2364,53 @@ void Panel::buildTrayMenu() {
             showRestored();
         });
 
+    // Unfolded first: the page is then sized as if its header button was clicked.
+    QMenu *open = m_trayMenu->addMenu(L("Abrir"));
+    connect(open->addAction(L("Notas")), &QAction::triggered, this, [this] {
+        bringToFront();
+        showNotes();
+    });
+    for (const Page &p : pages())
+        connect(open->addAction(L(p.name)), &QAction::triggered, this, [this, page = p.page] {
+            bringToFront();
+            if (m_body->currentWidget() != page) togglePage(page);
+        });
+
+    m_trayMenu->addSeparator();
+    QAction *onTop = m_trayMenu->addAction(L("Siempre encima"));
+    onTop->setCheckable(true);
+    connect(onTop, &QAction::triggered, this, &Panel::setOnTop);
+    QAction *app = m_trayMenu->addAction(L("Modo aplicación"));
+    app->setCheckable(true);
+    connect(app, &QAction::triggered, this, [this](bool on) {
+        // App mode has no dock: switching while folded would leave the window
+        // as a bare badge with a frame around it.
+        if (m_stack->currentWidget() == m_badge) expand();
+        setAppMode(on);
+        showRestored();
+    });
+
     m_trayMenu->addSeparator();
     connect(m_trayMenu->addAction(L("Salir")), &QAction::triggered, qApp, &QApplication::quit);
+
+    // The labels say what will happen, which depends on the window's state when
+    // the menu opens.
+    connect(m_trayMenu, &QMenu::aboutToShow, this,
+            [this, toggle, front, back, fold, onTop, app] {
+                const bool shown = isVisible() && !isMinimized();
+                const bool folded = m_stack->currentWidget() == m_badge;
+                const bool pinned = m_store.prefs().onTop;
+                toggle->setText(shown ? L("Ocultar") : L("Mostrar"));
+                // Always on top already is the front, and nothing goes beneath it.
+                front->setEnabled(!pinned);
+                // The widget on the desktop layer is already at the back.
+                back->setEnabled(!pinned && shown && (appMode() || m_lifted));
+                fold->setText(appMode() ? L("Minimizar")
+                              : folded  ? L("Desplegar")
+                                        : L("Plegar a icono"));
+                onTop->setChecked(pinned);
+                app->setChecked(appMode());
+            });
 
     m_tray->setContextMenu(m_trayMenu);
 }
@@ -2370,6 +2423,24 @@ void Panel::toggleFromTray() {
     }
     // It comes back as it was left, folded or not: hiding is not folding.
     showRestored();
+}
+
+void Panel::liftToFront() {
+    // An ordinary window already stacks like any other; only the widget is held
+    // down by its hint.
+    if (!appMode() && !m_store.prefs().onTop && !m_lifted) {
+        m_lifted = true;
+        applyWindowFlags();
+    }
+    bringToFront();
+}
+
+void Panel::sendToBack() {
+    if (m_lifted) {
+        m_lifted = false;
+        applyWindowFlags();   // back on the desktop layer
+    }
+    lower();
 }
 
 void Panel::closeEvent(QCloseEvent *e) {
@@ -2404,7 +2475,8 @@ void Panel::applyWindowFlags() {
     // By default the widget stays on the desktop, below other windows; "always on
     // top" is optional. On Wayland these hints are only a request.
     Qt::WindowFlags flags = Qt::FramelessWindowHint | Qt::Tool;
-    flags |= m_store.prefs().onTop ? Qt::WindowStaysOnTopHint : Qt::WindowStaysOnBottomHint;
+    if (m_store.prefs().onTop) flags |= Qt::WindowStaysOnTopHint;
+    else if (!m_lifted) flags |= Qt::WindowStaysOnBottomHint;
     // App mode: an ordinary window with its frame, in the taskbar and Alt+Tab.
     // Without "always on top" it stacks like any other, not below them.
     if (appMode()) {
@@ -2415,6 +2487,14 @@ void Panel::applyWindowFlags() {
     const bool wasVisible = isVisible();
     setWindowFlags(flags);
     if (wasVisible) show();   // setWindowFlags() hides the window
+}
+
+void Panel::setOnTop(bool on) {
+    m_store.prefs().onTop = on;
+    m_lifted = false;   // either way the preference decides the layer again
+    applyWindowFlags();
+    refreshSettings();
+    save();
 }
 
 void Panel::showPage(QWidget *page) {

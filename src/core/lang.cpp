@@ -168,6 +168,10 @@ const QHash<QString, QString> &table() {
         {"Salir", "Quit"},
         {"Mostrar", "Show"},
         {"Ocultar", "Hide"},
+        {"Traer al frente", "Bring to front"},
+        {"Enviar al fondo", "Send to back"},
+        {"Desplegar", "Unfold"},
+        {"Notas", "Notes"},
         {"Recordatorio vencido", "Reminder overdue"},
 
         // Cards

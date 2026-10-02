@@ -4,6 +4,24 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.1.0] — 2026-10-03
+
+A fuller tray menu, and app mode behaving like an ordinary window.
+
+### Added
+
+- **More in the tray menu.** Besides showing, hiding and creating notes, it can
+  now **bring Tagoror to the front** (out of the desktop layer until you send it
+  back), **send it to the back**, fold or unfold it (minimise in app mode),
+  **open any page** directly — notes, planner, timers, birthdays or settings —
+  and switch **Always on top** and **App mode** without opening settings.
+
+### Changed
+
+- **Size per page is now the widget's alone.** In app mode the window keeps the
+  size and place you give it whichever page is open, and the switch no longer
+  shows in settings. Your choice is kept for when you go back to the widget.
+
 ## [4.0.0] — 2026-09-29
 
 Workspaces, the planner in step with Google Calendar, an ordinary-window mode,

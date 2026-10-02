@@ -449,10 +449,12 @@ void SettingsView::addWindow() {
               : m_store->prefs().appMode ? L("Como cualquier otra ventana")
                                          : L("Pegada al escritorio"),
               m_store->prefs().onTop, [this](bool on) { emit onTopToggled(on); });
-    addToggle(L("Tamaño por página"),
-              m_store->prefs().sizePerPage ? L("Cada página recuerda el suyo")
-                                           : L("El mismo para todas"),
-              m_store->prefs().sizePerPage, [this](bool on) { emit sizePerPageToggled(on); });
+    // The widget's thing: a normal window keeps whatever size it is given.
+    if (!m_store->prefs().appMode)
+        addToggle(L("Tamaño por página"),
+                  m_store->prefs().sizePerPage ? L("Cada página recuerda el suyo")
+                                               : L("El mismo para todas"),
+                  m_store->prefs().sizePerPage, [this](bool on) { emit sizePerPageToggled(on); });
 
 #ifdef Q_OS_LINUX
     // See choosePlatform() in main.cpp: the panel's placement and "always on top"
