@@ -5,6 +5,7 @@
 #include <QJsonObject>
 #include <QList>
 #include <QString>
+#include <QStringList>
 #include <QUuid>
 
 #include "core/lang.hpp"
@@ -238,6 +239,29 @@ struct Note {
         for (const CheckItem &it : items)
             if (it.done) ++c;
         return c;
+    }
+
+    /// The note as text to paste elsewhere: title, date, body (its Markdown
+    /// source), checklist items as Markdown tasks and links. Not for voice notes,
+    /// whose content is the take.
+    QString plainText() const {
+        QStringList parts;
+        if (!title.trimmed().isEmpty()) parts << title.trimmed();
+        if (type == Reminder && !dueLabel().isEmpty()) parts << dueLabel();
+        if (!body.trimmed().isEmpty()) parts << body.trimmed();
+        if (!items.isEmpty()) {
+            QStringList lines;
+            for (const CheckItem &it : items)
+                lines << QString("- [%1] %2").arg(it.done ? "x" : " ", it.text);
+            parts << lines.join('\n');
+        }
+        if (!links.isEmpty()) {
+            QStringList lines;
+            for (const Link &l : links)
+                lines << (l.label.isEmpty() ? l.url : QString("%1: %2").arg(l.label, l.url));
+            parts << lines.join('\n');
+        }
+        return parts.join("\n\n");
     }
 
     bool matches(const QString &query) const {

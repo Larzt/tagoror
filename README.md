@@ -246,8 +246,11 @@
 </p>
 
 - Everything in one place, from the gear in the header: the accent colour, the
-  opacity, **the text size**, the language, whether the window stays on top,
+  opacity, **the typeface and text size**, the language, whether the window stays on top,
   where your notes are kept, the backups and which microphone to record from.
+- **Typeface**: Libron, which comes with the app and is the default, the
+  system's own font, or any installed one — type its name or the start of it
+  ("fira" finds Fira Sans). Times, dates and counters stay monospaced.
 - **Text size** comes in four steps, from small to extra large, with a live
   sample underneath. It scales what you write — titles, note bodies, checklist
   items, the planner — and leaves the chrome around it alone, so a larger size
@@ -345,6 +348,9 @@ Drive row in settings is simply disabled.
   — dates included, which follow the setting rather than the system.
 - Every menu is drawn by the app itself — no native `QMenu` — so right-clicking
   a note gives you the note's own options instead of a cut/copy/paste menu.
+- **Copy contents** in the right-click menu puts a text, checklist or reminder
+  note on the clipboard as text — title, date, body, checklist items as
+  `- [ ]` / `- [x]` tasks and links. Voice notes don't have it.
 - No image assets at all: the icons are drawn with `QPainter` and the alarm tone
   is synthesised on first use.
 
@@ -361,7 +367,9 @@ Drive row in settings is simply disabled.
 
 ### Other
 
-- Filter notes as you type — titles, bodies, checklist items and links.
+- Filter notes as you type — titles, bodies, checklist items and links. The
+  search box sits under the workspace tabs, next to the **+** that creates a
+  note; **Ctrl+F** jumps to it and **Ctrl+N** opens the new-note menu.
 - An empty panel offers a button to create the first note.
 - Everything is saved automatically, a moment after you stop typing — and a
   copy of the previous file is kept on the schedule you choose.
@@ -689,9 +697,15 @@ The interface is built with **Qt 6**, used unmodified under the **LGPL-3.0**
 and linked dynamically. The packages that bundle it — the AppImage, the Windows
 installer and the ZIP — therefore ship Qt's own libraries next to the binary,
 where they can be replaced with a compatible build; Qt's licence texts travel
-inside those Qt files. Nothing else is vendored: the icons are drawn with
-`QPainter` and the alarm tone is synthesised at runtime, so there are no
-third-party assets to attribute.
+inside those Qt files.
+
+The default typeface is **[Libron](https://github.com/nicoverbruggen/libron)**
+by Nico Verbruggen, under the **SIL Open Font License 1.1**. It is embedded in
+the binary, and its licence ([`fonts/libron/OFL.txt`](fonts/libron/OFL.txt))
+travels with every package: `share/licenses/tagoror/LICENSE-Libron` on Linux,
+`LICENSE-Libron.txt` next to `tagoror.exe` on Windows. Nothing else is
+vendored: the icons are drawn with `QPainter` and the alarm tone is
+synthesised at runtime.
 
 ## Known limitations
 

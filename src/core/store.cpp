@@ -372,6 +372,7 @@ void Store::save() {
     root["lang"] = Lang::toString(m_prefs.lang);
     root["birthdaysByMonth"] = m_prefs.birthdaysByMonth;
     root["textScale"] = m_prefs.textScale;
+    root["font"] = m_prefs.font;
     root["plannerView"] = m_prefs.plannerView;
     root["plannerHidden"] = QJsonArray::fromStringList(m_prefs.plannerHidden);
     QJsonArray timers;
@@ -780,6 +781,7 @@ bool Store::readObject(const QJsonObject &root) {
     Lang::setCurrent(m_prefs.lang);
     m_prefs.birthdaysByMonth = root["birthdaysByMonth"].toBool();
     if (root.contains("textScale")) m_prefs.textScale = qBound(80, root["textScale"].toInt(100), 150);
+    m_prefs.font = root["font"].toString();
     if (root.contains("plannerView")) m_prefs.plannerView = qBound(0, root["plannerView"].toInt(2), 2);
     for (const QJsonValue v : root["plannerHidden"].toArray())
         m_prefs.plannerHidden << v.toString();

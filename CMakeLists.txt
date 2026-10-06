@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 4.1.0 LANGUAGES CXX)
+project(tagoror VERSION 4.2.0 LANGUAGES CXX)
 
 # La versión que llega al binario (la que compara el aviso de actualizaciones)
 # y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de
@@ -133,6 +133,17 @@ qt_add_resources(tagoror "appicon"
         packaging/icons/128x128/tagoror.png
         packaging/icons/256x256/tagoror.png)
 
+# Libron (OFL-1.1) es la tipografía de la interfaz. Va empotrada: no hay que
+# instalarla en el sistema y se ve igual en Linux y en Windows.
+qt_add_resources(tagoror "fonts"
+    PREFIX "/fonts"
+    BASE "fonts/libron"
+    FILES
+        fonts/libron/Libron-Regular.ttf
+        fonts/libron/Libron-Italic.ttf
+        fonts/libron/Libron-Bold.ttf
+        fonts/libron/Libron-BoldItalic.ttf)
+
 target_include_directories(tagoror PRIVATE include)
 target_compile_definitions(tagoror PRIVATE TAGOROR_APP_ID="${TAGOROR_APP_ID}")
 # Hasta ahora la versión solo llegaba al .rc de Windows y el binario no sabía
@@ -183,6 +194,8 @@ if (WIN32)
     # en la carpeta que luego empaquetan el ZIP portable y Inno Setup, así que
     # las dos formas de repartirlo llevan el texto dentro.
     install(FILES LICENSE DESTINATION .)
+    # La OFL pide que la licencia acompañe a la tipografía empotrada.
+    install(FILES fonts/libron/OFL.txt DESTINATION . RENAME LICENSE-Libron.txt)
     return()
 endif()
 
@@ -209,6 +222,10 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${TAGOROR_APP_ID}.metainfo.xml
 # ID solo manda en el .desktop, los iconos y la ficha de AppStream.
 install(FILES LICENSE
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/tagoror)
+# La de Libron, que va empotrada en el binario: la OFL pide que viaje con ella.
+install(FILES fonts/libron/OFL.txt
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/tagoror
+        RENAME LICENSE-Libron)
 
 # El SVG detallado como icono escalable, y PNG ya rasterizados por tamaño:
 # los cargadores de iconos prefieren el bitmap exacto antes que el escalable

@@ -60,6 +60,10 @@ public:
         /// chrome labels would clip the whole list (see *Card widths* in CLAUDE.md).
         int textScale = 100;
 
+        /// Interface typeface: empty for Libron (bundled), "system" for the
+        /// system's default, otherwise the family name of an installed font.
+        QString font;
+
         /// Planner view (0 day, 1 week, 2 month) and hidden categories.
         int plannerView = 2;
         QStringList plannerHidden;

@@ -1,5 +1,6 @@
 #include <QApplication>
 #include <QDir>
+#include <QFontDatabase>
 #include <QIcon>
 #include <QLocalServer>
 #include <QLocalSocket>
@@ -46,6 +47,17 @@ int main(int argc, char *argv[]) {
     QCoreApplication::setApplicationName("Tagoror");
     // The update check compares against this.
     QCoreApplication::setApplicationVersion(TAGOROR_VERSION);
+
+    // Libron comes embedded and is the default typeface. It is only registered
+    // here: the Panel applies the one chosen in settings once it has read them,
+    // and the system default must stay untouched for whoever picks it.
+    for (const char *style : {"Regular", "Italic", "Bold", "BoldItalic"}) {
+        const int id = QFontDatabase::addApplicationFont(QString(":/fonts/Libron-%1.ttf").arg(style));
+        if (app.property("bundledFont").toString().isEmpty() && id >= 0) {
+            const QStringList families = QFontDatabase::applicationFontFamilies(id);
+            if (!families.isEmpty()) app.setProperty("bundledFont", families.first());
+        }
+    }
 
     // Links the window with its .desktop entry, where launchers and the window
     // switcher take its name and icon (essential on Wayland).

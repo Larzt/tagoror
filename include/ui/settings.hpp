@@ -10,6 +10,9 @@
 #include "ui/theme.hpp"
 
 class ElidedLabel;
+
+/// How a typeface preference (Store::Prefs::font) reads to the user.
+QString fontDisplayName(const QString &pref);
 class QFrame;
 class QToolButton;
 class QVBoxLayout;
@@ -52,6 +55,7 @@ signals:
     void opacityChanged(int value);          ///< Live, while dragging.
     void languagePicked(Lang::Code code);
     void textScalePicked(int percent);
+    void fontEditorRequested(QWidget *anchor);
     void onTopToggled(bool on);
     void appModeToggled(bool on);
     void sizePerPageToggled(bool on);

@@ -1620,6 +1620,17 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
         menu->addSeparator();
     }
 
+    // Everything written on it, to paste elsewhere. A voice note's content is
+    // the take, which has no text to copy.
+    if (m_note->type != Note::Voice) {
+        const QString text = m_note->plainText();
+        if (!text.isEmpty()) {
+            menu->addItem("copy", L("Copiar contenido"), L("Al portapapeles, como texto"),
+                          [text] { QGuiApplication::clipboard()->setText(text); });
+            menu->addSeparator();
+        }
+    }
+
     const QPoint at = e->globalPos();
     menu->addItem("link", L("Añadir enlace…"),
                   m_note->links.isEmpty()

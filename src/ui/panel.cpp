@@ -18,6 +18,7 @@
 #include "core/lang.hpp"
 #include "core/updater.hpp"
 
+#include <QAction>
 #include <QApplication>
 #include <QAudioDevice>
 #include <QDateTime>
@@ -26,6 +27,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontDatabase>
 #include <QGraphicsDropShadowEffect>
 #include <QGuiApplication>
 #include <QHBoxLayout>
@@ -50,6 +52,7 @@
 #include <QSystemTrayIcon>
 #include <QTextEdit>
 #include <QTimer>
+#include <QPointer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -164,6 +167,8 @@ Panel::Panel() {
     m_theme.accent = m_store.prefs().accent;
     m_theme.opacity = m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
+    m_systemFont = QApplication::font();
+    applyFont();
     m_expandedSize = m_store.prefs().windowSize;
     m_listSize = m_expandedSize;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
@@ -384,16 +389,34 @@ void Panel::buildShell() {
     m_alarmBar->hide();
     col->addWidget(m_alarmBar);
 
-    // search bar (hidden by default)
-    m_searchBar = new QWidget;
-    auto *sl = new QHBoxLayout(m_searchBar);
+    // Search and new note, under the areas: both act on the list, so they live
+    // with it and leave the header to the pages.
+    m_notesBar = new QWidget;
+    auto *sl = new QHBoxLayout(m_notesBar);
     sl->setContentsMargins(10, 8, 10, 8);
+    sl->setSpacing(6);
     m_search = new QLineEdit;
     m_search->setPlaceholderText(L("Filtrar notas…"));
+    m_search->setClearButtonEnabled(true);
+    m_searchIcon = m_search->addAction(paintIcon("search", QColor(Theme::muted())),
+                                       QLineEdit::LeadingPosition);
+    m_search->setMinimumWidth(24);   // see *Card widths*: it must not demand its width
     connect(m_search, &QLineEdit::textChanged, this, &Panel::applyFilter);
-    sl->addWidget(m_search);
-    m_searchBar->hide();
-    col->addWidget(m_searchBar);
+    sl->addWidget(m_search, 1);
+    m_addBtn = iconButton("plus", "Nueva nota");
+    m_addBtn->setFixedSize(30, 30);   // the height of the field next to it
+    connect(m_addBtn, &QToolButton::clicked, this, [this] { openNewNoteMenu(m_addBtn); });
+    sl->addWidget(m_addBtn);
+    col->addWidget(m_notesBar);
+
+    // Ctrl+F jumps to the search box, Ctrl+N opens the new-note menu.
+    auto *findKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this);
+    connect(findKey, &QShortcut::activated, this, &Panel::focusSearch);
+    auto *newNoteKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_N), this);
+    connect(newNoteKey, &QShortcut::activated, this, [this] {
+        showNotes();
+        openNewNoteMenu(m_addBtn);
+    });
 
     col->addWidget(buildBody(), 1);
     col->addWidget(buildFooter());
@@ -414,7 +437,7 @@ QFrame *Panel::buildHeader() {
     l->setContentsMargins(12, 8, 10, 8);
     l->setSpacing(4);
 
-    // Elidable: with seven header buttons "Temporizadores" no longer fits at the
+    // Elidable: with five header buttons "Temporizadores" no longer fits at the
     // minimum width, and a label demanding its width would widen the whole window
     // (see *Card widths*).
     m_titleLabel = new ElidedLabel(L("Tagoror"), QColor(Theme::fg()));
@@ -422,23 +445,19 @@ QFrame *Panel::buildHeader() {
     l->addWidget(m_titleLabel);
     l->addStretch();
 
-    auto *search = iconButton("search", "Buscar");
-    auto *add = iconButton("plus", "Nueva nota");
     m_calendarBtn = iconButton("calendar", "Calendario");
     m_timersBtn = iconButton("timer", "Temporizadores");
     m_birthdayBtn = iconButton("cake", "Cumpleaños");
     m_settingsBtn = iconButton("gear", "Ajustes");
     auto *min = iconButton("minus", "Plegar a icono");
     m_minBtn = min;
-    m_headerButtons = {m_calendarBtn, m_timersBtn, m_birthdayBtn, search, add, m_settingsBtn, min};
+    m_headerButtons = {m_calendarBtn, m_timersBtn, m_birthdayBtn, m_settingsBtn, min};
 
-    connect(search, &QToolButton::clicked, this, &Panel::toggleSearch);
     connect(min, &QToolButton::clicked, this, [this] {
         // A normal window minimises to the taskbar; the dock is the widget's thing.
         if (appMode()) showMinimized();
         else collapse();
     });
-    connect(add, &QToolButton::clicked, this, [this, add] { openNewNoteMenu(add); });
     // The page buttons are connected in buildBody(), where the pages exist.
 
     for (QToolButton *b : m_headerButtons) l->addWidget(b);
@@ -588,6 +607,8 @@ QWidget *Panel::buildBody() {
         save();
     });
     connect(m_settings, &SettingsView::accentEditorRequested, this, &Panel::openAccentEditor);
+    connect(m_settings, &SettingsView::fontEditorRequested, this,
+            [this](QWidget *anchor) { openFontEditor(anchor); });
     connect(m_settings, &SettingsView::opacityChanged, this, [this](int v) {
         m_theme.opacity = v;
         m_store.prefs().opacity = v;
@@ -776,6 +797,8 @@ void Panel::applyTheme() {
         b->setIcon(paintIcon(b->property("iconKind").toString(),
                              b->property("active").toBool() ? m_theme.accent
                                                             : QColor(Theme::muted())));
+    m_addBtn->setIcon(paintIcon("plus", QColor(Theme::muted())));
+    m_searchIcon->setIcon(paintIcon("search", QColor(Theme::muted())));
 
     if (m_planner) m_planner->setTheme(m_theme);
     if (m_timerView) m_timerView->setTheme(m_theme);
@@ -812,6 +835,7 @@ void Panel::retranslate() {
 
     for (QToolButton *b : m_headerButtons)
         b->setToolTip(L(b->property("tip").toString()));
+    m_addBtn->setToolTip(L(m_addBtn->property("tip").toString()));
     // The page buttons also say which page is open, so they go their own way.
     refreshPageButtons();
     m_alarmPlus->setText(L("+1 min"));
@@ -1253,15 +1277,10 @@ void Panel::commitOrder() {
     m_store.setOrder(order);
 }
 
-void Panel::toggleSearch() {
-    m_searchBar->setVisible(!m_searchBar->isVisible());
-    if (m_searchBar->isVisible()) {
-        showNotes();          // filtering with the planner in front would not be visible
-        m_search->setFocus();
-    } else {
-        m_search->clear();
-        applyFilter(QString());
-    }
+void Panel::focusSearch() {
+    showNotes();          // filtering with the planner in front would not be visible
+    m_search->setFocus(Qt::ShortcutFocusReason);
+    m_search->selectAll();
 }
 
 void Panel::applyFilter(const QString &q) {
@@ -1354,7 +1373,6 @@ void Panel::togglePage(QWidget *page) {
         showNotes();
         return;
     }
-    m_searchBar->hide();
     if (page == m_planner) m_planner->refresh();
     else if (page == m_timerView) m_timerView->refresh();
     else if (page == m_birthdays) m_birthdays->refresh();
@@ -2019,6 +2037,76 @@ void Panel::openAccentEditor(QWidget *anchor) {
     menu->showUnder(anchor);
 }
 
+/// Only the family changes: sizes come from the stylesheet, and times and dates
+/// keep IBM Plex Mono whatever is chosen. A family no longer installed falls
+/// back to Libron rather than to whatever Qt would substitute.
+void Panel::applyFont() {
+    const QString pref = m_store.prefs().font;
+    const QString bundled = qApp->property("bundledFont").toString();
+    QFont font = m_systemFont;
+    if (pref == "system") {
+        // the system's, as it came
+    } else if (!pref.isEmpty() && QFontDatabase::hasFamily(pref)) {
+        font.setFamily(pref);
+    } else if (!bundled.isEmpty()) {
+        font.setFamily(bundled);
+    }
+    QApplication::setFont(font);
+}
+
+void Panel::pickFont(const QString &pref) {
+    if (pref == m_store.prefs().font) return;
+    m_store.prefs().font = pref;
+    applyFont();
+    // The sheet again so every rule picks up the new family; cards, tabs and the
+    // planner measure their text, so they are rebuilt too.
+    applyTheme();
+    rebuildList();
+    refreshAreaTabs();
+    refreshPlanner();
+    refreshSettings();
+    save();
+}
+
+void Panel::openFontEditor(QWidget *anchor, const QString &notFound) {
+    const QString current = m_store.prefs().font;
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Tipografía"));
+    menu->addItem(current.isEmpty() ? "check" : "text", QStringLiteral("Libron"),
+                  L("Incluida con Tagoror"), [this] { pickFont(QString()); });
+    menu->addItem(current == "system" ? "check" : "text", L("La del sistema"),
+                  m_systemFont.family(), [this] { pickFont("system"); });
+    if (!current.isEmpty() && current != "system")
+        menu->addItem("check", current, L("Instalada en el equipo"), nullptr);
+
+    menu->addSeparator();
+    menu->addHeader(L("Otra instalada"));
+    if (!notFound.isEmpty()) menu->addText(L("No se encuentra «%1».").arg(notFound));
+    menu->addEditor(L("Nombre, p. ej. Georgia"), QString(), [this, anchor](const QString &text) {
+        const QString wanted = text.trimmed();
+        if (wanted.isEmpty()) return;
+        // The exact name in any case first, then the first family starting with it:
+        // "fira" finds "Fira Sans" without having to type it whole.
+        const QStringList families = QFontDatabase::families();
+        QString found;
+        for (const QString &f : families)
+            if (f.compare(wanted, Qt::CaseInsensitive) == 0) { found = f; break; }
+        if (found.isEmpty())
+            for (const QString &f : families)
+                if (f.startsWith(wanted, Qt::CaseInsensitive)) { found = f; break; }
+        if (found.isEmpty()) {
+            // Reopened once this one has closed, saying why nothing changed.
+            QPointer<QWidget> at(anchor);
+            QTimer::singleShot(0, this, [this, at, wanted] {
+                if (at) openFontEditor(at, wanted);
+            });
+            return;
+        }
+        pickFont(found == qApp->property("bundledFont").toString() ? QString() : found);
+    });
+    menu->showUnder(anchor);
+}
+
 void Panel::chooseDataFolder() {
     // The dialog opens where the data is, unless that place does not exist right
     // now: pointing at a missing folder leaves the picker blank.
@@ -2244,6 +2332,7 @@ void Panel::onStoreReloaded() {
     m_theme.opacity = m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
+    applyFont();
     applyTheme();
     // Store::load() already set the language; retranslate() rewrites the window
     // with it and rebuilds cards, planner and tray in one go.
@@ -2536,6 +2625,7 @@ void Panel::showBodyPage(QWidget *page) {
     }
     m_body->setCurrentWidget(page);
     if (m_areaTabs) m_areaTabs->setVisible(page == m_scroll);
+    if (m_notesBar) m_notesBar->setVisible(page == m_scroll);
     syncShellMinimum();
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDate>
+#include <QFont>
 #include <QList>
 #include <QRect>
 #include <QSize>
@@ -9,6 +10,7 @@
 #include "core/store.hpp"
 #include "ui/theme.hpp"
 
+class QAction;
 class QFrame;
 class QGraphicsDropShadowEffect;
 class QLabel;
@@ -211,6 +213,12 @@ private:
     void openNewNoteMenu(QWidget *anchor);
     void refreshSettings();
     void openAccentEditor(QWidget *anchor);
+    /// Libron, the system's or an installed one typed by name. @p notFound is
+    /// the name just typed that matched nothing, to say so.
+    void openFontEditor(QWidget *anchor, const QString &notFound = QString());
+    /// Sets the chosen typeface on the whole application.
+    void applyFont();
+    void pickFont(const QString &pref);
     void chooseDataFolder();
     /// Picking a folder that already holds notes is ambiguous ("take mine there"
     /// or "open those"), so it asks: assuming the first overwrites the
@@ -290,7 +298,7 @@ private:
 
     /// @name Search and folding
     /// @{
-    void toggleSearch();
+    void focusSearch();
     void applyFilter(const QString &q);
     void collapse();
     void expand();
@@ -343,8 +351,10 @@ private:
     QLabel *m_emptyText = nullptr;
     QPushButton *m_emptyBtn = nullptr;
     QLabel *m_footerHint = nullptr;
-    QWidget *m_searchBar = nullptr;
+    QWidget *m_notesBar = nullptr;         ///< Search box and new-note button.
     QLineEdit *m_search = nullptr;
+    QAction *m_searchIcon = nullptr;       ///< Magnifier inside the search box.
+    QToolButton *m_addBtn = nullptr;
     QLabel *m_footerText = nullptr;
     QToolButton *m_calendarBtn = nullptr;
     QToolButton *m_timersBtn = nullptr;
@@ -352,6 +362,7 @@ private:
     QToolButton *m_birthdayBtn = nullptr;
     QToolButton *m_settingsBtn = nullptr;
     QList<QToolButton *> m_headerButtons;
+    QFont m_systemFont;   ///< The application font before any choice was applied.
     QToolButton *m_minBtn = nullptr;
     QVBoxLayout *m_outer = nullptr;
     QGraphicsDropShadowEffect *m_shellShadow = nullptr;

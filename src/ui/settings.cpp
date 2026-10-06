@@ -376,6 +376,11 @@ void SettingsView::addAppearance() {
         b->addWidget(slider);
     }
 
+    // Typeface: the name of the one in use, and a menu to pick another. Above the
+    // text size, whose sample card shows it too.
+    addAction(L("Tipografía"), fontDisplayName(m_store->prefs().font), L("Cambiar…"), true,
+              [this](QWidget *anchor) { emit fontEditorRequested(anchor); });
+
     // Text size: four sizes rather than a slider, each showing its "Aa" at the
     // size it gives, so the row explains itself in both languages without words
     // that would not fit (see *Card widths*).
@@ -425,6 +430,12 @@ void SettingsView::addAppearance() {
         cl->addWidget(body);
         b->addWidget(card);
     }
+}
+
+QString fontDisplayName(const QString &pref) {
+    if (pref.isEmpty()) return QStringLiteral("Libron");
+    if (pref == "system") return L("La del sistema");
+    return pref;
 }
 
 void SettingsView::addLanguage() {

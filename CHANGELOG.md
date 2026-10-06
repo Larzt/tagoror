@@ -4,6 +4,32 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.2.0] — 2026-10-06
+
+Search and new note next to the notes, a typeface of its own, and copying a note as text.
+
+### Added
+
+- **Copy a note's contents.** Right-click a text, checklist or reminder note and
+  pick *Copy contents*: its title, date, text (as Markdown), checklist items as
+  `- [ ]` / `- [x]` tasks and links go to the clipboard. Voice notes don't
+  offer it — their content is the recording.
+
+### Changed
+
+- **Choose the typeface.** *Settings → Appearance → Typeface* switches between
+  [Libron](https://github.com/nicoverbruggen/libron) (SIL Open Font License
+  1.1), now the default and shipped inside the binary so it looks the same on
+  every system, the system's own font, or any font installed on the computer —
+  type its name, or just the start of it. Times, dates and counters keep their
+  monospaced face. Libron's licence is installed alongside Tagoror's.
+
+- **Search box and new-note button under the workspaces.** They left the header
+  for a row of their own right below the area tabs, only on the note list. The
+  search box is always there — no need to open it first — and the **+** sits
+  beside it. **Ctrl+F** jumps to the search and **Ctrl+N** opens the new-note
+  menu.
+
 ## [4.1.0] — 2026-10-03
 
 A fuller tray menu, and app mode behaving like an ordinary window.

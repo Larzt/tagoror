@@ -12,7 +12,7 @@
   <metadata_license>CC0-1.0</metadata_license>
   <!-- metadata_license es la de esta ficha; project_license, la del programa
        (el fichero LICENSE de la raíz). Flathub exige las dos. -->
-  <project_license>MIT</project_license>
+  <project_license>MIT AND OFL-1.1</project_license>
 
   <developer id="io.github.larzt">
     <name>Alejandro</name>
@@ -92,6 +92,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.2.0" date="2026-10-06">
+      <description>
+        <p>The search box and the new-note button now sit together below the
+           workspace tabs, with Ctrl+F and Ctrl+N shortcuts. The typeface
+           can be chosen in settings: Libron, bundled and the default, the
+           system's, or any installed font. A note's contents
+           can be copied as text from its right-click menu.</p>
+      </description>
+    </release>
     <release version="4.1.0" date="2026-10-03">
       <description>
         <p>The tray menu can bring Tagoror to the front or send it to the back,
