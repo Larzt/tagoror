@@ -1,0 +1,9 @@
+# Todo el texto con LF en el repositorio, sea cual sea el core.autocrlf de
+# quien haga el commit: los .sh con CRLF rompen la CI (sh lee "set -eu\r").
+* text=auto eol=lf
+
+# Binarios: ni se tocan ni se comparan como texto.
+*.png binary
+*.ico binary
+*.ttf binary
+*.dll binary
