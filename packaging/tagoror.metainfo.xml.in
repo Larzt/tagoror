@@ -92,6 +92,18 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="5.0.0" date="2026-10-09">
+      <description>
+        <p>A simpler interface. The pages live in a fixed navigation bar (a rail
+           when the panel is wide), notices share one place above it, and a
+           command palette (Ctrl+K) reaches any page, note type or area. Text
+           notes are plain text and Markdown notes are a type of their own, with
+           a raw editor and a preview; any note folds to its title. Timers,
+           birthdays, the dock and a new start screen were redone. Notes can
+           sync through Google Drive, a WebDAV server such as Nextcloud, or a
+           synced folder, and Google Calendar is a connection of its own.</p>
+      </description>
+    </release>
     <release version="4.3.0" date="2026-10-09">
       <description>
         <p>Reminders get a date picker with a small month, a column of times

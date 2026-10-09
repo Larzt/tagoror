@@ -4,7 +4,7 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [5.0.0] — sin publicar
+## [5.0.0] — 2026-10-09
 
 A simpler interface: one fixed place for everything.
 

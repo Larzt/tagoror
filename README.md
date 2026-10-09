@@ -29,11 +29,12 @@
   <img src="docs/panel.png" alt="The panel with its area tabs, a checklist, a reminder, a voice note and a text note" width="380">
 </p>
 
-### Four kinds of note
+### Five kinds of note
 
 | | |
 |---|---|
-| **Text** | A note whose editor grows with the content, and that understands **Markdown**: headings, `**bold**`, `*italic*`, `` `code` ``, lists, `- [ ]` checkboxes, quotes and `[links](…)` are shown formatted, and turn back into plain text the moment you click in to edit. Single line breaks stay line breaks, so notes written before this look the same. |
+| **Text** | Plain text, whose editor grows with the content: what you type is what you see. **Enter** finishes, **Shift+Enter** starts a new line. |
+| **Markdown** | Shown formatted on its card — headings, `**bold**`, `*italic*`, `` `code` ``, lists, quotes and `[links](…)`. Click it and it opens on its own page: the raw text with the syntax dimmed and line numbers, or the preview (**Ctrl+E**), with a formatting bar while you edit. Text notes you wrote in Markdown before 5.0 became Markdown notes on their own. |
 | **Checklist** | Items you can tick off (done ones get struck through), rename in place and drag into a new order, a progress bar, and an add row that reads as a pending task rather than a form. |
 | **Reminder** | A real date, not just a label: when the time comes it rings until you stop it, or for a minute — after that it goes quiet but stays red until you acknowledge it. |
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
@@ -70,7 +71,7 @@
   <img src="docs/planner.png" alt="The planner in week view: a mini month, today's tasks and the categories on the left, the week's events laid out by hour" width="640">
 </p>
 
-- The calendar button in the header opens it; the same button goes back. The
+- *Planner* in the navigation (or **Ctrl+2**) opens it. The
   panel **widens while it is open** — a week does not fit in 300 pixels — and
   returns to its size when you leave, unless you resized it in between.
 - **Day, week and month views.** Day and week lay things out by the hour, side
@@ -83,8 +84,8 @@
   a box to tick, and a repeating task is ticked per day, not all at once.
 - They can **ring before they start** — at the start, or 5, 10, 15 or 30
   minutes, 1 or 2 hours, or a day before — through the same alarm as
-  everything else; a red strip under the header says what is starting and stops
-  it.
+  everything else; the notice above the navigation says what is starting and
+  stops it.
 - Your reminders and birthdays appear on the same grid — reminders as a dashed
   block you can click to jump to the note, birthdays as an all-day tag — and the
   category list on the left hides any of them, reminders and birthdays included.
@@ -100,15 +101,17 @@
   <img src="docs/timers.png" alt="The timers page: a running Pomodoro on the big dial, a paused one and a saved one below" width="380">
 </p>
 
-- From the stopwatch button in the header. Name it if you like, set hours,
-  minutes and seconds (or pick 1, 5, 10 or 25 minutes) and it starts.
-- A dial shows the one you open; the rest are grouped as *active*, *paused* and
-  *saved*. Reset one and it stays as a saved template — a Pomodoro you start
-  again tomorrow.
+- *Timers* in the navigation (**Ctrl+3**). The *Quick* chips — 1′ to 45′ —
+  start one at once; the **+** in the header opens the form for a named one with
+  hours, minutes and seconds.
+- The running one (or the one you click) sits on top with its ring, *Pause*,
+  *+1 min* and *Reset*; the rest are listed below. Reset one and it stays as a
+  saved template — a Pomodoro you start again tomorrow.
 - **Time keeps running with the app closed**: a timer stores when it ends, not
   how much is left, so it rings on the next launch if it ran out meanwhile.
-- The countdown of the running one sits in the footer on every page. When it
-  reaches zero the alarm plays and a red strip offers **+1 min** or **Stop**.
+- The countdown of the running one replaces the *Timers* label in the
+  navigation, on every page. When it reaches zero the alarm plays and the notice
+  offers **+1 min** or **Stop**.
 
 ### Birthdays
 
@@ -116,9 +119,10 @@
   <img src="docs/birthdays.png" alt="The birthdays page: the next one highlighted, the rest grouped by month" width="380">
 </p>
 
-- A page of their own, from the cake button in the header. **The next birthday
-  due is highlighted on a card** — whether it falls today or in three months —
-  and the rest are listed below.
+- A page of their own (**Ctrl+4**). **The next birthday due sits on a card**
+  with a soft colour backdrop and the days left in large figures — whether it
+  falls today or in three months — and everyone else is a card in a grid of one
+  or two columns. The **+** in the header adds one.
 - Each person has a name, a day, an optional year (without it there is simply no
   *turns 32*) and a free-text relation: *sister*, *work*, *uni*, whatever you
   use to tell two Marías apart.
@@ -222,7 +226,17 @@
 - **Lives on the desktop** by default, below other windows. "Always on top" is
   an option, not the default.
 - Drag it by its header, resize it from **any edge or corner**, or fold it into
-  a dock you can also drag around.
+  a dock — the tagoror's ring of stones — you can also drag around. While
+  something rings, the stones turn red, a halo beats around it and a badge counts
+  the alarms.
+- **The navigation stays put**: Notes, Planner, Timers and Birthdays along the
+  bottom, the open one marked, or as a rail on the left once the panel is wider
+  than 480 px. A red dot on Notes says a reminder is ringing while you are
+  elsewhere.
+- **One place for notices**: what rings, a missing data folder, a failed sync
+  and a new version share a single card above the navigation, most urgent first,
+  with *1 of N* for the rest. Nothing slides in pushing your notes down.
+- `--tray` starts it straight into the tray, for autostart.
 - **Each page keeps its own size**: make the planner or the settings bigger and
   the note list stays as it was. *Size per page* in settings turns it off, back
   to one size for everything. It is the widget's thing: in app mode the window
@@ -248,9 +262,10 @@
   <img src="docs/settings.png" alt="The settings page: accent, opacity, language, window, data and microphone" width="380">
 </p>
 
-- Everything in one place, from the gear in the header: the accent colour, the
-  opacity, **the typeface and text size**, the language, whether the window stays on top,
-  where your notes are kept, the backups and which microphone to record from.
+- From **⋯** in the header, or **Ctrl+,**, in five tabs: *General* (language,
+  window, data folder, backups, microphone, updates), *Appearance* (accent,
+  opacity, **typeface and text size**), *Sync*, *Shortcuts* (every one of them in
+  one list) and *About*.
 - **Typeface**: IBM Plex Sans, which comes with the app and is the default, the
   system's own font, or any installed one — type its name or the start of it
   ("fira" finds Fira Sans). Times, dates and counters stay monospaced.
@@ -267,24 +282,31 @@
 ### It tells you when there is a new version
 
 - Once a day Tagoror asks GitHub for the latest release and, if it is newer than
-  the one you are running, says so in a strip under the header. Click it and the
+  the one you are running, says so among the notices. Click *View* and the
   release page opens in your browser.
-- There is a **Check now** button in *Settings → Updates* for when you do not
+- There is a **Check now** button in *Settings → General → Updates* for when you do not
   want to wait for the daily one.
 - **It only asks; it never downloads or installs anything.** On Windows the
   installer upgrades in place — the `AppId` never changes — so there is nothing
   to uninstall first: run the new `-setup.exe` over what you have and your notes
   stay where they are.
-- **Along with the Google Drive copy, it is the only thing in the app that uses
-  the network**, it is a switch you can see in settings, and turning it off
-  stops every request. The Drive copy does nothing until you connect an account.
+- **Along with sync, it is the only thing in the app that uses the network**, it
+  is a switch you can see in settings, and turning it off stops every request.
+  Sync does nothing until you choose where it goes.
 
-### Sync between computers through Google Drive
+### Sync between computers
 
-- From *Settings → Google Drive*: **Connect** opens your browser to sign in to
-  Google. Every computer where you connect the same account shares the same
-  notes, checklists, reminders, planner events and tasks, birthdays and timers,
-  voice notes and images, through a `Tagoror` folder in your Drive.
+- From *Settings → Sync*, choose where the shared copy lives:
+  - **Google Drive** — **Connect** opens your browser to sign in to Google; a
+    `Tagoror` folder in your Drive, visible only to the app.
+  - **WebDAV / Nextcloud** — your own server, ownCloud, most NAS or a Raspberry
+    Pi: its address, your user and, better, an *app password*.
+  - **A synced folder** — one that Syncthing, Dropbox, OneDrive or the Nextcloud
+    client already keeps in step. Tagoror only writes inside it.
+- Every computer pointed at the same place shares the same notes, checklists,
+  reminders, planner events and tasks, birthdays and timers, voice notes and
+  images. **Google Calendar** is a separate connection, which works with any of
+  the three, or none.
 - **It merges, it does not overwrite.** Each note, event, birthday or timer
   remembers when it last changed; when two computers disagree, the newer version
   of *that element* wins, and anything that exists on only one side is added.
@@ -292,9 +314,9 @@
 - **Deletions travel too**: delete a note on one computer and it disappears from
   the others, unless someone edited it there after you deleted it — then the
   edit wins.
-- It syncs about twenty seconds after you change something, every minute and a
-  half to pick up what the others did, and on launch. **Sync now** does it on
-  the spot.
+- By default it syncs about twenty seconds after you change something, every
+  minute and a half to pick up what the others did, and on launch; you can make
+  it every five minutes or only by hand. **Sync now** does it on the spot.
 - It never merges while you are typing in the panel; it waits until you are
   done, so the list is not rebuilt under your cursor.
 - If two computers upload at the same moment, neither loses anything: the one
@@ -359,7 +381,11 @@ Drive row in settings is simply disabled.
 
 ### Keyboard
 
-- **Tab** goes through everything that can be clicked: the header buttons, each
+- **Ctrl+K** opens the **command palette**: type to go to any page, create any
+  kind of note or switch area — accents don't matter, *cumple* finds Birthdays.
+- **Ctrl+1…4** open the pages, **Ctrl+,** the settings, **Alt+1…9** the areas,
+  **Ctrl+M** folds the panel; *Settings → Shortcuts* lists them all.
+- **Tab** goes through everything that can be clicked: the navigation, each
   note's title and body, checklist boxes, link rows, the date chip, the settings
   switches and swatches, the timers, and the blocks of the planner one by one.
 - **Enter** or **Space** activates what has the focus; arrows move through the
@@ -374,8 +400,10 @@ Drive row in settings is simply disabled.
 ### Other
 
 - Filter notes as you type — titles, bodies, checklist items and links. The
-  search box sits under the workspace tabs, next to the **+** that creates a
-  note; **Ctrl+F** jumps to it and **Ctrl+N** opens the new-note menu.
+  magnifier (or **Ctrl+F**) unfolds the search box over the workspace tabs;
+  the **+** next to it creates a note, and **Ctrl+N** makes a text note at once.
+- **Fold any note** to its title with the chevron; folded, it still says what
+  matters — a checklist's 2/4, a reminder's time, a recording's length.
 - An empty panel offers a button to create the first note.
 - Everything is saved automatically, a moment after you stop typing — and a
   copy of the previous file is kept on the schedule you choose.
