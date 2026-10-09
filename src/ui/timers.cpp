@@ -3,8 +3,11 @@
 #include "core/lang.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
+#include "ui/popup.hpp"
 
+#include <QDateTime>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIntValidator>
 #include <QLabel>
@@ -200,12 +203,35 @@ void TimerView::retranslate() {
 
 QString TimerView::subtitle(const Timer *t) const {
     switch (t->state) {
-        case Timer::Running: return L("en marcha");
-        case Timer::Paused:  return L("en pausa");
-        case Timer::Done:    return L("tiempo cumplido");
-        default:             return L("guardado · %1").arg(clock(t->totalMs));
+        case Timer::Running:
+            return L("En marcha · termina %1")
+                .arg(QDateTime::fromMSecsSinceEpoch(t->endsAtMs).toString("HH:mm"));
+        case Timer::Paused:  return L("En pausa a falta de %1").arg(clock(t->remainingMs()));
+        case Timer::Done:    return L("Tiempo cumplido");
+        default:             return L("Guardado");
     }
 }
+
+QString TimerView::heroSubtitle(const Timer *t) const {
+    QString state;
+    switch (t->state) {
+        case Timer::Running:
+            state = L("termina %1").arg(QDateTime::fromMSecsSinceEpoch(t->endsAtMs).toString("HH:mm"));
+            break;
+        case Timer::Paused: state = L("en pausa"); break;
+        case Timer::Done:   state = L("tiempo cumplido"); break;
+        default:            state = L("listo"); break;
+    }
+    return L("de %1 · %2").arg(clock(t->totalMs), state);
+}
+
+void TimerView::toggleCreator() {
+    m_creatorOpen = !m_creatorOpen;
+    m_creator->setVisible(m_creatorOpen);
+    if (m_creatorOpen) m_name->setFocus(Qt::OtherFocusReason);
+}
+
+void TimerView::append(QWidget *w) { m_layout->insertWidget(m_layout->count() - 1, w); }
 
 void TimerView::refresh() {
     m_live.clear();
@@ -222,29 +248,26 @@ void TimerView::refresh() {
     if (!m_timers) return;
     if (m_focus && !m_timers->contains(m_focus)) m_focus = nullptr;
 
-    if (m_focus) addFocusCard(m_focus);
+    // On top: the one picked; else whatever rings or runs; else a paused one.
+    Timer *hero = m_focus;
+    for (Timer *t : *m_timers)
+        if (!hero && (t->state == Timer::Done || t->state == Timer::Running)) hero = t;
+    for (Timer *t : *m_timers)
+        if (!hero && t->state == Timer::Paused) hero = t;
+    if (hero) addHero(hero);
 
-    QList<Timer *> active, paused, saved;
-    for (Timer *t : *m_timers) {
-        if (t->state == Timer::Running || t->state == Timer::Done) active << t;
-        else if (t->state == Timer::Paused) paused << t;
-        else saved << t;
+    // With nothing saved yet the form is what there is to do: open.
+    m_creator->setVisible(m_creatorOpen || m_timers->isEmpty());
+
+    QList<Timer *> rest;
+    for (Timer *t : *m_timers)
+        if (t != hero) rest << t;
+    if (!rest.isEmpty()) {
+        addSection(L("Guardados"));
+        for (Timer *t : rest) addRow(t);
     }
-    const QList<QPair<QString, QList<Timer *>>> groups = {
-        {L("ACTIVOS"), active}, {L("EN PAUSA"), paused}, {L("GUARDADOS"), saved}};
-    for (const auto &[title, list] : groups) {
-        if (list.isEmpty()) continue;
-        addSection(title, int(list.size()));
-        for (Timer *t : list) addRow(t);
-    }
-    if (m_timers->isEmpty()) {
-        auto *empty = new QLabel(L("Todavía no hay temporizadores. Crea uno abajo o elige un tiempo rápido."));
-        empty->setObjectName("meta");
-        empty->setWordWrap(true);
-        empty->setMinimumWidth(24);   // see *Card widths*
-        empty->setContentsMargins(4, 6, 4, 6);
-        m_layout->insertWidget(m_layout->indexOf(m_creator), empty);
-    }
+    addSection(L("Rápido"));
+    addQuick();
     tick();
 }
 
@@ -253,41 +276,34 @@ void TimerView::tick() {
     for (const Live &live : m_live) {
         const QColor color = stateColor(live.timer, m_theme.accent);
         if (live.time) live.time->setText(clock(live.timer->remainingMs(now)));
+        if (live.sub) live.sub->setText(live.hero ? heroSubtitle(live.timer) : subtitle(live.timer));
         if (auto *ring = static_cast<Ring *>(live.ring)) {
             ring->set(live.timer->fraction(now), color);
-            if (!live.time)
-                ring->setTexts(clock(live.timer->remainingMs(now)), subtitle(live.timer), 30);
+            if (live.hero) ring->setTexts(clock(live.timer->remainingMs(now)), QString(), 20);
         }
     }
 }
 
-void TimerView::addSection(const QString &title, int count) {
-    auto *head = new QWidget;
-    auto *hl = new QHBoxLayout(head);
-    hl->setContentsMargins(2, 8, 2, 1);
-    auto *label = new QLabel(title);
-    label->setObjectName("setSection");
-    label->setContentsMargins(0, 0, 0, 0);
-    auto *n = new QLabel(QString::number(count));
-    n->setObjectName("meta");
-    hl->addWidget(label);
-    hl->addStretch();
-    hl->addWidget(n);
-    m_layout->insertWidget(m_layout->indexOf(m_creator), head);
+void TimerView::addSection(const QString &title) {
+    auto *label = new QLabel(title.toUpper());
+    label->setObjectName("pageSection");
+    append(label);
 }
 
+/// One row per timer: name and what it is doing, the time left, start/pause.
+/// Clicking puts it on top; the menu (right click, Menu key) resets or deletes.
 void TimerView::addRow(Timer *t) {
     auto *row = new TimerRow([this, t] { focusTimer(t); });
     row->setProperty("done", t->state == Timer::Done);
-    row->setProperty("chosen", t == m_focus);
-    row->setToolTip(L("Abrir en grande"));
+    row->setToolTip(L("Ponerlo arriba"));
+    row->setFixedHeight(44);
+    row->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(row, &QWidget::customContextMenuRequested, this,
+            [this, t, row](const QPoint &at) { openRowMenu(t, row->mapToGlobal(at)); });
 
     auto *l = new QHBoxLayout(row);
-    l->setContentsMargins(8, 6, 6, 6);
-    l->setSpacing(8);
-
-    auto *ring = new Ring(22, 3);
-    l->addWidget(ring, 0, Qt::AlignVCenter);
+    l->setContentsMargins(12, 0, 6, 0);
+    l->setSpacing(10);
 
     auto *texts = new QVBoxLayout;
     texts->setContentsMargins(0, 0, 0, 0);
@@ -298,7 +314,7 @@ void TimerView::addRow(Timer *t) {
     name->setToolTip(t->name);
     auto *sub = new ElidedLabel(subtitle(t), t->state == Timer::Done ? kRed
                                                                      : QColor(Theme::muted()));
-    sub->setObjectName("meta");
+    sub->setObjectName("timerSub");
     texts->addWidget(name);
     texts->addWidget(sub);
     l->addLayout(texts, 1);
@@ -310,62 +326,113 @@ void TimerView::addRow(Timer *t) {
     const bool running = t->state == Timer::Running;
     auto *toggle = smallButton(running ? "pause" : "play", QColor(Theme::fg()),
                                running ? L("Pausar") : L("Iniciar"));
+    toggle->setFixedSize(30, 30);
     connect(toggle, &QToolButton::clicked, this, [this, t] { emit toggleRequested(t); });
-    auto *reset = smallButton("repeat", QColor(Theme::muted()), L("Reiniciar"));
-    connect(reset, &QToolButton::clicked, this, [this, t] { emit resetRequested(t); });
-    auto *remove = smallButton("trash", kRed, L("Eliminar"));
-    connect(remove, &QToolButton::clicked, this, [this, t] { emit removeRequested(t); });
     l->addWidget(toggle);
-    l->addWidget(reset);
-    l->addWidget(remove);
 
-    m_live.append({t, time, ring});
-    m_layout->insertWidget(m_layout->indexOf(m_creator), row);
+    m_live.append({t, time, nullptr, sub, false});
+    append(row);
 }
 
-void TimerView::addFocusCard(Timer *t) {
+void TimerView::openRowMenu(Timer *t, const QPoint &globalPos) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(t->name.isEmpty() ? L("Temporizador") : t->name);
+    const bool running = t->state == Timer::Running;
+    menu->addItem(running ? "pause" : "play", running ? L("Pausar") : L("Iniciar"), QString(),
+                  [this, t] { emit toggleRequested(t); });
+    menu->addItem("repeat", L("Reiniciar"), L("Vuelve a su duración"),
+                  [this, t] { emit resetRequested(t); });
+    menu->addSeparator();
+    menu->addItem("trash", L("Eliminar"), QString(), [this, t] { emit removeRequested(t); });
+    menu->showAt(globalPos);
+}
+
+/// The one that matters, large: its ring with the time inside, what it is
+/// doing, and the three things to do with it.
+void TimerView::addHero(Timer *t) {
     auto *card = new QFrame;
-    card->setObjectName("setCard");
-    auto *col = new QVBoxLayout(card);
-    col->setContentsMargins(12, 14, 12, 12);
-    col->setSpacing(10);
+    card->setObjectName("timerHero");
+    card->setProperty("done", t->state == Timer::Done);
+    card->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(card, &QWidget::customContextMenuRequested, this,
+            [this, t, card](const QPoint &at) { openRowMenu(t, card->mapToGlobal(at)); });
+    auto *row = new QHBoxLayout(card);
+    row->setContentsMargins(14, 14, 14, 14);
+    row->setSpacing(16);
 
-    auto *dial = new Ring(150, 7);
-    col->addWidget(dial, 0, Qt::AlignHCenter);
+    auto *dial = new Ring(96, 5);
+    row->addWidget(dial, 0, Qt::AlignVCenter);
 
-    auto *name = new QLabel(t->name.isEmpty() ? L("Temporizador") : t->name);
-    name->setObjectName("timerFocusName");
-    name->setAlignment(Qt::AlignCenter);
-    name->setWordWrap(true);
-    name->setMinimumWidth(24);   // see *Card widths*
-    col->addWidget(name);
+    auto *col = new QVBoxLayout;
+    col->setSpacing(8);
+    auto *texts = new QVBoxLayout;
+    texts->setSpacing(1);
+    auto *name = new ElidedLabel(t->name.isEmpty() ? L("Temporizador") : t->name, QColor(Theme::fg()));
+    name->setObjectName("timerHeroName");
+    name->setToolTip(t->name);
+    auto *sub = new ElidedLabel(heroSubtitle(t), t->state == Timer::Done ? kRed : QColor(Theme::muted()));
+    sub->setObjectName("timerSub");
+    texts->addWidget(name);
+    texts->addWidget(sub);
+    col->addLayout(texts);
 
     auto *buttons = new QHBoxLayout;
     buttons->setSpacing(6);
     const bool running = t->state == Timer::Running;
-    auto *toggle = new QPushButton(running ? L("Pausar") : L("Iniciar"));
-    toggle->setFocusPolicy(Qt::TabFocus);
+    auto *toggle = new QToolButton;
+    toggle->setObjectName("heroPrimary");
+    toggle->setText(running ? L("Pausar") : t->state == Timer::Paused ? L("Seguir") : L("Iniciar"));
     toggle->setCursor(Qt::PointingHandCursor);
-    connect(toggle, &QPushButton::clicked, this, [this, t] { emit toggleRequested(t); });
-    auto *reset = new QToolButton;
-    reset->setObjectName("segButton");
-    reset->setText(L("Reiniciar"));
-    reset->setCursor(Qt::PointingHandCursor);
+    toggle->setFocusPolicy(Qt::TabFocus);
+    connect(toggle, &QToolButton::clicked, this, [this, t] {
+        // A ringing one is silenced by starting it again from its full length.
+        if (t->state == Timer::Done) emit resetRequested(t);
+        emit toggleRequested(t);
+    });
+    auto *plus = new QToolButton;
+    plus->setObjectName("heroGhost");
+    plus->setText(L("+1 min"));
+    plus->setCursor(Qt::PointingHandCursor);
+    plus->setFocusPolicy(Qt::TabFocus);
+    connect(plus, &QToolButton::clicked, this, [this, t] { emit plusRequested(t); });
+    auto *reset = smallButton("repeat", QColor(Theme::muted()), L("Reiniciar"));
+    reset->setObjectName("heroIcon");
+    reset->setFixedSize(28, 28);
     connect(reset, &QToolButton::clicked, this, [this, t] { emit resetRequested(t); });
-    auto *close = new QToolButton;
-    close->setObjectName("segButton");
-    close->setText(L("Cerrar"));
-    close->setCursor(Qt::PointingHandCursor);
-    connect(close, &QToolButton::clicked, this, [this] { focusTimer(nullptr); });
-    buttons->addStretch();
     buttons->addWidget(toggle);
+    buttons->addWidget(plus);
     buttons->addWidget(reset);
-    buttons->addWidget(close);
     buttons->addStretch();
     col->addLayout(buttons);
+    row->addLayout(col, 1);
 
-    m_live.append({t, nullptr, dial});
-    m_layout->insertWidget(m_layout->indexOf(m_creator), card);
+    m_live.append({t, nullptr, dial, sub, true});
+    append(card);
+}
+
+/// Chips that start a timer of that length straight away: the form is for a
+/// named one.
+void TimerView::addQuick() {
+    auto *box = new QWidget;
+    auto *grid = new QGridLayout(box);
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setSpacing(6);
+    const QList<int> minutes{1, 3, 5, 10, 15, 25, 45};
+    for (int i = 0; i < minutes.size(); ++i) {
+        const int m = minutes.at(i);
+        auto *chip = new QToolButton;
+        chip->setObjectName("quickChip");
+        chip->setText(QString("%1′").arg(m));
+        chip->setToolTip(L("Empezar uno de %1 min").arg(m));
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setFocusPolicy(Qt::TabFocus);
+        chip->setMinimumWidth(36);   // see *Card widths*
+        chip->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        connect(chip, &QToolButton::clicked, this,
+                [this, m] { emit createRequested(QString(), qint64(m) * 60 * 1000); });
+        grid->addWidget(chip, i / 4, i % 4);
+    }
+    append(box);
 }
 
 /// Built once: it survives refresh() so what is being typed is not lost when
@@ -373,18 +440,18 @@ void TimerView::addFocusCard(Timer *t) {
 void TimerView::addCreator() {
     m_creator = new QWidget;
     auto *outer = new QVBoxLayout(m_creator);
-    outer->setContentsMargins(0, 8, 0, 0);
+    outer->setContentsMargins(0, 0, 0, 4);
     outer->setSpacing(4);
-
-    auto *title = new QLabel(L("NUEVO TEMPORIZADOR"));
-    title->setObjectName("setSection");
-    outer->addWidget(title);
 
     auto *card = new QFrame;
     card->setObjectName("setCard");
     auto *col = new QVBoxLayout(card);
     col->setContentsMargins(9, 9, 9, 9);
     col->setSpacing(7);
+
+    auto *title = new QLabel(L("Nuevo temporizador"));
+    title->setObjectName("timerHeroName");
+    col->addWidget(title);
 
     m_name = new QLineEdit;
     m_name->setPlaceholderText(L("Nombre (opcional)"));
@@ -411,33 +478,13 @@ void TimerView::addCreator() {
         if (ms <= 0) return;
         emit createRequested(m_name->text().trimmed(), ms);
         m_name->clear();
+        m_creatorOpen = false;   // done: refresh() hides it
     };
     connect(create, &QPushButton::clicked, this, submit);
     for (QLineEdit *e : {m_name, m_h, m_m, m_s}) connect(e, &QLineEdit::returnPressed, this, submit);
-
-    // Quick durations fill the fields without starting anything, so the timer
-    // can be named first.
-    auto *quick = new QHBoxLayout;
-    quick->setSpacing(4);
-    for (int minutes : {1, 5, 10, 25}) {
-        auto *chip = new QToolButton;
-        chip->setObjectName("segButton");
-        chip->setText(L("%1 min").arg(minutes));
-        chip->setCursor(Qt::PointingHandCursor);
-        // Four padded chips asked for their whole text and widened the page past
-        // the panel's minimum (measured 302px with the 4.2 typeface against ~284), clipping
-        // the card. They share the row and may lose some of their padding.
-        chip->setMinimumWidth(36);
-        chip->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-        connect(chip, &QToolButton::clicked, this, [this, minutes] {
-            m_h->clear();
-            m_m->setText(QString::number(minutes));
-            m_s->clear();
-        });
-        quick->addWidget(chip, 1);
-    }
-    col->addLayout(quick);
     outer->addWidget(card);
 
-    m_layout->insertWidget(m_layout->count() - 1, m_creator);
+    // First: the header's "+" opens it on top of the page.
+    m_layout->insertWidget(0, m_creator);
+    m_creator->setVisible(m_creatorOpen);
 }

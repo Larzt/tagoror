@@ -3,6 +3,7 @@
 #include <QFontDatabase>
 #include <QIcon>
 #include <QLocalServer>
+#include <QSystemTrayIcon>
 #include <QLocalSocket>
 #include <QLockFile>
 #include <QSettings>
@@ -122,6 +123,10 @@ int main(int argc, char *argv[]) {
         }
     });
 
-    panel.show();
+    // `--tray` starts hidden in the tray (for autostart), when there is one to
+    // come back from; otherwise the window would be nowhere.
+    const bool toTray = app.arguments().contains("--tray") && QSystemTrayIcon::isSystemTrayAvailable();
+    if (!toTray) panel.show();
+    panel.startUp(!toTray);
     return app.exec();
 }

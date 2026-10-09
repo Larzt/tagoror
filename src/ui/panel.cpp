@@ -14,6 +14,8 @@
 #include "ui/alertzone.hpp"
 #include "ui/palette.hpp"
 #include "ui/mdpage.hpp"
+#include "ui/splash.hpp"
+#include "ui/dock.hpp"
 #include "ui/notecard.hpp"
 #include "ui/popup.hpp"
 #include "ui/workarea.hpp"
@@ -196,9 +198,31 @@ Panel::Panel() {
     // placing it before that places a window about to be recreated.
     m_nav->restoreWindowPos();
 
-    // Changes made while the app was closed, or an upload that failed last time,
-    // go up shortly after startup.
-    m_sync->syncSoon();
+}
+
+/// What runs once the window exists: a sync pass and the daily update check,
+/// right away rather than on the first heartbeat. Only if one of them is
+/// actually going to happen, and the window is on screen, does the splash
+/// show what is being waited for; a start where everything is local goes
+/// straight to the notes.
+void Panel::startUp(bool visible) {
+    // Changes made while the app was closed, or an upload that failed last time.
+    const bool sync = m_drive->connected() && m_store.available();
+    const bool updates = updateCheckDue();
+    if (sync) m_sync->syncNow();
+    if (updates) pollUpdates();
+    if (!visible || (!sync && !updates)) return;
+
+    QList<Splash::Step> steps;
+    steps << Splash::Step{L("Cargando notas…"), nullptr, 300};
+    if (sync)
+        steps << Splash::Step{L("Sincronizando con Google Drive…"),
+                              [this] { return m_drive->state() != DriveSync::Syncing; }, 4000};
+    if (updates)
+        steps << Splash::Step{L("Buscando actualizaciones…"),
+                              [this] { return !m_updater->busy(); }, 2500};
+    auto *splash = new Splash(&m_theme, m_shell);
+    splash->run(steps);
 }
 
 Panel::~Panel() {
@@ -348,6 +372,19 @@ QFrame *Panel::buildHeader() {
     m_titleLabel = new ElidedLabel(L("Notas"), QColor(Theme::fg()));
     m_titleLabel->setObjectName("title");
     l->addWidget(m_titleLabel, 1);
+
+    // What each page adds to the header: a new timer, a new birthday.
+    m_timerAddBtn = iconButton("plus", "Nuevo temporizador");
+    m_timerAddBtn->setFixedSize(28, 28);
+    m_timerAddBtn->hide();
+    connect(m_timerAddBtn, &QToolButton::clicked, this, [this] { m_timerView->toggleCreator(); });
+    l->addWidget(m_timerAddBtn);
+    m_bdayAddBtn = iconButton("plus", "Añadir cumpleaños");
+    m_bdayAddBtn->setFixedSize(28, 28);
+    m_bdayAddBtn->hide();
+    connect(m_bdayAddBtn, &QToolButton::clicked, this,
+            [this] { openBirthdayEditor(nullptr, m_bdayAddBtn); });
+    l->addWidget(m_bdayAddBtn);
 
     m_moreBtn = iconButton("more", "Más opciones");
     m_moreBtn->setFixedSize(28, 28);
@@ -534,6 +571,12 @@ QWidget *Panel::buildBody() {
     connect(m_timerView, &TimerView::toggleRequested, this, &Panel::toggleTimer);
     connect(m_timerView, &TimerView::resetRequested, this, &Panel::resetTimer);
     connect(m_timerView, &TimerView::removeRequested, this, &Panel::removeTimer);
+    connect(m_timerView, &TimerView::plusRequested, this, [this](Timer *t) {
+        t->addTime(60 * 1000);
+        m_alerts->stopIfQuiet();
+        save();
+        onTimersChanged();
+    });
 
     m_birthdays = new BirthdayView(m_theme);
     m_birthdays->setByMonth(m_store.prefs().birthdaysByMonth);
@@ -695,32 +738,19 @@ QWidget *Panel::buildBadge() {
     auto *hl = new QHBoxLayout(host);
     hl->setContentsMargins(0, 0, 0, 0);
 
-    auto *btn = new DragButton;
-    btn->setObjectName("badge");
-    btn->setFixedSize(56, 56);
-    btn->setIcon(paintIcon("notes", QColor(Theme::fg()), 22));
-    btn->setIconSize(QSize(22, 22));
-    btn->setCursor(Qt::PointingHandCursor);
-    btn->setToolTip(L("Abrir Tagoror · arrastra para mover"));
-    btn->setStyleSheet(QString("QToolButton#badge { background:%1; border:1px solid %2;"
-                               "border-radius:18px; } QToolButton#badge:hover { background:%3; }")
-                           .arg(m_theme.card(), Theme::line(), Theme::hover()));
-
-    auto *shadow = new QGraphicsDropShadowEffect(btn);
+    m_dock = new DockButton(&m_theme);
+    m_dock->setObjectName("badge");
+    m_dock->setToolTip(L("Abrir Tagoror · arrastra para mover"));
+    auto *shadow = new QGraphicsDropShadowEffect(m_dock);
     shadow->setBlurRadius(40);
     shadow->setOffset(0, 14);
     shadow->setColor(QColor(0, 0, 0, 140));
-    btn->setGraphicsEffect(shadow);
-    connect(btn, &QToolButton::clicked, this, &Panel::expand);
-
-    m_badgeCount = new QLabel(btn);
-    m_badgeCount->setAlignment(Qt::AlignCenter);
-    m_badgeCount->setFixedSize(20, 20);
-    m_badgeCount->move(40, -2);
+    m_dock->setGraphicsEffect(shadow);
+    connect(m_dock, &QToolButton::clicked, this, &Panel::expand);
 
     // Top-left: the folded window measures exactly the dock, so there is no room
     // to spare, and anchoredTopLeft() handles which screen corner it folds to.
-    hl->addWidget(btn, 0, Qt::AlignTop | Qt::AlignLeft);
+    hl->addWidget(m_dock, 0, Qt::AlignTop | Qt::AlignLeft);
     hl->addStretch();
     return host;
 }
@@ -728,7 +758,7 @@ QWidget *Panel::buildBadge() {
 void Panel::applyTheme() {
     setStyleSheet(m_theme.sheet());
 
-    for (QToolButton *b : {m_backBtn, m_moreBtn, m_searchBtn})
+    for (QToolButton *b : {m_backBtn, m_moreBtn, m_searchBtn, m_timerAddBtn, m_bdayAddBtn})
         b->setIcon(paintIcon(b->property("iconKind").toString(), QColor(Theme::muted())));
     // The new-note button is filled with the accent, so its icon is dark.
     m_addBtn->setIcon(paintIcon("plus", QColor("#0c1222")));
@@ -742,13 +772,7 @@ void Panel::applyTheme() {
     if (m_settings) m_settings->setTheme(m_theme);
     if (m_mdPage) m_mdPage->setTheme(m_theme);
     applyBadgeAlert();
-
-    // The dock is styled inline because its background depends on the opacity.
-    if (auto *badge = m_badge->findChild<QToolButton *>("badge"))
-        badge->setStyleSheet(QString("QToolButton#badge { background:%1; border:1px solid %2;"
-                                     "border-radius:18px; }"
-                                     "QToolButton#badge:hover { background:%3; }")
-                                 .arg(m_theme.card(), Theme::line(), Theme::hover()));
+    if (m_dock) m_dock->update();   // the stones are in the accent
 }
 
 void Panel::setLanguage(Lang::Code code) {
@@ -766,7 +790,7 @@ void Panel::retranslate() {
     m_emptyBtn->setText(L("Crear la primera"));
     m_search->setPlaceholderText(L("Buscar en %1…").arg(QString()));
 
-    for (QToolButton *b : {m_backBtn, m_moreBtn, m_searchBtn, m_addBtn})
+    for (QToolButton *b : {m_backBtn, m_moreBtn, m_searchBtn, m_addBtn, m_timerAddBtn, m_bdayAddBtn})
         b->setToolTip(L(b->property("tip").toString()));
     m_navBar->retranslate();
 
@@ -839,7 +863,6 @@ void Panel::rebuildList() {
     } else {
         m_emptyText->setText(L("Todavía no hay notas"));
     }
-    m_badgeCount->setText(QString::number(m_store.count()));
     refreshNav();
     refreshPlanner();
     refreshBirthdays();
@@ -1360,6 +1383,8 @@ void Panel::refreshTitle() {
     m_titleLabel->setText(title);
     m_titleLabel->update();   // ElidedLabel paints itself
     const bool back = m_body->currentWidget() == m_settings || m_body->currentWidget() == m_mdPage;
+    m_timerAddBtn->setVisible(m_body->currentWidget() == m_timerView);
+    m_bdayAddBtn->setVisible(m_body->currentWidget() == m_birthdays);
     m_backBtn->setVisible(back);
     m_header->layout()->setContentsMargins(back ? 6 : 14, 0, 6, 0);
 }
@@ -1660,25 +1685,29 @@ void Panel::applyBadgeAlert() {
     refreshNav();        // and the one on Notas
     refreshNotices();    // and the alarm notices
 
-    auto *badge = m_badge->findChild<QToolButton *>("badge");
-    if (badge) {
-        // Folded, the dock is the only thing visible: it changes icon and colour so
-        // the waiting alarm shows.
-        badge->setIcon(paintIcon(alert ? "bell" : "notes",
-                                 QColor(alert ? "#ff7a6b" : Theme::fg()), 22));
-        badge->setToolTip(alert ? L("Recordatorio vencido · clic para parar")
-                                : L("Abrir Tagoror · arrastra para mover"));
+    if (m_dock) {
+        // Folded, the dock is the only thing visible: it turns red, beats and counts
+        // the alarms; its tooltip names the first one.
+        int count = 0;
+        QString first;
+        for (const Note *n : m_store.notes())
+            if (n->ringing && ++count == 1)
+                first = n->title + "\n" + n->dueAt().toString("HH:mm") + " · " + L("sonando");
+        for (const Birthday *b : m_store.birthdays())
+            if (b->ringing && ++count == 1) first = b->name + "\n" + L("Cumpleaños");
+        for (const Timer *t : m_store.timers())
+            if (t->ringing() && ++count == 1) first = t->name + "\n" + L("Tiempo cumplido");
+        for (const Event *e : m_store.events())
+            if (e->ringingMs && ++count == 1) first = e->title + "\n" + L("Evento");
+        m_dock->setAlarms(count);
+        m_dock->setToolTip(count > 0 ? first + "\n" + L("Clic para abrir y parar")
+                                     : L("Abrir Tagoror · arrastra para mover"));
     }
     if (m_tray) {
         // Hidden in the tray, the icon is the only sign that something is due.
         m_tray->setIcon(alert ? alertIcon() : qApp->windowIcon());
         m_tray->setToolTip(alert ? L("Recordatorio vencido") : L("Tagoror"));
     }
-    if (m_badgeCount)
-        m_badgeCount->setStyleSheet(
-            QString("background:%1; color:#0d1014; border-radius:10px;"
-                    "font-size:11px; font-weight:600;")
-                .arg(alert ? QString("#ff7a6b") : m_theme.accent.name()));
 }
 
 void Panel::openNewNoteMenu(QWidget *anchor) {
@@ -1938,16 +1967,19 @@ bool Panel::updateAvailable() const {
 
 /// Once a day, on the same heartbeat as reminders and backups. Asking is an
 /// HTTP request, so the stored date sets the pace, not the timer.
-void Panel::pollUpdates() {
-    if (!m_store.prefs().updateCheck || m_updater->busy()) return;
+bool Panel::updateCheckDue() const {
+    if (!m_store.prefs().updateCheck || m_updater->busy()) return false;
 
     constexpr qint64 kDayMs = 24LL * 3600 * 1000;
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const qint64 last = m_store.prefs().lastUpdateMs;
     // A date in the future (the clock moved back) would mean "never again": treat
     // it as none.
-    if (last > 0 && last <= now && now - last < kDayMs) return;
+    return !(last > 0 && last <= now && now - last < kDayMs);
+}
 
+void Panel::pollUpdates() {
+    if (!updateCheckDue()) return;
     m_updater->check();
     if (m_settings) m_settings->setUpdateState(true, QString());
 }

@@ -3,7 +3,10 @@
 #include "core/lang.hpp"
 #include "ui/elidedlabel.hpp"
 
+#include <QEvent>
 #include <QFrame>
+#include <QGridLayout>
+#include <QPainterPath>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
@@ -19,8 +22,8 @@
 
 namespace {
 
-constexpr int kAvatarRow = 28;     // avatar of a row
-constexpr int kAvatarCard = 38;    // avatar of the highlighted card
+constexpr int kAvatarRow = 28;     // avatar of a card in the grid
+constexpr int kCardMin = 150;      // a grid card's narrowest; two need 2 × this + gap
 constexpr int kSoonDays = 7;       // up to here the countdown is in the accent
 
 /// A stable tint per person, derived from the name (not the position) so it
@@ -99,6 +102,67 @@ protected:
     }
 };
 
+/// The highlighted card's backdrop: two soft blobs of colour (the accent and
+/// a warm amber) under a dark veil. Painted once into a pixmap per size and
+/// accent — radial gradients, which read as blur at a fraction of the cost of
+/// blurring anything — and only drawn afterwards.
+class HeroCard : public BirthdayRow {
+public:
+    explicit HeroCard(const QColor &accent) : m_accent(accent) {
+        setObjectName("bdayHero");
+        setAttribute(Qt::WA_StyledBackground, false);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        const qreal dpr = devicePixelRatioF();
+        if (m_cache.size() != size() * dpr || m_cacheAccent != m_accent) {
+            m_cache = QPixmap(size() * dpr);
+            m_cache.setDevicePixelRatio(dpr);
+            m_cache.fill(Qt::transparent);
+            QPainter c(&m_cache);
+            c.setRenderHint(QPainter::Antialiasing);
+            QPainterPath clip;
+            clip.addRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), 12, 12);
+            c.setClipPath(clip);
+            c.fillRect(rect(), QColor(28, 31, 38));
+            const auto blob = [&c](QPointF centre, qreal rx, qreal ry, QColor color, qreal alpha) {
+                QRadialGradient g(centre, qMax(rx, ry));
+                color.setAlphaF(alpha);
+                g.setColorAt(0, color);
+                color.setAlphaF(0);
+                g.setColorAt(1, color);
+                c.save();
+                c.translate(centre);
+                c.scale(1.0, ry / rx);
+                c.translate(-centre);
+                c.fillRect(QRectF(centre.x() - rx, centre.y() - rx, rx * 2, rx * 2), g);
+                c.restore();
+            };
+            blob({width() * 0.18, -10}, width() * 0.62, 150, m_accent, 0.55);
+            blob({width() * 0.95, height() + 10.0}, width() * 0.6, 140, QColor("#f2b757"), 0.32);
+            c.fillRect(rect(), QColor(20, 23, 29, 97));
+            c.setClipping(false);
+            c.setPen(QPen(QColor(255, 255, 255, 36), 1));
+            c.setBrush(Qt::NoBrush);
+            c.drawPath(clip);
+            m_cacheAccent = m_accent;
+        }
+        QPainter p(this);
+        p.drawPixmap(0, 0, m_cache);
+        if (keynav::showsFocus(this)) {
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(QPen(m_accent, 1.5));
+            p.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 12, 12);
+        }
+    }
+
+private:
+    QColor m_accent;
+    QPixmap m_cache;
+    QColor m_cacheAccent;
+};
+
 }  // namespace
 
 BirthdayView::BirthdayView(const Theme &theme, QWidget *parent)
@@ -111,9 +175,11 @@ BirthdayView::BirthdayView(const Theme &theme, QWidget *parent)
 
     auto *host = new QWidget;
     host->setObjectName("listHost");
+    m_host = host;
+    host->installEventFilter(this);
     m_layout = new QVBoxLayout(host);
     m_layout->setContentsMargins(0, 0, 0, 0);
-    m_layout->setSpacing(3);
+    m_layout->setSpacing(6);
     m_layout->addStretch();
 
     auto *scroll = new QScrollArea;
@@ -177,6 +243,15 @@ QList<Birthday *> BirthdayView::byCalendar() const {
     return found;
 }
 
+int BirthdayView::columnsFor(int width) const { return width >= 2 * kCardMin + 6 ? 2 : 1; }
+
+bool BirthdayView::eventFilter(QObject *watched, QEvent *event) {
+    if (watched == m_host && event->type() == QEvent::Resize &&
+        columnsFor(m_host->width()) != m_columns)
+        refresh();
+    return QWidget::eventFilter(watched, event);
+}
+
 void BirthdayView::refresh() {
     // Clear everything but the trailing stretch. Hidden as well as deleted: out
     // of the layout they stay painted and event-handling until deleteLater() runs.
@@ -188,6 +263,7 @@ void BirthdayView::refresh() {
         }
         delete item;
     }
+    m_columns = columnsFor(m_host ? m_host->width() : 0);
 
     // The highlighted one always comes from the closeness order: "who is next"
     // does not depend on how the list is viewed.
@@ -209,14 +285,9 @@ void BirthdayView::refresh() {
     const int soonest = all.first()->daysUntil();
     int highlighted = 0;
     while (highlighted < all.size() && all.at(highlighted)->daysUntil() == soonest) {
-        m_layout->insertWidget(at++, buildHighlightCard(all.at(highlighted)));
+        m_layout->insertWidget(at++, buildHero(all.at(highlighted)));
         ++highlighted;
     }
-
-    auto *line = new QFrame;
-    line->setObjectName("calSeparator");
-    line->setFixedHeight(1);
-    m_layout->insertWidget(at++, line);
 
     // By month the list is the whole year, highlighted ones included: someone
     // missing from their month reads as a bug. By closeness it continues the card
@@ -225,15 +296,27 @@ void BirthdayView::refresh() {
     m_layout->insertWidget(at++, buildHeader(int(list.size())));
 
     int lastMonth = 0;
+    QGridLayout *grid = nullptr;
+    int cell = 0;
     for (Birthday *b : list) {
         // By closeness the month is that of the next turn (so next January follows
         // December); by calendar it is simply theirs.
         const int month = m_byMonth ? b->month : b->nextDate().month();
         if (month != lastMonth) {
             lastMonth = month;
-            m_layout->insertWidget(at++, buildMonthHeader(month));
+            auto *head = new QLabel(monthName(month));
+            head->setObjectName("pageSection");
+            m_layout->insertWidget(at++, head);
+            auto *box = new QWidget;
+            grid = new QGridLayout(box);
+            grid->setContentsMargins(0, 0, 0, 0);
+            grid->setSpacing(6);
+            for (int c = 0; c < m_columns; ++c) grid->setColumnStretch(c, 1);
+            m_layout->insertWidget(at++, box);
+            cell = 0;
         }
-        m_layout->insertWidget(at++, buildRow(b));
+        grid->addWidget(buildCard(b), cell / m_columns, cell % m_columns);
+        ++cell;
     }
 
     if (list.isEmpty()) {
@@ -243,32 +326,12 @@ void BirthdayView::refresh() {
         empty->setContentsMargins(7, 8, 7, 4);
         m_layout->insertWidget(at++, empty);
     }
-
-    m_layout->insertWidget(at++, buildAddRow());
-}
-
-/// Month separator: the name and a rule to the edge.
-QWidget *BirthdayView::buildMonthHeader(int month) {
-    auto *row = new QWidget;
-    auto *l = new QHBoxLayout(row);
-    l->setContentsMargins(4, 9, 4, 3);
-    l->setSpacing(7);
-
-    auto *name = new QLabel(monthName(month));
-    name->setObjectName("bdayMonth");
-    l->addWidget(name);
-
-    auto *rule = new QFrame;
-    rule->setObjectName("bdayMonthRule");
-    rule->setFixedHeight(1);
-    l->addWidget(rule, 1);
-    return row;
 }
 
 QWidget *BirthdayView::buildHeader(int listed) {
     auto *row = new QWidget;
     auto *l = new QHBoxLayout(row);
-    l->setContentsMargins(4, 6, 4, 2);
+    l->setContentsMargins(2, 6, 2, 0);
     l->setSpacing(4);
 
     // The two orders as two small tabs; the lit one doubles as the section title.
@@ -301,155 +364,158 @@ QWidget *BirthdayView::buildHeader(int listed) {
     return row;
 }
 
-QWidget *BirthdayView::buildHighlightCard(Birthday *b) {
+/// The next one: date, who and how many days, then what to do about it.
+QWidget *BirthdayView::buildHero(Birthday *b) {
     const bool isToday = b->isToday();
-
-    auto *card = new BirthdayRow;
-    card->setObjectName("bdayToday");
-    card->setCursor(Qt::PointingHandCursor);
-    // Clicking the card opens the same editor as a row; the buttons inside keep
-    // their own clicks.
+    auto *card = new HeroCard(m_theme.accent);
+    // Clicking the card opens the same editor as a grid card; the buttons inside
+    // keep their own clicks.
     card->click = [this, b, card] { emit editRequested(b, card); };
 
     auto *col = new QVBoxLayout(card);
-    col->setContentsMargins(10, 9, 10, 9);
-    col->setSpacing(8);
+    col->setContentsMargins(14, 14, 14, 12);
+    col->setSpacing(14);
 
-    auto *head = new QHBoxLayout;
-    head->setContentsMargins(0, 0, 0, 0);
-    head->setSpacing(9);
-    head->addWidget(new Avatar(b->initials(), nameTint(b->name), kAvatarCard), 0,
-                    Qt::AlignVCenter);
+    auto *top = new QHBoxLayout;
+    auto *kicker = new QLabel(isToday ? L("HOY") : L("PRÓXIMO"));
+    kicker->setObjectName("heroKicker");
+    top->addWidget(kicker);
+    top->addStretch();
+    QString date = Lang::locale().toString(b->nextDate(), "ddd d MMM");
+    if (!date.isEmpty()) date[0] = date[0].toUpper();
+    auto *dateLabel = new QLabel(date);
+    dateLabel->setObjectName("heroDate");
+    top->addWidget(dateLabel);
+    col->addLayout(top);
 
+    auto *mid = new QHBoxLayout;
+    mid->setSpacing(12);
+    mid->addWidget(new Avatar(b->initials(), QColor(Theme::fg()), 46), 0, Qt::AlignVCenter);
     auto *texts = new QVBoxLayout;
-    texts->setContentsMargins(0, 0, 0, 0);
-    texts->setSpacing(1);
-
-    auto *name = new ElidedLabel(b->name.isEmpty() ? L("Sin nombre") : b->name,
-                                 QColor(Theme::fg()));
-    name->setObjectName("bdayName");
+    texts->setSpacing(2);
+    auto *name = new ElidedLabel(b->name.isEmpty() ? L("Sin nombre") : b->name, QColor(Theme::fg()));
+    name->setObjectName("heroName");
     name->setToolTip(b->name);
     texts->addWidget(name);
+    QString sub = b->turns() > 0 ? L("Cumple %1 años").arg(b->turns()) : b->relation.trimmed();
+    if (b->greeted()) sub = sub.isEmpty() ? L("Felicitado") : sub + " · " + L("felicitado");
+    auto *subLabel = new ElidedLabel(sub, QColor("#e3e6ec"));
+    subLabel->setObjectName("heroSub");
+    texts->addWidget(subLabel);
+    mid->addLayout(texts, 1);
 
-    // Today's needs no date; an upcoming one does, since the chip only says how
-    // long is left and "in 3 weeks" is not a day of the month.
-    QStringList meta;
-    if (!isToday) meta << b->dateLabel();
-    if (const QString sub = b->subtitle(); !sub.isEmpty()) meta << sub;
-    auto *metaLabel = new ElidedLabel(meta.join(" · ").toUpper(), QColor(Theme::muted()));
-    metaLabel->setObjectName("meta");
-    texts->addWidget(metaLabel);
-    head->addLayout(texts, 1);
-
-    // Chip: already greeted, or how long is left.
-    auto *chip = new QLabel(b->greeted() ? L("FELICITADO") : b->whenLabel().toUpper());
-    chip->setObjectName(b->greeted() ? "bdayDoneChip" : "bdayTodayChip");
-    head->addWidget(chip, 0, Qt::AlignTop);
-    col->addLayout(head);
+    auto *count = new QVBoxLayout;
+    count->setSpacing(0);
+    const int days = b->daysUntil();
+    // Today there are no days to count: the cake instead, painted (an emoji would
+    // depend on the system having a colour font).
+    auto *big = new QLabel(isToday ? QString() : QString::number(days));
+    big->setObjectName("heroDays");
+    if (isToday) big->setPixmap(paintIcon("cake", QColor(Theme::fg()), 28).pixmap(28, 28));
+    big->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    count->addWidget(big);
+    auto *unit = new QLabel(isToday ? L("hoy") : days == 1 ? L("día") : L("días"));
+    unit->setObjectName("heroUnit");
+    unit->setAlignment(Qt::AlignRight | Qt::AlignTop);
+    count->addWidget(unit);
+    mid->addLayout(count);
+    col->addLayout(mid);
 
     // The buttons get a row of their own: they carry text, and a row of fixed
     // widths is the *Card widths* trap.
     auto *actions = new QHBoxLayout;
-    actions->setContentsMargins(0, 0, 0, 0);
     actions->setSpacing(6);
-
+    const auto chip = [](const QString &icon, const QString &text) {
+        auto *c = new QToolButton;
+        c->setObjectName("heroChip");
+        c->setText(text);
+        if (!icon.isEmpty()) {
+            c->setIcon(paintIcon(icon, QColor(Theme::fg()), 13));
+            c->setIconSize(QSize(13, 13));
+            c->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        }
+        c->setCursor(Qt::PointingHandCursor);
+        c->setFocusPolicy(Qt::TabFocus);
+        return c;
+    };
     // While ringing, stopping it comes first.
     if (b->ringing) {
-        auto *stop = new QPushButton(L("Detener aviso"));
-        stop->setFocusPolicy(Qt::TabFocus);
-        stop->setObjectName("bdayStop");   // the red lives in the stylesheet
-        stop->setCursor(Qt::PointingHandCursor);
-        connect(stop, &QPushButton::clicked, this, [this, b] { emit dismissRequested(b); });
+        auto *stop = chip("stop", L("Detener aviso"));
+        stop->setObjectName("heroStop");
+        connect(stop, &QToolButton::clicked, this, [this, b] { emit dismissRequested(b); });
         actions->addWidget(stop);
     } else if (isToday) {
         // Only on the day itself: greeting months early means nothing, and the mark
         // is stored per year.
-        auto *greet = new QPushButton(b->greeted() ? L("Sin felicitar") : L("Felicitar"));
-        greet->setCursor(Qt::PointingHandCursor);
-        greet->setFocusPolicy(Qt::TabFocus);
+        auto *greet = chip(b->greeted() ? "check" : QString(),
+                           b->greeted() ? L("Felicitado") : L("Felicitar"));
         greet->setToolTip(L("Marca que ya le has felicitado este año"));
-        connect(greet, &QPushButton::clicked, this, [this, b] { emit greetToggled(b); });
+        connect(greet, &QToolButton::clicked, this, [this, b] { emit greetToggled(b); });
         actions->addWidget(greet);
     }
-
-    auto *remind = new QToolButton;
-    remind->setObjectName("bdayGhost");
-    remind->setText(b->remindAt.isValid()
-                        ? L("Aviso a las %1").arg(b->remindAt.toString("HH:mm"))
-                        : L("Avisarme…"));
-    remind->setCursor(Qt::PointingHandCursor);
+    auto *remind = chip("bell", b->remindAt.isValid()
+                                    ? L("Aviso %1").arg(b->remindAt.toString("HH:mm"))
+                                    : L("Avisarme…"));
     connect(remind, &QToolButton::clicked, this,
             [this, b, remind] { emit remindRequested(b, remind); });
     actions->addWidget(remind);
     actions->addStretch();
     col->addLayout(actions);
-
     return card;
 }
 
-QWidget *BirthdayView::buildRow(Birthday *b) {
-    auto *row = new BirthdayRow;
-    row->click = [this, b, row] { emit editRequested(b, row); };
+/// One person in the grid: avatar and name, then the date with the age they
+/// turn, and how long is left.
+QWidget *BirthdayView::buildCard(Birthday *b) {
+    auto *card = new BirthdayRow;
+    card->setObjectName("bdayCard");
+    card->click = [this, b, card] { emit editRequested(b, card); };
+    card->setMinimumWidth(60);   // see *Card widths*: the grid shares out the width
 
-    auto *l = new QHBoxLayout(row);
-    l->setContentsMargins(6, 5, 7, 5);
-    l->setSpacing(9);
-    l->addWidget(new Avatar(b->initials(), nameTint(b->name), kAvatarRow), 0,
-                 Qt::AlignVCenter);
+    auto *col = new QVBoxLayout(card);
+    col->setContentsMargins(10, 10, 10, 10);
+    col->setSpacing(8);
 
-    auto *texts = new QVBoxLayout;
-    texts->setContentsMargins(0, 0, 0, 0);
-    texts->setSpacing(0);
-
-    auto *name = new ElidedLabel(b->name.isEmpty() ? L("Sin nombre") : b->name,
-                                 QColor(Theme::fg()));
+    auto *top = new QHBoxLayout;
+    top->setSpacing(8);
+    top->addWidget(new Avatar(b->initials(), nameTint(b->name), kAvatarRow), 0, Qt::AlignVCenter);
+    auto *name = new ElidedLabel(b->name.isEmpty() ? L("Sin nombre") : b->name, QColor(Theme::fg()));
     name->setObjectName("bdayRowName");
-    name->setToolTip(b->name);
-    texts->addWidget(name);
-
-    // The second line may be empty (no year, no relation): then it is not built.
-    if (const QString sub = b->subtitle(); !sub.isEmpty()) {
-        auto *meta = new ElidedLabel(sub, QColor(Theme::muted()));
-        meta->setObjectName("meta");
-        texts->addWidget(meta);
-    }
-    l->addLayout(texts, 1);
-
-    // A small bell when an alarm is set.
+    name->setToolTip(b->relation.isEmpty() ? b->name : b->name + " · " + b->relation);
+    top->addWidget(name, 1);
     if (b->remindAt.isValid()) {
         auto *bell = new QLabel;
         bell->setFixedSize(11, 11);
         bell->setPixmap(paintIcon("bell", QColor(Theme::muted()), 11).pixmap(11, 11));
         bell->setToolTip(L("Aviso a las %1").arg(b->remindAt.toString("HH:mm")));
-        l->addWidget(bell, 0, Qt::AlignVCenter);
+        top->addWidget(bell, 0, Qt::AlignVCenter);
     }
+    col->addLayout(top);
 
-    auto *right = new QVBoxLayout;
-    right->setContentsMargins(0, 0, 0, 0);
-    right->setSpacing(0);
-
-    auto *date = new QLabel(b->dateLabel());
+    auto *bottom = new QHBoxLayout;
+    QString left = b->dateLabel();
+    if (b->turns() > 0) left += QStringLiteral(" · ") + QString::number(b->turns());
+    auto *date = new ElidedLabel(left, QColor(Theme::muted()));
     date->setObjectName("bdayDate");
-    date->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    right->addWidget(date);
-
-    auto *when = new QLabel(b->whenLabel());
+    bottom->addWidget(date, 1);
+    const int days = b->daysUntil();
+    auto *when = new QLabel(days == 0 ? L("hoy") : L("%1 d").arg(days));
     when->setObjectName("bdayWhen");
-    when->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     // This week's in the accent, the rest dimmed: a page full of accent colour
     // highlights nothing.
-    when->setProperty("soon", b->daysUntil() <= kSoonDays);
-    right->addWidget(when);
-    l->addLayout(right);
-
-    return row;
+    when->setProperty("soon", days <= kSoonDays);
+    bottom->addWidget(when);
+    col->addLayout(bottom);
+    return card;
 }
 
-/// The add row, styled like the others so it reads as "the next one".
+/// The add row, styled like a card so it reads as "the next one". Only on an
+/// empty page now: the header's "+" adds otherwise.
 QWidget *BirthdayView::buildAddRow() {
     auto *add = new BirthdayRow;
+    add->setObjectName("bdayCard");
     auto *l = new QHBoxLayout(add);
-    l->setContentsMargins(6, 6, 7, 6);
+    l->setContentsMargins(10, 10, 10, 10);
     l->setSpacing(9);
 
     auto *slot = new QLabel;

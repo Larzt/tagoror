@@ -8,13 +8,14 @@
 
 class QVBoxLayout;
 
-/// The birthdays page.
+/// The birthdays page (5.0 layout).
 ///
-/// On top, the next birthday due on a highlighted card with what can be done
-/// about it (greet, only on the day; set or clear an alarm). It is the
-/// soonest, not today's, or the page would have nothing highlighted most of
-/// the year. Below, everyone else split by month, ordered by time left or by
-/// calendar as the user picks.
+/// On top, the next birthday due on a card with a blurred colour backdrop —
+/// the one blur in the app — and what can be done about it (greet, only on the
+/// day; set or clear an alarm). It is the soonest, not today's, or the page
+/// would have nothing highlighted most of the year. Below, everyone else as
+/// cards in a grid of one or two columns, split by month, ordered by time
+/// left or by calendar as the user picks.
 ///
 /// Everything scrolls, highlighted card included: outside the scroll area the
 /// page's minimum height depended on how many people share the soonest date,
@@ -49,11 +50,12 @@ signals:
     void orderChanged(bool byMonth);                       ///< So it gets saved.
 
 private:
-    QWidget *buildHighlightCard(Birthday *b);
+    QWidget *buildHero(Birthday *b);
     QWidget *buildHeader(int listed);
-    QWidget *buildMonthHeader(int month);
-    QWidget *buildRow(Birthday *b);
+    QWidget *buildCard(Birthday *b);
     QWidget *buildAddRow();
+    /// Two columns from this content width; one below it.
+    int columnsFor(int width) const;
     /// All valid birthdays by time left. The first ones (tied for soonest) are
     /// the highlighted ones.
     QList<Birthday *> sorted() const;
@@ -63,4 +65,10 @@ private:
     const QList<Birthday *> *m_list = nullptr;
     bool m_byMonth = false;
     QVBoxLayout *m_layout = nullptr;   ///< Content plus the trailing stretch.
+    QWidget *m_host = nullptr;         ///< What scrolls; its width sets the columns.
+    int m_columns = 1;
+
+protected:
+    /// Re-lays the grid when it crosses between one and two columns.
+    bool eventFilter(QObject *watched, QEvent *event) override;
 };

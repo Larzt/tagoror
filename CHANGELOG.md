@@ -18,6 +18,11 @@ A simpler interface: one fixed place for everything.
 - **Fold any note** to its title with the chevron. Folded, it still says what
   matters: a checklist's 2/4, a reminder's time (in red while it rings), a
   recording's length.
+- **A start screen** that says what it is waiting for — loading, syncing,
+  looking for updates — while the stones of the tagoror light up in a ring.
+  It only appears when there is something to wait for, and never when
+  Tagoror starts hidden: the new `--tray` option starts it straight into the
+  tray, for autostart.
 - **Command palette (Ctrl+K)**, also in the ⋯ menu: type to go to any page,
   create any kind of note or switch area, from anywhere. Accents don't matter —
   *cumple* finds Birthdays, *recor* a new reminder — and ↑↓, Enter and Esc
@@ -46,6 +51,15 @@ A simpler interface: one fixed place for everything.
   single card over the bottom of the list, most urgent first, with *1 of N* to
   see the rest. Alarms can be stopped or snoozed from there. Nothing slides in
   under the header pushing your notes down any more.
+- **Timers, redone.** The running (or chosen) timer sits on top with its
+  ring and *Pause*, *+1 min* and *Reset*; the rest are listed as saved, and
+  the *Quick* chips (1′ to 45′) start one at once. The **+** in the header
+  opens the form for a named one.
+- **Birthdays, redone.** The next one sits on a card with a soft colour
+  backdrop and the days left in large figures; everyone else is a card in a
+  grid of one or two columns, by month. **+** in the header adds one.
+- **The dock is the tagoror's ring of stones.** While something rings the
+  stones turn red, a halo beats around it and a badge counts the alarms.
 - **The running timer's countdown** shows in the navigation, and a red dot on
   Notes tells you a reminder is ringing while you are on another page.
 

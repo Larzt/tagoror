@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+
 #include <QColor>
 #include <QIcon>
 #include <QPainter>
@@ -42,6 +44,27 @@ struct Theme {
 
     QString sheet() const;
 };
+
+/// The tagoror itself: stones in a ring, as in the app icon. Used by the
+/// splash (stones lighting up in turn) and the folded dock. @p alpha gives
+/// each stone's opacity; empty means all fully lit. The stones vary a little
+/// in size, like the icon's, so the ring reads as stones and not as a dial.
+inline void paintStoneRing(QPainter &p, const QPointF &centre, qreal radius, int count,
+                           qreal stone, const QColor &color, const QList<qreal> &alpha = {}) {
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(Qt::NoPen);
+    for (int i = 0; i < count; ++i) {
+        const qreal a = -M_PI / 2 + 2 * M_PI * i / count;
+        const qreal vary = 1.0 + 0.16 * std::sin(i * 2.3);
+        QColor c = color;
+        c.setAlphaF(color.alphaF() * (alpha.isEmpty() ? 1.0 : alpha.value(i, 1.0)));
+        p.setBrush(c);
+        const QPointF at(centre.x() + radius * std::cos(a), centre.y() + radius * std::sin(a));
+        p.drawEllipse(at, stone * vary, stone * vary * 0.9);
+    }
+    p.restore();
+}
 
 /// Icons drawn in code: no dependency on a system icon theme.
 inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
@@ -364,6 +387,45 @@ QFrame#header { border: none; }
 /* 5.0 chrome: a 36px tools row over the list, and the navigation as a bar
    along the bottom or a rail down the left. */
 QFrame#toolsRow { border: none; border-bottom: 1px solid %2; }
+/* 5.0 pages: section labels, the timers' hero card, rows and chips. */
+QLabel#pageSection {
+    color: #636872; font-size: 10px; letter-spacing: 0.8px; padding: 8px 4px 0 4px;
+    font-family: "IBM Plex Mono", monospace;
+}
+QFrame#timerHero { background: rgba(255,255,255,0.045); border: 1px solid %2; border-radius: 10px; }
+QFrame#timerHero[done="true"] { border: 1px solid rgba(255,122,107,0.5); }
+QLabel#timerHeroName { font-size: {fs:13}px; font-weight: 600; }
+QLabel#timerSub { color: %4; font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
+QToolButton#heroPrimary {
+    color: %5; background: %8; border: none; border-radius: 8px;
+    padding: 6px 11px; font-size: 12px; font-weight: 600;
+}
+QToolButton#heroPrimary:hover { background: %10; }
+QToolButton#heroGhost, QToolButton#quickChip {
+    color: #d4d6db; background: transparent; border: 1px solid %2; border-radius: 8px;
+    padding: 6px 9px; font-size: 11px; font-family: "IBM Plex Mono", monospace;
+}
+QToolButton#heroGhost:hover, QToolButton#quickChip:hover { background: %7; color: %3; }
+QToolButton#heroIcon { background: transparent; border: 1px solid %2; border-radius: 8px; }
+QToolButton#heroIcon:hover { background: %7; }
+/* Birthdays (5.0): the next one on a blurred card, everyone else in a grid. */
+QLabel#heroKicker {
+    color: #e3e6ec; font-size: 10px; letter-spacing: 1px; font-family: "IBM Plex Mono", monospace;
+}
+QLabel#heroDate { color: #e3e6ec; font-size: 11px; font-family: "IBM Plex Mono", monospace; }
+QLabel#heroName { font-size: {fs:15}px; font-weight: 600; }
+QLabel#heroSub { font-size: 12px; }
+QLabel#heroDays { font-size: 30px; font-weight: 500; font-family: "IBM Plex Mono", monospace; }
+QLabel#heroUnit { color: #e3e6ec; font-size: 11px; }
+QToolButton#heroChip, QToolButton#heroStop {
+    color: %3; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 7px; padding: 4px 9px; font-size: 11.5px; font-weight: 500;
+}
+QToolButton#heroChip:hover { background: rgba(255,255,255,0.18); }
+QToolButton#heroStop { color: #2b0e0a; background: #ff7a6b; border: none; font-weight: 600; }
+QWidget#bdayCard { background: rgba(255,255,255,0.045); border: 1px solid %2; border-radius: 10px; }
+QWidget#bdayCard:hover { background: rgba(255,255,255,0.065); }
+QWidget#bdayCard[kbfocus="true"]:focus { border: 1px solid %5; }
 /* Folding a card (5.0): the chevron and what stands in for the body. */
 QToolButton#foldBtn { background: transparent; border: none; border-radius: 5px; }
 QToolButton#foldBtn:hover { background: %7; }
@@ -704,7 +766,9 @@ QLabel#bdayDate {
     color: %4; font-size: 10px;
     font-family: "IBM Plex Mono", monospace;
 }
-QLabel#bdayWhen { color: %5; font-size: 9.5px; font-weight: 600; }
+QLabel#bdayWhen {
+    color: %5; font-size: 10.5px; font-weight: 600; font-family: "IBM Plex Mono", monospace;
+}
 /* Today and tomorrow read first in the accent; the rest is context. */
 QLabel#bdayWhen[soon="false"] { color: %4; }
 

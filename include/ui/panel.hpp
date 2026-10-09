@@ -27,6 +27,7 @@ class QVBoxLayout;
 class AlertCenter;
 class AlertZone;
 class CommandPalette;
+class DockButton;
 class MarkdownPage;
 class AreaTabs;
 class NavBar;
@@ -55,6 +56,9 @@ public:
     /// Called by a second instance through the socket: instead of opening another
     /// panel, this one is unfolded and raised.
     void bringToFront();
+    /// After the window is shown (or not, with --tray): the first sync and update
+    /// check, with the splash while they run.
+    void startUp(bool visible);
 
 protected:
     /// Closing hides to the tray instead of quitting. Without a tray it quits, or
@@ -214,6 +218,7 @@ private:
     /// @name Updates
     /// @{
     void pollUpdates();               ///< Due for a check? Once a day.
+    bool updateCheckDue() const;
     void checkUpdatesNow();           ///< The settings button.
     void onUpdateChecked(const QString &version, const QString &url, const QString &error);
     void openLatestRelease();
@@ -286,7 +291,7 @@ private:
     QStackedWidget *m_stack = nullptr;   ///< Expanded panel / folded dock.
     QFrame *m_shell = nullptr;
     QWidget *m_badge = nullptr;
-    QLabel *m_badgeCount = nullptr;
+    DockButton *m_dock = nullptr;        ///< The folded panel's tile.
     QHBoxLayout *m_shellRow = nullptr;   ///< Rail, then the column.
     QVBoxLayout *m_mainCol = nullptr;    ///< Header, tools, body, bar.
     NavBar *m_navBar = nullptr;
@@ -308,6 +313,8 @@ private:
     QLabel *m_titleLabel = nullptr;
     QToolButton *m_backBtn = nullptr;      ///< Only on settings.
     QToolButton *m_moreBtn = nullptr;      ///< "⋯"
+    QToolButton *m_timerAddBtn = nullptr;  ///< Header "+" on the timers page.
+    QToolButton *m_bdayAddBtn = nullptr;   ///< Header "+" on the birthdays page.
     QWidget *m_empty = nullptr;            ///< "No notes" placeholder.
     QLabel *m_emptyText = nullptr;
     QPushButton *m_emptyBtn = nullptr;

@@ -71,6 +71,18 @@ struct Timer {
         state = Running;
     }
 
+    /// "+1 min" on the timers page (5.0): more time on whatever it is doing.
+    /// A ringing one starts counting again from now; the length grows too, so
+    /// the ring keeps meaning "how much is left of it".
+    void addTime(qint64 ms, qint64 now = QDateTime::currentMSecsSinceEpoch()) {
+        totalMs += ms;
+        switch (state) {
+            case Running: endsAtMs += ms; break;
+            case Done:    snooze(ms, now); break;
+            default:      leftMs += ms; break;
+        }
+    }
+
     QJsonObject toJson() const {
         QJsonObject o;
         o["id"] = id;
