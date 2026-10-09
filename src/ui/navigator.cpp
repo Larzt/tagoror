@@ -6,7 +6,6 @@
 #include <QLayout>
 #include <QScreen>
 #include <QStackedWidget>
-#include <QToolButton>
 #include <QWidget>
 
 #include "core/store.hpp"
@@ -51,7 +50,7 @@ void Navigator::setStacks(QStackedWidget *outer, QWidget *shell, QWidget *dock,
     m_list = list;
 }
 
-void Navigator::addPage(QWidget *page, QToolButton *button, const QString &key,
+void Navigator::addPage(QWidget *page, QWidget *button, const QString &key,
                         const char *name) {
     m_pages.append({page, button, key, name});
 }
@@ -249,7 +248,7 @@ void Navigator::showBodyPage(QWidget *page) {
     QWidget *leaving = m_body->currentWidget();
     QWidget *focus = QApplication::focusWidget();
     if (leaving && leaving != page && focus && leaving->isAncestorOf(focus)) {
-        QToolButton *to = nullptr;
+        QWidget *to = nullptr;
         for (const Page &p : m_pages)
             if (p.page == leaving || (!to && p.page == page)) to = p.button;
         if (to) to->setFocus(Qt::OtherFocusReason);

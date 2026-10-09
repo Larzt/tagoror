@@ -2,7 +2,6 @@
 
 #include <QDateTime>
 #include <QObject>
-#include <QStringList>
 
 class Alarm;
 class Store;
@@ -48,18 +47,8 @@ public:
     /// Opening the panel counts as acknowledging everything. @return whether
     /// anything was ringing.
     bool acknowledgeAll();
-    /// The strip's *Detener*: finished timers back to idle, events silenced.
-    void stopStrip();
     /// After a merge: what was silenced on another machine is silenced here.
     void reconcileMerged();
-
-    /// What the alarm strip lists: timers and events, which have no card with
-    /// a stop button of their own.
-    struct Strip {
-        QStringList lines;
-        bool timers = false;   ///< Whether "+1 min" applies.
-    };
-    Strip strip() const;
 
 private:
     Store *m_store;

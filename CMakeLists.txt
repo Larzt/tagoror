@@ -68,6 +68,8 @@ add_executable(tagoror
     src/ui/datetimepicker.cpp
     src/ui/navigator.cpp
     src/ui/alertcenter.cpp
+    src/ui/alertzone.cpp
+    src/ui/navbar.cpp
     src/ui/waveform.cpp
     src/ui/workarea.cpp
     include/ui/panel.hpp
@@ -82,6 +84,8 @@ add_executable(tagoror
     include/ui/datetimepicker.hpp
     include/ui/navigator.hpp
     include/ui/alertcenter.hpp
+    include/ui/alertzone.hpp
+    include/ui/navbar.hpp
     include/ui/theme.hpp
     include/ui/waveform.hpp
     include/ui/workarea.hpp

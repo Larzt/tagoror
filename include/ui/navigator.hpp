@@ -10,7 +10,6 @@
 
 class QScreen;
 class QStackedWidget;
-class QToolButton;
 class QWidget;
 class Store;
 
@@ -27,7 +26,7 @@ public:
     /// A body page other than the list, with what leads to it.
     struct Page {
         QWidget *page;
-        QToolButton *button;   ///< May be null: a page with no button of its own.
+        QWidget *button;       ///< Where the focus is parked on leaving; may be null.
         QString key;           ///< Stored in notes.json (pageSizes): never translated.
         const char *name;      ///< Spanish; translated when shown.
     };
@@ -42,7 +41,7 @@ public:
     /// @p list and the pages added with addPage().
     void setStacks(QStackedWidget *outer, QWidget *shell, QWidget *dock,
                    QStackedWidget *body, QWidget *list);
-    void addPage(QWidget *page, QToolButton *button, const QString &key, const char *name);
+    void addPage(QWidget *page, QWidget *button, const QString &key, const char *name);
     /// The page that widens the window on entering (the planner).
     void setWidePage(QWidget *page, int preferredWidth) {
         m_widePage = page;

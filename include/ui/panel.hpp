@@ -25,7 +25,10 @@ class QTimer;
 class QToolButton;
 class QVBoxLayout;
 class AlertCenter;
+class AlertZone;
 class AreaTabs;
+class NavBar;
+class QHBoxLayout;
 class DriveSync;
 class SyncController;
 class Updater;
@@ -79,9 +82,12 @@ private:
     /// or maximised.
     Qt::Edges resizeEdgesAt(const QPoint &pos) const;
     QFrame *buildHeader();
+    QWidget *buildTools();      ///< Area tabs, search and new note.
     QWidget *buildBody();
-    QFrame *buildFooter();
     QWidget *buildBadge();
+    void installShortcuts();
+    /// Bar along the bottom, or rail on the left from NavBar::kRailFrom.
+    void updateNavLayout();
     /// @}
 
     /// @name Visual state
@@ -91,8 +97,8 @@ private:
     void setLanguage(Lang::Code code);
     void retranslate();
     void rebuildList();
-    void refreshFooter();
-    void refreshFooterHint();
+    /// The navigation's active page, timer countdown and red dot.
+    void refreshNav();
     QList<NoteCard *> cards() const;
     /// @}
 
@@ -131,14 +137,8 @@ private:
     void commitOrder();
     /// @}
 
-    /// Opens a page, or returns to the notes if it was already open. The pages,
-    /// their buttons and the window sizes live in Navigator.
-    void togglePage(QWidget *page);
-    /// Lights a page's button on or off. The icon says where it leads; the
-    /// highlight says where you are.
-    void setPageActive(QToolButton *button, bool on,
-                       const QString &tipOn, const QString &tipOff);
-    void refreshPageButtons();
+    /// Opens a page. The pages and the window sizes live in Navigator.
+    void openPage(QWidget *page);
     /// The header title names the page that is open.
     void refreshTitle();
     void showNotes();
@@ -159,11 +159,6 @@ private:
     void removeTimer(Timer *t);
     void onTimersChanged();         ///< Repaints everything that shows timers.
     void tickTimers();              ///< Every half second while something runs.
-    void refreshFooterTimer();
-    /// The red "time's up" / "starting now" strip: timers and events have no card
-    /// with a stop button, so their alarm lives here. Stop silences all of it.
-    void refreshAlarmBar();
-    void stopBarAlarms();
     /// @}
 
     /// @name Birthdays
@@ -181,6 +176,7 @@ private:
     /// @{
     void checkReminders();          ///< Anything due? Then ring and show it.
     void dismissNote(Note *n);      ///< The user stops the alarm.
+    void snoozeNote(Note *n, int minutes);
     void rescheduleNote(Note *n);   ///< Its date changed while it was ringing.
     void refreshDueCards();         ///< Repaints the state without rebuilding the list.
     void applyBadgeAlert();         ///< The dock shows the alert even when folded.
@@ -189,6 +185,8 @@ private:
     /// @name Menus and settings
     /// @{
     void openNewNoteMenu(QWidget *anchor);
+    void openMoreMenu(QWidget *anchor);   ///< "⋯" in the header.
+    void openAbout(QWidget *anchor);
     void refreshSettings();
     void openAccentEditor(QWidget *anchor);
     /// IBM Plex Sans, the system's or an installed one typed by name. @p notFound is
@@ -213,8 +211,6 @@ private:
     void checkUpdatesNow();           ///< The settings button.
     void onUpdateChecked(const QString &version, const QString &url, const QString &error);
     void openLatestRelease();
-    /// Shows or hides the "new version available" strip.
-    void refreshUpdateBanner();
     bool updateAvailable() const;
     void confirmRestore(const QString &file);
     /// @}
@@ -233,8 +229,9 @@ private:
     /// Whether the list may be rebuilt now: not while the user types in one of
     /// the panel's fields, or they would lose the cursor mid-sentence.
     bool userIdle() const;
-    /// Shows or hides the "not saving" banner.
-    void refreshDataWarning();
+    /// The alert zone: what rings, a missing folder, a failed sync, an update.
+    void refreshNotices();
+    void placeAlertZone();
     /// @}
 
     /// @name System tray
@@ -267,6 +264,7 @@ private:
     /// @name Search and folding
     /// @{
     void focusSearch();
+    void closeSearch();
     void applyFilter(const QString &q);
     void collapse();
     /// Unfolding acknowledges whatever rings, then Navigator opens the panel.
@@ -283,18 +281,11 @@ private:
     QFrame *m_shell = nullptr;
     QWidget *m_badge = nullptr;
     QLabel *m_badgeCount = nullptr;
-    /// Red banner under the header: the notes folder is missing and nothing
-    /// typed will be saved. Without it the panel opened empty without saying why.
-    QLabel *m_dataWarn = nullptr;
-    /// Strip under the header when a new version exists. It goes below the
-    /// missing-folder warning, which outranks it.
-    QWidget *m_updateBar = nullptr;
-    QLabel *m_updateText = nullptr;
-
-    /// Alarm of a ringing timer or event (see refreshAlarmBar()).
-    QWidget *m_alarmBar = nullptr;
-    QLabel *m_alarmText = nullptr;
-    QToolButton *m_alarmPlus = nullptr;
+    QHBoxLayout *m_shellRow = nullptr;   ///< Rail, then the column.
+    QVBoxLayout *m_mainCol = nullptr;    ///< Header, tools, body, bar.
+    NavBar *m_navBar = nullptr;
+    QWidget *m_bodyHost = nullptr;       ///< The pages, with the notices over them.
+    AlertZone *m_alertZone = nullptr;
 
     QStackedWidget *m_body = nullptr;    ///< Note list / pages.
     QScrollArea *m_scroll = nullptr;
@@ -305,24 +296,18 @@ private:
     BirthdayView *m_birthdays = nullptr;
     SettingsView *m_settings = nullptr;
 
+    QFrame *m_header = nullptr;
     QLabel *m_titleLabel = nullptr;
+    QToolButton *m_backBtn = nullptr;      ///< Only on settings.
+    QToolButton *m_moreBtn = nullptr;      ///< "⋯"
     QWidget *m_empty = nullptr;            ///< "No notes" placeholder.
     QLabel *m_emptyText = nullptr;
     QPushButton *m_emptyBtn = nullptr;
-    QLabel *m_footerHint = nullptr;
-    QWidget *m_notesBar = nullptr;         ///< Search box and new-note button.
+    QWidget *m_tools = nullptr;            ///< Tabs, search and new note.
     QLineEdit *m_search = nullptr;
-    QAction *m_searchIcon = nullptr;       ///< Magnifier inside the search box.
+    QToolButton *m_searchBtn = nullptr;
     QToolButton *m_addBtn = nullptr;
-    QLabel *m_footerText = nullptr;
-    QToolButton *m_calendarBtn = nullptr;
-    QToolButton *m_timersBtn = nullptr;
-    QToolButton *m_footerTimer = nullptr;   ///< Countdown in the footer.
-    QToolButton *m_birthdayBtn = nullptr;
-    QToolButton *m_settingsBtn = nullptr;
-    QList<QToolButton *> m_headerButtons;
     QFont m_systemFont;   ///< The application font before any choice was applied.
-    QToolButton *m_minBtn = nullptr;
     QVBoxLayout *m_outer = nullptr;
     QGraphicsDropShadowEffect *m_shellShadow = nullptr;
 

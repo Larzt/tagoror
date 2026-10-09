@@ -4,6 +4,38 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [5.0.0] — sin publicar
+
+A simpler interface: one fixed place for everything.
+
+### Changed
+
+- **Navigation that stays put.** Notes, Planner, Timers and Birthdays live in a
+  bar along the bottom, with the open page marked; widen the panel past 480 px
+  (the planner does) and it becomes a rail on the left. Before, each page was a
+  header button that took you back to the notes when pressed again. Ctrl+1…4
+  open them.
+- **The header is just the page's name and ⋯** — settings (Ctrl+,), app mode,
+  fold to the dock (Ctrl+M) and *About Tagoror* moved there. Settings has a
+  back arrow; Escape still closes any page.
+- **One row for the areas, search and new notes.** The search box unfolds over
+  the tabs when you press the magnifier or Ctrl+F, and says so when nothing
+  matches. The **+** opens the note types with their shortcuts: Ctrl+N for a
+  text note straight away, Ctrl+⇧L, Ctrl+⇧R and Ctrl+⇧V for the others.
+- **Area shortcuts are now Alt+1…9** (Ctrl+1…4 belong to the pages).
+- **One place for notices.** A ringing reminder, birthday, timer or event, a
+  data folder that isn't there, a failed sync and a new version all show in a
+  single card over the bottom of the list, most urgent first, with *1 of N* to
+  see the rest. Alarms can be stopped or snoozed from there. Nothing slides in
+  under the header pushing your notes down any more.
+- **The running timer's countdown** shows in the navigation, and a red dot on
+  Notes tells you a reminder is ringing while you are on another page.
+
+### Removed
+
+- The footer with its counters and hints, and the resize corner — the panel
+  resizes from any edge since 4.3.
+
 ## [4.3.0] — 2026-10-09
 
 A date picker, Enter to finish, resizing from any edge, and a new typeface and icon.

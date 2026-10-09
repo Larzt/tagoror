@@ -9,7 +9,9 @@
 #include "ui/timers.hpp"
 #include "ui/dragwidgets.hpp"
 #include "ui/keynav.hpp"
+#include "ui/navbar.hpp"
 #include "ui/navigator.hpp"
+#include "ui/alertzone.hpp"
 #include "ui/notecard.hpp"
 #include "ui/popup.hpp"
 #include "ui/workarea.hpp"
@@ -107,28 +109,6 @@ QIcon alertIcon() {
     return icon;
 }
 
-/// Clickable strip under the header. A plain QWidget, so it needs
-/// WA_StyledBackground for the stylesheet to paint its background.
-class ClickableBar : public QWidget {
-public:
-    explicit ClickableBar(std::function<void()> onClick, QWidget *parent = nullptr)
-        : QWidget(parent), m_click(std::move(onClick)) {
-        setAttribute(Qt::WA_StyledBackground, true);
-        setAttribute(Qt::WA_Hover, true);
-        setCursor(Qt::PointingHandCursor);
-        keynav::activatable(this, [this] { if (m_click) m_click(); });
-    }
-
-protected:
-    void mouseReleaseEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton && rect().contains(e->position().toPoint()) && m_click)
-            m_click();
-    }
-
-private:
-    std::function<void()> m_click;
-};
-
 }  // namespace
 
 Panel::Panel() {
@@ -184,10 +164,10 @@ Panel::Panel() {
     // was deleted there may be what was ringing here.
     connect(m_drive->calendar(), &CalendarSync::eventsChanged, this, [this] {
         m_alerts->stopIfQuiet();
-        refreshAlarmBar();
+        refreshNotices();
         applyBadgeAlert();
         refreshPlanner();
-        refreshFooter();
+        refreshNav();
         checkReminders();
     });
 
@@ -196,8 +176,9 @@ Panel::Panel() {
     buildTray();
     rebuildList();
     applyTheme();
-    refreshDataWarning();
-    refreshUpdateBanner();   // with what the last check found
+    refreshSettings();
+    refreshNotices();
+    refreshNotices();   // with what the last check found
     checkReminders();   // something may have come due while the app was closed
     tickTimers();       // and a timer may have reached zero
 
@@ -245,14 +226,138 @@ void Panel::buildShell() {
     // The shadow is set in applyAppModeChrome(): in app mode the window manager
     // draws it and there is no room for it here.
 
-    auto *col = new QVBoxLayout(m_shell);
-    col->setContentsMargins(0, 0, 0, 0);
-    col->setSpacing(0);
+    // A row so the navigation can stand on the left as a rail; the column holds
+    // the rest, and the navigation along its bottom while it is a bar.
+    m_shellRow = new QHBoxLayout(m_shell);
+    m_shellRow->setContentsMargins(0, 0, 0, 0);
+    m_shellRow->setSpacing(0);
+    m_mainCol = new QVBoxLayout;
+    m_mainCol->setContentsMargins(0, 0, 0, 0);
+    m_mainCol->setSpacing(0);
+    m_shellRow->addLayout(m_mainCol, 1);
 
-    col->addWidget(buildHeader());
+    // A fixed chrome of 128px (40 + 36 + 52): nothing appears or disappears
+    // pushing the list; notices float over it (see AlertZone).
+    m_mainCol->addWidget(buildHeader());
+    m_mainCol->addWidget(buildTools());
+    m_mainCol->addWidget(buildBody(), 1);
 
-    // Workspace areas, attached to the header. Only while the list is shown: on
-    // the other pages they mean nothing.
+    m_navBar = new NavBar(&m_theme);
+    m_navBar->setItems({{m_scroll, "notes", "Notas", "Ctrl+1"},
+                        {m_planner, "calendar", "Planner", "Ctrl+2"},
+                        {m_timerView, "timer", "Timers", "Ctrl+3"},
+                        {m_birthdays, "cake", "Cumpleaños", "Ctrl+4"}});
+    m_navBar->activated = [this](QWidget *page) {
+        if (page == m_scroll) {
+            showNotes();
+            return;
+        }
+        // The countdown in the item is the running timer: going there shows it.
+        if (page == m_timerView)
+            for (Timer *t : m_store.timers())
+                if (t->state == Timer::Running) {
+                    m_timerView->focusTimer(t);
+                    break;
+                }
+        openPage(page);
+    };
+    m_mainCol->addWidget(m_navBar);
+    m_stack->addWidget(m_shell);
+
+    m_badge = buildBadge();
+    m_stack->addWidget(m_badge);
+
+    m_nav->setStacks(m_stack, m_shell, m_badge, m_body, m_scroll);
+    m_nav->addPage(m_planner, m_navBar->buttonFor(m_planner), "planner", "Planner");
+    m_nav->addPage(m_timerView, m_navBar->buttonFor(m_timerView), "timers", "Timers");
+    m_nav->addPage(m_birthdays, m_navBar->buttonFor(m_birthdays), "birthdays", "Cumpleaños");
+    // Settings has no item in the bar: it comes from "⋯", and leaving parks the
+    // focus there.
+    m_nav->addPage(m_settings, m_moreBtn, "settings", "Ajustes");
+    // The rail takes its width out of the planner, which then widens by as much.
+    m_nav->setWidePage(m_planner, PlannerView::kPreferredWidth + NavBar::kRailWidth);
+    m_nav->setListOnly({m_tools});
+    m_nav->initBody();
+
+    installShortcuts();
+    setMinimumSize(Navigator::kShellMinWidth + shadowMargin() * 2, Navigator::kShellMinHeight);
+}
+
+void Panel::installShortcuts() {
+    const auto key = [this](const QKeySequence &seq, std::function<void()> fn) {
+        auto *sc = new QShortcut(seq, this);
+        connect(sc, &QShortcut::activated, this, std::move(fn));
+    };
+    // Pages: the bar's order. Settings has the platform's usual key.
+    key(QKeySequence(Qt::CTRL | Qt::Key_1), [this] { showNotes(); });
+    key(QKeySequence(Qt::CTRL | Qt::Key_2), [this] { openPage(m_planner); });
+    key(QKeySequence(Qt::CTRL | Qt::Key_3), [this] { openPage(m_timerView); });
+    key(QKeySequence(Qt::CTRL | Qt::Key_4), [this] { openPage(m_birthdays); });
+    key(QKeySequence(Qt::CTRL | Qt::Key_Comma), [this] { openPage(m_settings); });
+    key(QKeySequence(Qt::CTRL | Qt::Key_M), [this] {
+        if (appMode()) showMinimized();
+        else collapse();
+    });
+
+    // Areas moved from Ctrl+1…9 to Alt+1…9 when the pages took Ctrl.
+    key(QKeySequence(Qt::CTRL | Qt::Key_T), [this] { newArea(); });
+    for (int i = 1; i <= 9; ++i)
+        key(QKeySequence(QKeyCombination(Qt::AltModifier, Qt::Key(Qt::Key_0 + i))), [this, i] {
+            const QList<Area *> &areas = m_store.areas();
+            if (i <= areas.size()) switchArea(areas.at(i - 1)->id);
+        });
+
+    // Notes: Ctrl+N is a text note straight away; the others name their type.
+    key(QKeySequence(Qt::CTRL | Qt::Key_F), [this] { focusSearch(); });
+    key(QKeySequence(Qt::CTRL | Qt::Key_N), [this] { showNotes(); addNote(Note::Text); });
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L), [this] { showNotes(); addNote(Note::Check); });
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), [this] { showNotes(); addNote(Note::Reminder); });
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), [this] { showNotes(); addNote(Note::Voice); });
+}
+
+QFrame *Panel::buildHeader() {
+    auto *header = new DragBar;
+    header->setObjectName("header");
+    header->setCursor(Qt::OpenHandCursor);
+    header->setFixedHeight(40);
+    m_header = header;
+
+    auto *l = new QHBoxLayout(header);
+    l->setContentsMargins(14, 0, 6, 0);
+    l->setSpacing(4);
+
+    // Back, only on settings: the one page with no item in the bar.
+    m_backBtn = iconButton("chevronLeft", "Volver");
+    m_backBtn->setFixedSize(28, 28);
+    m_backBtn->hide();
+    connect(m_backBtn, &QToolButton::clicked, this, &Panel::showNotes);
+    l->addWidget(m_backBtn);
+
+    // Elidable: a label demanding its width would widen the whole window (see
+    // *Card widths*).
+    m_titleLabel = new ElidedLabel(L("Notas"), QColor(Theme::fg()));
+    m_titleLabel->setObjectName("title");
+    l->addWidget(m_titleLabel, 1);
+
+    m_moreBtn = iconButton("more", "Más opciones");
+    m_moreBtn->setFixedSize(28, 28);
+    connect(m_moreBtn, &QToolButton::clicked, this, [this] { openMoreMenu(m_moreBtn); });
+    l->addWidget(m_moreBtn);
+    return header;
+}
+
+/// One 36px row over the list: area tabs, search and new note. The search
+/// field unfolds over the tabs rather than next to them, which at 352px would
+/// leave neither readable.
+QWidget *Panel::buildTools() {
+    auto *row = new QFrame;
+    row->setObjectName("toolsRow");
+    row->setFixedHeight(36);
+    m_tools = row;
+    auto *l = new QHBoxLayout(row);
+    l->setContentsMargins(0, 0, 6, 0);
+    l->setSpacing(4);
+
     m_areaTabs = new AreaTabs(&m_theme);
     m_areaTabs->activated = [this](const QString &id) { switchArea(id); };
     m_areaTabs->addRequested = [this] { newArea(); };
@@ -266,172 +371,39 @@ void Panel::buildShell() {
             save();
         }
         refreshAreaTabs();
-        refreshFooter();
     };
     m_areaTabs->deleteRequested = [this](const QString &id) { confirmDeleteArea(id); };
     m_areaTabs->moveRequested = [this](const QString &id, int steps) {
         if (Area *a = m_store.area(id)) m_store.moveArea(a, steps);
         refreshAreaTabs();
     };
-    col->addWidget(m_areaTabs);
+    l->addWidget(m_areaTabs, 1);
 
-    // Area shortcuts, from anywhere in the panel.
-    auto *newAreaKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_T), this);
-    connect(newAreaKey, &QShortcut::activated, this, &Panel::newArea);
-    for (int i = 1; i <= 9; ++i) {
-        auto *key = new QShortcut(
-            QKeySequence(QKeyCombination(Qt::ControlModifier, Qt::Key(Qt::Key_0 + i))), this);
-        connect(key, &QShortcut::activated, this, [this, i] {
-            const QList<Area *> &areas = m_store.areas();
-            if (i <= areas.size()) switchArea(areas.at(i - 1)->id);
-        });
-    }
-
-    // Missing-folder warning. Up here and not in the footer: while it shows,
-    // nothing typed is saved.
-    m_dataWarn = new QLabel;
-    m_dataWarn->setObjectName("warnBanner");
-    m_dataWarn->setWordWrap(true);   // see *Card widths*: it must not demand its width
-    m_dataWarn->hide();
-    col->addWidget(m_dataWarn);
-
-    // New-version notice: a clickable strip, not a dialog. Finding out should not
-    // interrupt anyone, and it can be turned off in settings.
-    auto *bar = new ClickableBar([this] { openLatestRelease(); });
-    bar->setObjectName("updateBanner");
-    auto *ul = new QHBoxLayout(bar);
-    ul->setContentsMargins(10, 6, 10, 6);
-    ul->setSpacing(7);
-    m_updateText = new QLabel;
-    m_updateText->setObjectName("updateBannerText");
-    m_updateText->setWordWrap(true);   // see *Card widths*: it must not demand its width
-    ul->addWidget(m_updateText, 1);
-    m_updateBar = bar;
-    m_updateBar->hide();
-    col->addWidget(m_updateBar);
-
-    // Finished timer or starting event: red like an overdue reminder, with its
-    // own stop button since they have no card in the list to put one on.
-    m_alarmBar = new QWidget;
-    m_alarmBar->setObjectName("alarmBar");
-    m_alarmBar->setAttribute(Qt::WA_StyledBackground, true);
-    auto *al = new QHBoxLayout(m_alarmBar);
-    al->setContentsMargins(10, 6, 8, 6);
-    al->setSpacing(6);
-    auto *bell = new QLabel;
-    bell->setPixmap(paintIcon("bell", QColor("#ff7a6b"), 14).pixmap(14, 14));
-    al->addWidget(bell);
-    m_alarmText = new QLabel;
-    m_alarmText->setObjectName("alarmBarText");
-    m_alarmText->setWordWrap(true);   // see *Card widths*: it must not demand its width
-    m_alarmText->setMinimumWidth(24);
-    al->addWidget(m_alarmText, 1);
-    m_alarmPlus = new QToolButton;
-    m_alarmPlus->setObjectName("alarmBtn");
-    m_alarmPlus->setText(L("+1 min"));
-    m_alarmPlus->setCursor(Qt::PointingHandCursor);
-    connect(m_alarmPlus, &QToolButton::clicked, this, [this] {
-        for (Timer *t : m_store.timers())
-            if (t->ringing()) t->snooze(60 * 1000);
-        onTimersChanged();
-        m_alerts->stopIfQuiet();
-        save();
-    });
-    al->addWidget(m_alarmPlus);
-    auto *stop = new QToolButton;
-    stop->setObjectName("alarmBtn");
-    stop->setProperty("tip", "Detener");
-    stop->setText(L("Detener"));
-    stop->setCursor(Qt::PointingHandCursor);
-    connect(stop, &QToolButton::clicked, this, &Panel::stopBarAlarms);
-    al->addWidget(stop);
-    m_alarmBar->hide();
-    col->addWidget(m_alarmBar);
-
-    // Search and new note, under the areas: both act on the list, so they live
-    // with it and leave the header to the pages.
-    m_notesBar = new QWidget;
-    auto *sl = new QHBoxLayout(m_notesBar);
-    sl->setContentsMargins(10, 8, 10, 8);
-    sl->setSpacing(6);
     m_search = new QLineEdit;
-    m_search->setPlaceholderText(L("Filtrar notas…"));
+    m_search->setObjectName("searchField");
     m_search->setClearButtonEnabled(true);
-    m_searchIcon = m_search->addAction(paintIcon("search", QColor(Theme::muted())),
-                                       QLineEdit::LeadingPosition);
     m_search->setMinimumWidth(24);   // see *Card widths*: it must not demand its width
+    m_search->setContextMenuPolicy(Qt::NoContextMenu);
+    m_search->installEventFilter(this);   // Escape closes it
+    m_search->hide();
     connect(m_search, &QLineEdit::textChanged, this, &Panel::applyFilter);
-    sl->addWidget(m_search, 1);
+    l->addWidget(m_search, 1);
+    l->addSpacing(4);
+
+    m_searchBtn = iconButton("search", "Buscar · Ctrl+F");
+    m_searchBtn->setFixedSize(28, 28);
+    connect(m_searchBtn, &QToolButton::clicked, this, [this] {
+        if (m_search->isVisible()) closeSearch();
+        else focusSearch();
+    });
+    l->addWidget(m_searchBtn);
+
     m_addBtn = iconButton("plus", "Nueva nota");
-    m_addBtn->setFixedSize(30, 30);   // the height of the field next to it
+    m_addBtn->setObjectName("addNote");
+    m_addBtn->setFixedSize(28, 28);
     connect(m_addBtn, &QToolButton::clicked, this, [this] { openNewNoteMenu(m_addBtn); });
-    sl->addWidget(m_addBtn);
-    col->addWidget(m_notesBar);
-
-    // Ctrl+F jumps to the search box, Ctrl+N opens the new-note menu.
-    auto *findKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_F), this);
-    connect(findKey, &QShortcut::activated, this, &Panel::focusSearch);
-    auto *newNoteKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_N), this);
-    connect(newNoteKey, &QShortcut::activated, this, [this] {
-        showNotes();
-        openNewNoteMenu(m_addBtn);
-    });
-
-    col->addWidget(buildBody(), 1);
-    col->addWidget(buildFooter());
-    m_stack->addWidget(m_shell);
-
-    m_badge = buildBadge();
-    m_stack->addWidget(m_badge);
-
-    m_nav->setStacks(m_stack, m_shell, m_badge, m_body, m_scroll);
-    m_nav->addPage(m_planner, m_calendarBtn, "planner", "Calendario");
-    m_nav->addPage(m_timerView, m_timersBtn, "timers", "Temporizadores");
-    m_nav->addPage(m_birthdays, m_birthdayBtn, "birthdays", "Cumpleaños");
-    m_nav->addPage(m_settings, m_settingsBtn, "settings", "Ajustes");
-    m_nav->setWidePage(m_planner, PlannerView::kPreferredWidth);
-    m_nav->setListOnly({m_areaTabs, m_notesBar});
-    m_nav->initBody();
-    for (const Navigator::Page &p : m_nav->pages())
-        connect(p.button, &QToolButton::clicked, this, [this, page = p.page] { togglePage(page); });
-
-    setMinimumSize(Navigator::kShellMinWidth + shadowMargin() * 2, Navigator::kShellMinHeight);
-}
-
-QFrame *Panel::buildHeader() {
-    auto *header = new DragBar;
-    header->setObjectName("header");
-    header->setCursor(Qt::OpenHandCursor);
-
-    auto *l = new QHBoxLayout(header);
-    l->setContentsMargins(12, 8, 10, 8);
-    l->setSpacing(4);
-
-    // Elidable: with five header buttons "Temporizadores" no longer fits at the
-    // minimum width, and a label demanding its width would widen the whole window
-    // (see *Card widths*).
-    m_titleLabel = new ElidedLabel(L("Tagoror"), QColor(Theme::fg()));
-    m_titleLabel->setObjectName("title");
-    l->addWidget(m_titleLabel);
-    l->addStretch();
-
-    m_calendarBtn = iconButton("calendar", "Calendario");
-    m_timersBtn = iconButton("timer", "Temporizadores");
-    m_birthdayBtn = iconButton("cake", "Cumpleaños");
-    m_settingsBtn = iconButton("gear", "Ajustes");
-    auto *min = iconButton("minus", "Plegar a icono");
-    m_minBtn = min;
-    m_headerButtons = {m_calendarBtn, m_timersBtn, m_birthdayBtn, m_settingsBtn, min};
-
-    connect(min, &QToolButton::clicked, this, [this] {
-        // A normal window minimises to the taskbar; the dock is the widget's thing.
-        if (appMode()) showMinimized();
-        else collapse();
-    });
-    // The page buttons are connected in buildBody(), where the pages exist.
-
-    for (QToolButton *b : m_headerButtons) l->addWidget(b);
-    return header;
+    l->addWidget(m_addBtn);
+    return row;
 }
 
 QWidget *Panel::buildBody() {
@@ -496,14 +468,14 @@ QWidget *Panel::buildBody() {
     connect(m_planner, &PlannerView::eventCreated, this, [this](Event *e) {
         m_store.addEvent(e);   // the Store takes ownership and saves it
         refreshPlanner();
-        refreshFooter();
+        refreshNav();
         checkReminders();      // one starting right now must ring right now
     });
     connect(m_planner, &PlannerView::eventChanged, this, [this](Event *) {
         // One dragged to another time stops ringing (moveItem() clears ringingMs): if
         // it was the only one, the tone and the red go with it.
         m_alerts->stopIfQuiet();
-        refreshAlarmBar();
+        refreshNotices();
         applyBadgeAlert();
         save();
         checkReminders();
@@ -513,10 +485,10 @@ QWidget *Panel::buildBody() {
         const bool wasRinging = e->ringingMs != 0;
         m_store.removeEvent(e);
         if (wasRinging) m_alerts->stopIfQuiet();
-        refreshAlarmBar();
+        refreshNotices();
         applyBadgeAlert();
         refreshPlanner();
-        refreshFooter();
+        refreshNav();
     });
     connect(m_planner, &PlannerView::reminderCreated, this, &Panel::createReminder);
     // Dragged in the planner: the same as changing the date on its card
@@ -528,14 +500,14 @@ QWidget *Panel::buildBody() {
         n->ringing = false;
         m_alerts->stopIfQuiet();
         refreshDueCards();
-        refreshAlarmBar();
+        refreshNotices();
         applyBadgeAlert();
         save();
         checkReminders();
     });
     connect(m_planner, &PlannerView::noteActivated, this, &Panel::revealNote);
     connect(m_planner, &PlannerView::birthdayActivated, this, [this](Birthday *) {
-        togglePage(m_birthdays);
+        openPage(m_birthdays);
     });
     connect(m_planner, &PlannerView::viewChanged, this, [this](int v) {
         m_store.prefs().plannerView = v;
@@ -662,49 +634,45 @@ QWidget *Panel::buildBody() {
     m_body->addWidget(m_birthdays);
     m_body->addWidget(m_settings);
 
-    return m_body;
+    // The notices float over the bottom of the page instead of taking height in
+    // the layout: m_bodyHost carries them as an unmanaged child (placeAlertZone()).
+    m_bodyHost = new QWidget;
+    auto *hl = new QVBoxLayout(m_bodyHost);
+    hl->setContentsMargins(0, 0, 0, 0);
+    hl->addWidget(m_body);
+    m_alertZone = new AlertZone(&m_theme, m_bodyHost);
+    m_alertZone->changed = [this] { placeAlertZone(); };
+    return m_bodyHost;
 }
 
-QFrame *Panel::buildFooter() {
-    auto *footer = new QFrame;
-    footer->setObjectName("footer");
-    auto *l = new QHBoxLayout(footer);
-    l->setContentsMargins(11, 7, 7, 5);
-    l->setSpacing(8);
+/// Above the navigation, 8px from the edges, over whatever page is open. The
+/// list gets as much bottom padding, so its last card scrolls clear of it.
+void Panel::placeAlertZone() {
+    if (!m_alertZone || !m_bodyHost) return;
+    int h = 0;
+    if (m_alertZone->hasNotices()) {
+        const int w = m_bodyHost->width() - 16;
+        h = m_alertZone->heightFor(w);
+        m_alertZone->setGeometry(8, m_bodyHost->height() - h - 8, w, h);
+        m_alertZone->raise();
+    }
+    if (m_listLayout) m_listLayout->setContentsMargins(8, 8, 8, h > 0 ? h + 16 : 8);
+}
 
-    auto *dot = new QLabel;
-    dot->setFixedSize(6, 6);
-    dot->setStyleSheet("background:#6fcf97; border-radius:3px;");
-    l->addWidget(dot);
-
-    m_footerText = new QLabel;
-    m_footerText->setObjectName("meta");
-    l->addWidget(m_footerText);
-    l->addStretch();
-
-    m_footerHint = new QLabel;
-    m_footerHint->setObjectName("meta");
-    l->addWidget(m_footerHint);
-
-    // Time left on the running timer, visible from any page. It takes the hint's
-    // place while counting: both do not fit at the minimum width.
-    m_footerTimer = new QToolButton;
-    m_footerTimer->setObjectName("footerTimer");
-    m_footerTimer->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    m_footerTimer->setIconSize(QSize(12, 12));
-    m_footerTimer->setCursor(Qt::PointingHandCursor);
-    m_footerTimer->hide();
-    connect(m_footerTimer, &QToolButton::clicked, this, [this] {
-        for (Timer *t : m_store.timers())
-            if (t->state == Timer::Running) {
-                m_timerView->focusTimer(t);
-                break;
-            }
-        if (m_body->currentWidget() != m_timerView) togglePage(m_timerView);
-    });
-    l->addWidget(m_footerTimer);
-    l->addWidget(new GripCorner, 0, Qt::AlignBottom);
-    return footer;
+/// A bar while narrow, a rail on the left from NavBar::kRailFrom: at 352px
+/// width is what is scarce, beside the planner it is height.
+void Panel::updateNavLayout() {
+    if (!m_navBar || !m_shell) return;
+    const bool rail = m_shell->width() >= NavBar::kRailFrom;
+    if (rail == (m_navBar->layoutMode() == NavBar::Rail)) return;
+    if (rail) {
+        m_mainCol->removeWidget(m_navBar);
+        m_shellRow->insertWidget(0, m_navBar);
+    } else {
+        m_shellRow->removeWidget(m_navBar);
+        m_mainCol->addWidget(m_navBar);
+    }
+    m_navBar->setLayoutMode(rail ? NavBar::Rail : NavBar::Bar);
 }
 
 QWidget *Panel::buildBadge() {
@@ -745,13 +713,11 @@ QWidget *Panel::buildBadge() {
 void Panel::applyTheme() {
     setStyleSheet(m_theme.sheet());
 
-    // The open page's button in the accent, the rest grey.
-    for (QToolButton *b : m_headerButtons)
-        b->setIcon(paintIcon(b->property("iconKind").toString(),
-                             b->property("active").toBool() ? m_theme.accent
-                                                            : QColor(Theme::muted())));
-    m_addBtn->setIcon(paintIcon("plus", QColor(Theme::muted())));
-    m_searchIcon->setIcon(paintIcon("search", QColor(Theme::muted())));
+    for (QToolButton *b : {m_backBtn, m_moreBtn, m_searchBtn})
+        b->setIcon(paintIcon(b->property("iconKind").toString(), QColor(Theme::muted())));
+    // The new-note button is filled with the accent, so its icon is dark.
+    m_addBtn->setIcon(paintIcon("plus", QColor("#0c1222")));
+    if (m_navBar) m_navBar->update();
 
     if (m_planner) m_planner->setTheme(m_theme);
     if (m_timerView) m_timerView->setTheme(m_theme);
@@ -780,24 +746,16 @@ void Panel::setLanguage(Lang::Code code) {
 /// The window's fixed texts are set again one by one; cards and planner are
 /// rebuilt whole, simpler than hunting each label inside them.
 void Panel::retranslate() {
-    m_search->setPlaceholderText(L("Filtrar notas…"));
     m_emptyText->setText(L("Todavía no hay notas"));
     m_emptyBtn->setText(L("Crear la primera"));
-    refreshFooterHint();
-    refreshDataWarning();
+    m_search->setPlaceholderText(L("Buscar en %1…").arg(QString()));
 
-    for (QToolButton *b : m_headerButtons)
+    for (QToolButton *b : {m_backBtn, m_moreBtn, m_searchBtn, m_addBtn})
         b->setToolTip(L(b->property("tip").toString()));
-    m_addBtn->setToolTip(L(m_addBtn->property("tip").toString()));
-    // The page buttons also say which page is open, so they go their own way.
-    refreshPageButtons();
-    m_alarmPlus->setText(L("+1 min"));
-    for (auto *b : m_alarmBar->findChildren<QToolButton *>())
-        if (!b->property("tip").toString().isEmpty()) b->setText(L(b->property("tip").toString()));
-    refreshAlarmBar();
+    m_navBar->retranslate();
 
     buildTrayMenu();
-    applyBadgeAlert();   // the tray tooltip carries text
+    applyBadgeAlert();   // the tray tooltip carries text, and so do the notices
     if (m_planner) {
         // After a Store reload the saved view and filter are different.
         m_planner->setView(PlannerView::View(m_store.prefs().plannerView));
@@ -813,7 +771,7 @@ void Panel::retranslate() {
     }
     if (m_settings) m_settings->retranslate();
     refreshTitle();
-    // Rebuilds the cards and with them the footer, the planner and the dock.
+    // Rebuilds the cards and with them the planner and the dock.
     rebuildList();
 }
 
@@ -864,7 +822,7 @@ void Panel::rebuildList() {
         m_emptyText->setText(L("Todavía no hay notas"));
     }
     m_badgeCount->setText(QString::number(m_store.count()));
-    refreshFooter();
+    refreshNav();
     refreshPlanner();
     refreshBirthdays();
     applyBadgeAlert();
@@ -872,46 +830,22 @@ void Panel::rebuildList() {
         applyFilter(m_search->text());
 }
 
-/// The footer hint depends on where you are: on the list, the card menu; on
-/// any other page, how to leave it.
-void Panel::refreshFooterHint() {
-    if (!m_footerHint) return;
-    const bool onList = !m_body || m_body->currentWidget() == m_scroll;
-    // Writing in a note, the hint is how to break a line: Enter alone finishes.
-    QWidget *focus = QApplication::focusWidget();
-    const bool writing = onList && focus && qobject_cast<QTextEdit *>(focus) &&
-                         m_scroll && m_scroll->isAncestorOf(focus);
-    m_footerHint->setText(writing  ? L("⇧↵ salto de línea")
-                          : onList ? L("clic dcho · opciones")
-                                   : L("esc · cerrar"));
-}
+/// The bar: which page is open (none on settings), the countdown of the timer
+/// that ends first in place of "Timers", and a red dot on Notas while a
+/// reminder rings and the list is not in front.
+void Panel::refreshNav() {
+    if (!m_navBar) return;
+    QWidget *current = m_body ? m_body->currentWidget() : nullptr;
+    m_navBar->setActive(current == m_settings ? nullptr : current);
 
-void Panel::refreshFooter() {
-    refreshFooterHint();
-    if (!m_footerText) return;
+    const Timer *next = nullptr;
+    for (const Timer *t : m_store.timers())
+        if (t->state == Timer::Running && (!next || t->endsAtMs < next->endsAtMs)) next = t;
+    m_navBar->setCountdown(m_timerView, next ? timerClock(next->remainingMs()) : QString());
 
-    if (m_body && m_body->currentWidget() == m_planner) {
-        m_footerText->setText(L("%1 EVENTOS").arg(m_store.events().size()));
-        return;
-    }
-    if (m_body && m_body->currentWidget() == m_timerView) {
-        m_footerText->setText(L("%1 TEMPORIZADORES").arg(m_store.timers().size()));
-        return;
-    }
-    if (m_body && m_body->currentWidget() == m_birthdays) {
-        m_footerText->setText(L("%1 CUMPLEAÑOS").arg(m_store.birthdayCount()));
-        return;
-    }
-    if (m_body && m_body->currentWidget() == m_settings) {
-        m_footerText->setText(L("AJUSTES"));
-        return;
-    }
-    // The area name is elided: the footer label must not demand its width (see
-    // *Card widths*), and the user writes the name.
-    const Area *a = m_store.area(currentArea());
-    const QString name = QFontMetrics(m_footerText->font())
-                             .elidedText(a ? a->name.toUpper() : QString(), Qt::ElideRight, 90);
-    m_footerText->setText(L("%1 · %2 NOTAS").arg(name).arg(m_store.notesIn(currentArea()).size()));
+    bool reminder = false;
+    for (const Note *n : m_store.notes()) reminder |= n->ringing;
+    m_navBar->setDot(m_scroll, reminder && current != m_scroll);
 }
 
 void Panel::addNote(Note::Type type) {
@@ -1238,8 +1172,23 @@ void Panel::commitOrder() {
 
 void Panel::focusSearch() {
     showNotes();          // filtering with the planner in front would not be visible
+    if (m_search->isHidden()) {
+        const Area *a = m_store.area(currentArea());
+        m_search->setPlaceholderText(L("Buscar en %1…").arg(a ? a->name : QString()));
+        m_areaTabs->hide();
+        m_search->show();
+    }
     m_search->setFocus(Qt::ShortcutFocusReason);
     m_search->selectAll();
+}
+
+/// Escape, the magnifier again, or switching area: the tabs come back and the
+/// filter goes, since a filter nobody can see is a list that looks short.
+void Panel::closeSearch() {
+    if (m_search->isHidden()) return;
+    m_search->clear();
+    m_search->hide();
+    m_areaTabs->show();
 }
 
 void Panel::applyFilter(const QString &q) {
@@ -1249,8 +1198,19 @@ void Panel::applyFilter(const QString &q) {
         card->setVisible(ok);
         if (ok) ++shown;
     }
-    if (q.isEmpty()) refreshFooter();
-    else m_footerText->setText(L("%1 DE %2").arg(shown).arg(cards().size()));
+    // Nothing matching is said, not left as an empty list.
+    const Area *a = m_store.area(currentArea());
+    const QString name = a ? a->name : QString();
+    if (!q.isEmpty()) {
+        m_emptyText->setText(L("Nada coincide en %1").arg(name));
+        m_emptyBtn->hide();
+        m_empty->setVisible(shown == 0);
+    } else {
+        m_emptyBtn->show();
+        m_empty->setVisible(cards().isEmpty());
+        m_emptyText->setText(m_store.areas().size() > 1 ? L("Aún no hay notas en %1").arg(name)
+                                                        : L("Todavía no hay notas"));
+    }
 }
 
 void Panel::bringToFront() {
@@ -1303,25 +1263,23 @@ void Panel::applyAppModeChrome() {
     m_shell->style()->unpolish(m_shell);
     m_shell->style()->polish(m_shell);
 
-    const char *tip = appMode() ? "Minimizar" : "Plegar a icono";
-    m_minBtn->setProperty("tip", tip);
-    m_minBtn->setToolTip(L(tip));
 }
 
-/// Opens a page, or returns to the notes if it was already open: the same
-/// button enters and leaves.
-void Panel::togglePage(QWidget *page) {
-    if (m_body->currentWidget() == page) {
+/// Opens a page. The bar marks where you are; leaving is another item, Escape,
+/// or (from settings) the back arrow.
+void Panel::openPage(QWidget *page) {
+    if (page == m_scroll) {
         showNotes();
         return;
     }
+    if (m_body->currentWidget() == page) return;
     if (page == m_planner) m_planner->refresh();
     else if (page == m_timerView) m_timerView->refresh();
     else if (page == m_birthdays) m_birthdays->refresh();
     else if (page == m_settings) m_settings->refresh();
+    closeSearch();
     m_nav->open(page);
-    refreshPageButtons();
-    refreshFooter();
+    refreshNav();
     refreshTitle();
 }
 
@@ -1346,36 +1304,22 @@ void Panel::showNotes() {
     if (m_body->currentWidget() == m_scroll) return;
 
     m_nav->open(m_scroll);
-    refreshPageButtons();
-    refreshFooter();
+    refreshNav();
     refreshTitle();
 }
 
-void Panel::setPageActive(QToolButton *button, bool on,
-                          const QString &tipOn, const QString &tipOff) {
-    button->setProperty("active", on);
-    button->setToolTip(on ? tipOn : tipOff);
-    button->setIcon(paintIcon(button->property("iconKind").toString(),
-                              on ? m_theme.accent : QColor(Theme::muted())));
-    // A dynamic property does not repaint by itself.
-    button->style()->unpolish(button);
-    button->style()->polish(button);
-}
-
-void Panel::refreshPageButtons() {
-    QWidget *current = m_body ? m_body->currentWidget() : nullptr;
-    for (const Navigator::Page &p : m_nav->pages())
-        setPageActive(p.button, p.page == current, L("Ver notas"), L(p.name));
-}
-
-/// On the list the title is the app's name again.
+/// The open page's name; on the list, "Notas". Settings, the one page out of
+/// the bar, gets a back arrow before it.
 void Panel::refreshTitle() {
     if (!m_titleLabel || !m_body) return;
-    QString title = L("Tagoror");
+    QString title = L("Notas");
     for (const Navigator::Page &p : m_nav->pages())
         if (p.page == m_body->currentWidget()) title = L(p.name);
     m_titleLabel->setText(title);
     m_titleLabel->update();   // ElidedLabel paints itself
+    const bool back = m_body->currentWidget() == m_settings;
+    m_backBtn->setVisible(back);
+    m_header->layout()->setContentsMargins(back ? 6 : 14, 0, 6, 0);
 }
 
 void Panel::removeCategory(Event::Category *c) {
@@ -1393,9 +1337,9 @@ void Panel::removeCategory(Event::Category *c) {
     }
     if (google) {
         m_alerts->stopIfQuiet();
-        refreshAlarmBar();
+        refreshNotices();
         applyBadgeAlert();
-        refreshFooter();
+        refreshNav();
         refreshSettings();   // that calendar's switch
     }
     refreshPlanner();
@@ -1483,10 +1427,10 @@ void Panel::onTimersChanged() {
     bool running = false;
     for (Timer *t : m_store.timers()) running |= t->state == Timer::Running;
     if (running && !m_tick->isActive()) m_tick->start();
-    refreshFooterTimer();
-    refreshAlarmBar();
+    refreshNav();
+    refreshNotices();
     applyBadgeAlert();
-    if (m_body->currentWidget() == m_timerView) refreshFooter();
+    if (m_body->currentWidget() == m_timerView) refreshNav();
 }
 
 void Panel::tickTimers() {
@@ -1497,54 +1441,9 @@ void Panel::tickTimers() {
     } else if (m_body->currentWidget() == m_timerView) {
         m_timerView->tick();
     }
-    refreshFooterTimer();
+    refreshNav();
     if (!running) m_tick->stop();
     else if (!m_tick->isActive()) m_tick->start();
-}
-
-void Panel::refreshFooterTimer() {
-    if (!m_footerTimer) return;
-    // The one that ends first is the interesting one.
-    const Timer *next = nullptr;
-    for (const Timer *t : m_store.timers())
-        if (t->state == Timer::Running && (!next || t->endsAtMs < next->endsAtMs)) next = t;
-
-    const bool show = next != nullptr;
-    if (show) {
-        m_footerTimer->setText(timerClock(next->remainingMs()));
-        m_footerTimer->setIcon(paintIcon("timer", m_theme.accent, 12));
-        m_footerTimer->setToolTip(next->name);
-    }
-    if (show == !m_footerTimer->isHidden()) return;
-    m_footerTimer->setVisible(show);
-    m_footerHint->setVisible(!show);
-}
-
-/// The first thing ringing: a timer, or else an event. With several it says
-/// how many, and Stop silences them all.
-void Panel::refreshAlarmBar() {
-    if (!m_alarmBar) return;
-    const AlertCenter::Strip strip = m_alerts->strip();
-    const QStringList &what = strip.lines;
-    const bool timers = strip.timers;
-
-    const bool show = !what.isEmpty();
-    if (show) {
-        QString text = what.first();
-        if (what.size() > 1) text += " " + L("(y %1 más)").arg(what.size() - 1);
-        m_alarmText->setText(text);
-        m_alarmPlus->setVisible(timers);
-    }
-    if (show == !m_alarmBar->isHidden()) return;
-    m_alarmBar->setVisible(show);
-    m_nav->syncShellMinimum();   // takes height inside the shell, like the other banners
-}
-
-void Panel::stopBarAlarms() {
-    m_alerts->stopStrip();
-    save();
-    onTimersChanged();
-    refreshPlanner();
 }
 
 void Panel::revealNote(Note *n) {
@@ -1598,7 +1497,7 @@ void Panel::openBirthdayEditor(Birthday *b, QWidget *anchor) {
                         // disk.
                         if (!b) m_store.addBirthday(target);
                         m_birthdays->refresh();
-                        refreshFooter();
+                        refreshNav();
                         save();
                     });
 
@@ -1658,7 +1557,7 @@ void Panel::removeBirthday(Birthday *b) {
     m_store.removeBirthday(b);
     if (wasRinging) m_alerts->stopIfQuiet();
     m_birthdays->refresh();
-    refreshFooter();
+    refreshNav();
     applyBadgeAlert();
 }
 
@@ -1687,7 +1586,7 @@ void Panel::checkReminders() {
     refreshDueCards();
     refreshPlanner();
     refreshBirthdays();
-    refreshAlarmBar();
+    refreshNotices();
     applyBadgeAlert();
 }
 
@@ -1716,6 +1615,8 @@ void Panel::refreshDueCards() {
 void Panel::applyBadgeAlert() {
     const bool alert = m_alerts->anyRinging();
     refreshAreaTabs();   // each area's red dot comes from here too
+    refreshNav();        // and the one on Notas
+    refreshNotices();    // and the alarm notices
 
     auto *badge = m_badge->findChild<QToolButton *>("badge");
     if (badge) {
@@ -1740,16 +1641,13 @@ void Panel::applyBadgeAlert() {
 
 void Panel::openNewNoteMenu(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
-    menu->addHeader(L("Nueva nota"));
-    menu->addItem("text", L("Texto"), L("Una nota libre"),
-                  [this] { addNote(Note::Text); });
-    menu->addItem("check", L("Checklist"), L("Tareas con progreso"),
-                  [this] { addNote(Note::Check); });
-    menu->addItem("reminder", L("Recordatorio"), L("Con fecha y aviso"),
-                  [this] { addNote(Note::Reminder); });
-    menu->addItem("voice", L("Nota de voz"), L("Graba desde el micrófono"),
-                  [this] { addNote(Note::Voice); });
-    menu->showUnder(anchor);
+    menu->addShortcutItem("text", L("Nota de texto"), "Ctrl+N", [this] { addNote(Note::Text); });
+    menu->addShortcutItem("check", L("Checklist"), "Ctrl+⇧L", [this] { addNote(Note::Check); });
+    menu->addShortcutItem("bell", L("Recordatorio"), "Ctrl+⇧R", [this] { addNote(Note::Reminder); });
+    menu->addShortcutItem("mic", L("Nota de voz"), "Ctrl+⇧V", [this] { addNote(Note::Voice); });
+    // Right-aligned under "+", which sits at the right end of the row.
+    menu->adjustSize();
+    menu->showAt(anchor->mapToGlobal(QPoint(anchor->width() - menu->width() + 36, anchor->height() + 2)));
 }
 
 void Panel::openAccentEditor(QWidget *anchor) {
@@ -2027,7 +1925,7 @@ void Panel::onUpdateChecked(const QString &version, const QString &url, const QS
         save();
     }
     if (m_settings) m_settings->setUpdateState(false, error);
-    refreshUpdateBanner();
+    refreshNotices();
 }
 
 void Panel::openLatestRelease() {
@@ -2036,22 +1934,6 @@ void Panel::openLatestRelease() {
     QDesktopServices::openUrl(QUrl(m_latestUrl.isEmpty()
                                        ? QStringLiteral("https://github.com/Larzt/tagoror/releases/latest")
                                        : m_latestUrl));
-}
-
-void Panel::refreshUpdateBanner() {
-    if (!m_updateBar) return;
-    const bool show = updateAvailable();
-    if (show)
-        m_updateText->setText(L("Tagoror %1 ya está disponible · pulsa para verla")
-                                  .arg(m_store.prefs().latestSeen));
-
-    // isHidden(), not isVisible(): the latter is also false while the panel is in
-    // the tray, and the strip would be rebuilt every time.
-    if (show == !m_updateBar->isHidden()) return;
-    m_updateBar->setVisible(show);
-    // Takes height inside the shell: at minimum size, appearing without this
-    // would paint it over the first card.
-    m_nav->syncShellMinimum();
 }
 
 void Panel::pollDataDir() {
@@ -2096,28 +1978,169 @@ void Panel::onStoreMerged() {
     if (m_birthdays) m_birthdays->refresh();
     tickTimers();           // one arriving while running must start counting
     onTimersChanged();
-    refreshAlarmBar();
+    refreshNotices();
     checkReminders();       // and one arriving overdue, ringing
 }
 
-void Panel::refreshDataWarning() {
-    refreshSettings();   // the page shows the folder and whether it is available
-    if (!m_dataWarn) return;
-    const bool missing = !m_store.available();
-    if (missing) {
-        // The path goes in the tooltip, not the text: inside, the banner took three
-        // lines, two of them a path already shown in settings.
-        m_dataWarn->setText(
-            L("La carpeta de notas no está disponible. Nada de lo que escribas se guardará."));
-        m_dataWarn->setToolTip(appDataDir());
+/// Everything the zone may show, most urgent first: what rings (it has to be
+/// stopped), then the data folder (nothing is being saved), a failed sync and
+/// a new version. Built here because only the panel knows what each action
+/// touches; the zone just shows them.
+void Panel::refreshNotices() {
+    if (!m_alertZone) return;
+    QList<AlertZone::Notice> out;
+    const auto areaName = [this](const Note *n) {
+        const Area *a = m_store.area(m_store.areaOf(n));
+        return a ? a->name : QString();
+    };
+
+    for (Note *n : m_store.notes()) {
+        if (!n->ringing) continue;
+        AlertZone::Notice x;
+        x.kind = AlertZone::Notice::Alarm;
+        x.icon = "bell";
+        x.title = n->title.isEmpty() ? L("Sin título") : n->title;
+        x.sub = L("Recordatorio · %1 · %2").arg(n->dueAt().toString("HH:mm"), areaName(n));
+        x.action = L("Detener");
+        x.act = [this, n] { if (m_store.notes().contains(n)) dismissNote(n); };
+        // A repeating reminder's date is its next turn: moving it ten minutes would
+        // move the series.
+        if (!n->repeats()) {
+            x.second = L("Posponer 10 min");
+            x.secondAct = [this, n] { if (m_store.notes().contains(n)) snoozeNote(n, 10); };
+        }
+        out << x;
     }
-    // isHidden(), not isVisible(): the latter is also false while the panel is in
-    // the tray, and the banner would be rebuilt every time.
-    if (missing == !m_dataWarn->isHidden()) return;
-    m_dataWarn->setVisible(missing);
-    // The banner takes height inside the shell: at minimum size, appearing without
-    // this paints it over the first card (see *Window behavior*).
-    m_nav->syncShellMinimum();
+    for (Birthday *b : m_store.birthdays()) {
+        if (!b->ringing) continue;
+        AlertZone::Notice x;
+        x.kind = AlertZone::Notice::Alarm;
+        x.icon = "cake";
+        x.title = b->name;
+        x.sub = L("Cumpleaños · %1").arg(b->remindAt.toString("HH:mm"));
+        x.action = L("Detener");
+        x.act = [this, b] { if (m_store.birthdays().contains(b)) dismissBirthday(b); };
+        out << x;
+    }
+    for (Timer *t : m_store.timers()) {
+        if (!t->ringing()) continue;
+        AlertZone::Notice x;
+        x.kind = AlertZone::Notice::Alarm;
+        x.icon = "timer";
+        x.title = t->name;
+        x.sub = L("Temporizador · tiempo cumplido");
+        x.action = L("Detener");
+        x.act = [this, t] { if (m_store.timers().contains(t)) resetTimer(t); };
+        x.second = L("+1 min");
+        x.secondAct = [this, t] {
+            if (!m_store.timers().contains(t)) return;
+            t->snooze(60 * 1000);
+            m_alerts->stopIfQuiet();
+            save();
+            onTimersChanged();
+        };
+        out << x;
+    }
+    for (Event *e : m_store.events()) {
+        if (!e->ringingMs) continue;
+        AlertZone::Notice x;
+        x.kind = AlertZone::Notice::Alarm;
+        x.icon = "calendar";
+        x.title = e->title.isEmpty() ? L("Sin título") : e->title;
+        // With hours or a day of lead, "at 10:00" may be tomorrow: then say the day.
+        const QDateTime at = QDateTime::fromMSecsSinceEpoch(e->ringingMs);
+        x.sub = at.date() == QDate::currentDate()
+                    ? L("Evento · empieza a las %1").arg(at.toString("HH:mm"))
+                    : L("Evento · empieza el %1").arg(Lang::locale().toString(at, "ddd d, HH:mm"));
+        x.action = L("Detener");
+        x.act = [this, e] {
+            if (!m_store.events().contains(e)) return;
+            m_alerts->silenceEvent(e);
+            m_alerts->stopIfQuiet();
+            save();
+            refreshPlanner();
+            applyBadgeAlert();
+        };
+        out << x;
+    }
+
+    if (!m_store.available()) {
+        // The path goes in the subtitle, elided: the old banner took three lines.
+        AlertZone::Notice x;
+        x.kind = AlertZone::Notice::Warn;
+        x.icon = "folder";
+        x.title = L("Carpeta de datos no disponible");
+        x.sub = prettyPath(appDataDir()) + " · " + L("no se guarda nada");
+        x.action = L("Reintentar");
+        x.act = [this] { pollDataDir(); };
+        out << x;
+    }
+    if (m_drive && m_drive->state() == DriveSync::Failed) {
+        AlertZone::Notice x;
+        x.kind = AlertZone::Notice::Warn;
+        x.icon = "cloud";
+        x.title = L("Error de sincronización");
+        x.sub = m_drive->lastError();
+        x.action = L("Revisar");
+        x.act = [this] { openPage(m_settings); };
+        out << x;
+    }
+    if (updateAvailable()) {
+        AlertZone::Notice x;
+        x.kind = AlertZone::Notice::Info;
+        x.icon = "download";
+        x.title = L("Tagoror %1 disponible").arg(m_store.prefs().latestSeen);
+        x.sub = L("Novedades en GitHub");
+        x.action = L("Ver");
+        x.act = [this] { openLatestRelease(); };
+        out << x;
+    }
+    m_alertZone->setNotices(out);
+}
+
+/// Posponer: the same as moving its date on the card (NoteCard::applyDue()),
+/// which also counts as acknowledging it.
+void Panel::snoozeNote(Note *n, int minutes) {
+    const QDateTime when = QDateTime::currentDateTime().addSecs(minutes * 60);
+    n->dueAtMs = when.toMSecsSinceEpoch();
+    n->due = dueLabel(when);
+    n->fired = false;
+    n->ringing = false;
+    m_alerts->stopIfQuiet();
+    refreshDueCards();
+    refreshPlanner();
+    applyBadgeAlert();
+    save();
+}
+
+/// "⋯": what used to be header buttons and has no place in the bar.
+void Panel::openMoreMenu(QWidget *anchor) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addShortcutItem("gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); });
+    menu->addShortcutItem(appMode() ? "check" : "window", L("Modo aplicación"), QString(),
+                          [this] { setAppMode(!appMode()); });
+    if (appMode())
+        menu->addShortcutItem("minus", L("Minimizar"), "Ctrl+M", [this] { showMinimized(); });
+    else
+        menu->addShortcutItem("dock", L("Plegar a icono"), "Ctrl+M", [this] { collapse(); });
+    menu->addSeparator();
+    menu->addShortcutItem("info", L("Acerca de Tagoror"), QString(), [this, anchor] {
+        QPointer<QWidget> at(anchor);
+        QTimer::singleShot(0, this, [this, at] { if (at) openAbout(at); });
+    });
+    menu->showUnder(anchor);
+}
+
+void Panel::openAbout(QWidget *anchor) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(QStringLiteral("Tagoror ") + QCoreApplication::applicationVersion());
+    menu->addText(L("Notas, recordatorios, planificador y temporizadores en un panel de "
+                    "escritorio. Un tagoror es el círculo de piedras donde se reunía el "
+                    "consejo guanche."));
+    menu->addItem("link", L("Código y novedades"), QStringLiteral("github.com/Larzt/tagoror"),
+                  [] { QDesktopServices::openUrl(QUrl("https://github.com/Larzt/tagoror")); });
+    menu->addItem("text", L("Licencia MIT"), L("Tipografías: IBM Plex, OFL 1.1"), nullptr);
+    menu->showUnder(anchor);
 }
 
 void Panel::buildTray() {
@@ -2184,7 +2207,7 @@ void Panel::buildTrayMenu() {
     for (const Navigator::Page &p : m_nav->pages())
         connect(open->addAction(L(p.name)), &QAction::triggered, this, [this, page = p.page] {
             bringToFront();
-            if (m_body->currentWidget() != page) togglePage(page);
+            if (m_body->currentWidget() != page) openPage(page);
         });
 
     m_trayMenu->addSeparator();
@@ -2366,6 +2389,18 @@ void Panel::leaveEvent(QEvent *e) {
 /// side of the band lies over the header, the tabs and the footer, which would
 /// otherwise get it first (the header would start a move instead).
 bool Panel::eventFilter(QObject *watched, QEvent *event) {
+    if (event->type() == QEvent::Resize) {
+        if (watched == m_bodyHost) placeAlertZone();
+        // Deferred: moving the bar between layouts inside the shell's own resize
+        // would re-enter it.
+        else if (watched == m_shell) QTimer::singleShot(0, this, &Panel::updateNavLayout);
+    }
+    if (watched == m_search && event->type() == QEvent::KeyPress &&
+        static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
+        closeSearch();
+        m_searchBtn->setFocus(Qt::OtherFocusReason);
+        return true;
+    }
     if (event->type() == QEvent::MouseButtonPress && watched->isWidgetType() &&
         static_cast<QWidget *>(watched)->window() == this) {
         auto *me = static_cast<QMouseEvent *>(event);

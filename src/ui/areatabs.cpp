@@ -13,7 +13,7 @@
 
 namespace {
 
-constexpr int kHeight = 34;
+constexpr int kHeight = 36;   // the whole tools row (5.0)
 constexpr int kLeft = 8;           // left margin of the strip
 constexpr int kRight = 6;
 constexpr int kPad = 7;            // on each side of a tab's text
@@ -75,7 +75,10 @@ void AreaTabs::relayout() {
     m_hiddenRinging = false;
     m_overflowRect = QRect();
 
-    m_addRect = QRect(width() - kRight - kAddSize, (kHeight - kAddSize) / 2, kAddSize, kAddSize);
+    // Since 5.0 the "+" at the end of the row makes notes, not areas: new areas
+    // come from Ctrl+T, the "+N" menu and the palette. The rect stays, empty, as
+    // the right limit.
+    m_addRect = QRect(width() - kRight, (kHeight - kAddSize) / 2, 0, kAddSize);
     const int limit = m_addRect.left() - 4;
 
     QList<int> widths;
@@ -158,10 +161,6 @@ void AreaTabs::paintEvent(QPaintEvent *) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    // Bottom rule, like the header's.
-    p.setPen(QColor(255, 255, 255, 23));
-    p.drawLine(QPointF(0, kHeight - 0.5), QPointF(width(), kHeight - 0.5));
-
     const QColor fg(Theme::fg());
     const QColor muted(Theme::muted());
     const QColor accent = m_theme->accent;
@@ -181,7 +180,12 @@ void AreaTabs::paintEvent(QPaintEvent *) {
             p.setPen(QPen(edge, 1.5));
             p.setBrush(fill);
             p.drawRoundedRect(QRectF(r).adjusted(1, 5, -1, -5), 7, 7);
-        } else if (hovered && !isActive) {
+        } else if (isActive) {
+            // The open area is a raised pill, not an underline (5.0).
+            p.setPen(QPen(QColor(255, 255, 255, 20), 1));
+            p.setBrush(QColor(255, 255, 255, 19));
+            p.drawRoundedRect(QRectF(r).adjusted(1.5, 5.5, -1.5, -5.5), 7, 7);
+        } else if (hovered) {
             p.setPen(Qt::NoPen);
             p.setBrush(QColor(255, 255, 255, 14));
             p.drawRoundedRect(QRectF(r).adjusted(1, 5, -1, -5), 7, 7);
@@ -206,13 +210,10 @@ void AreaTabs::paintEvent(QPaintEvent *) {
         if (t.ringing) {
             p.setPen(Qt::NoPen);
             p.setBrush(kRed);
-            p.drawEllipse(QPointF(r.right() - 3.5, 9.5), 3.2, 3.2);
+            p.drawEllipse(QPointF(r.right() - 3.5, 8.5), 3.2, 3.2);
         }
 
         if (isActive) {
-            p.setPen(Qt::NoPen);
-            p.setBrush(accent);
-            p.drawRoundedRect(QRectF(r.left() + 4, kHeight - 2.5, r.width() - 8, 2.5), 1.2, 1.2);
             if (keynav::showsFocus(this)) {
                 p.setPen(QPen(accent, 1.5));
                 p.setBrush(Qt::NoBrush);
@@ -224,19 +225,19 @@ void AreaTabs::paintEvent(QPaintEvent *) {
     // "+N": the tabs that do not fit, with the red dot of the hidden ones.
     if (m_hidden > 0) {
         const QRectF c = QRectF(m_overflowRect).adjusted(0.5, 0.5, -0.5, -0.5);
-        QColor fill = accent;
-        fill.setAlphaF(m_hover == -3 ? 0.24 : 0.14);
-        p.setPen(Qt::NoPen);
-        p.setBrush(fill);
-        p.drawRoundedRect(c, 7, 7);
-        p.setFont(tabFont(font(), true));
-        p.setPen(accent);
+        if (m_hover == -3) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(255, 255, 255, 14));
+            p.drawRoundedRect(c, 7, 7);
+        }
+        p.setFont(tabFont(font(), false));
+        p.setPen(m_hover == -3 ? fg : muted);
         const QString label = QString("+%1").arg(m_hidden);
         const QRect textRect(m_overflowRect.left() + 8, m_overflowRect.top(),
                              m_overflowRect.width() - 24, m_overflowRect.height());
         p.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, label);
         p.drawPixmap(m_overflowRect.right() - 15, m_overflowRect.center().y() - 6,
-                     paintIcon("chevronDown", accent, 12).pixmap(12, 12));
+                     paintIcon("chevronDown", m_hover == -3 ? fg : muted, 12).pixmap(12, 12));
         if (m_hiddenRinging) {
             p.setBrush(kRed);
             p.setPen(Qt::NoPen);
@@ -244,18 +245,9 @@ void AreaTabs::paintEvent(QPaintEvent *) {
         }
     }
 
-    // "+": new area.
-    if (m_hover == -2) {
-        p.setPen(Qt::NoPen);
-        p.setBrush(QColor(255, 255, 255, 18));
-        p.drawRoundedRect(QRectF(m_addRect), 8, 8);
-    }
-    p.drawPixmap(m_addRect.center().x() - 7, m_addRect.center().y() - 7,
-                 paintIcon("plus", m_hover == -2 ? fg : muted, 14).pixmap(14, 14));
 }
 
 int AreaTabs::hitTest(const QPoint &pos) const {
-    if (m_addRect.contains(pos)) return -2;
     if (m_hidden > 0 && m_overflowRect.contains(pos)) return -3;
     for (const Slot &s : m_slots)
         if (s.rect.contains(pos)) return s.index;

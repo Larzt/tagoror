@@ -35,6 +35,10 @@ public:
     void addItem(const QString &iconKind, const QString &title,
                  const QString &subtitle = QString(),
                  std::function<void()> action = nullptr);
+    /// A one-line row with its keyboard shortcut on the right (the "⋯" and "+"
+    /// menus, the palette's vocabulary).
+    void addShortcutItem(const QString &iconKind, const QString &title,
+                         const QString &shortcut, std::function<void()> action);
     void addEditor(const QString &placeholder, const QString &text,
                    std::function<void(const QString &)> commit);
     /// Several fields confirmed together. Two addEditor() calls cannot do this:

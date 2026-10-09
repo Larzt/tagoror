@@ -30,8 +30,9 @@ constexpr int kRowWidth = 226;
 class PopupRow : public QWidget {
 public:
     PopupRow(const QIcon &icon, const QString &title, const QString &subtitle,
-             std::function<void()> onClick, QWidget *parent = nullptr)
-        : QWidget(parent), m_icon(icon), m_title(title), m_sub(subtitle),
+             std::function<void()> onClick, QWidget *parent = nullptr,
+             const QString &hint = QString())
+        : QWidget(parent), m_icon(icon), m_title(title), m_sub(subtitle), m_hint(hint),
           m_click(std::move(onClick)) {
         setCursor(Qt::PointingHandCursor);
         setAttribute(Qt::WA_Hover);
@@ -69,11 +70,23 @@ protected:
 
         const int textX = iconX + 16 + 10;
         QFont f = font();
+        // The shortcut, right-aligned in the dim mono of the design's hints.
+        int hintW = 0;
+        if (!m_hint.isEmpty()) {
+            QFont mono = f;
+            mono.setFamily("IBM Plex Mono");
+            mono.setStyleHint(QFont::Monospace);
+            mono.setPixelSize(10);
+            p.setFont(mono);
+            p.setPen(QColor("#636872"));
+            hintW = QFontMetrics(mono).horizontalAdvance(m_hint) + 8;
+            p.drawText(QRect(0, 0, width() - 10, height()), Qt::AlignVCenter | Qt::AlignRight, m_hint);
+        }
         if (m_sub.isEmpty()) {
             f.setPixelSize(12);
             p.setFont(f);
             p.setPen(QColor(Theme::fg()));
-            p.drawText(QRect(textX, 0, width() - textX - 10, height()),
+            p.drawText(QRect(textX, 0, width() - textX - 10 - hintW, height()),
                        Qt::AlignVCenter | Qt::AlignLeft, m_title);
         } else {
             f.setPixelSize(12);
@@ -96,6 +109,7 @@ private:
     QIcon m_icon;
     QString m_title;
     QString m_sub;
+    QString m_hint;
     std::function<void()> m_click;
     bool m_hover = false;
 };
@@ -142,6 +156,13 @@ void Popup::addItem(const QString &iconKind, const QString &title,
     const QColor tint = iconKind == "trash" ? QColor("#ff7a6b") : QColor(Theme::muted());
     auto *row = new PopupRow(paintIcon(iconKind, tint), title, subtitle,
                              [this, action] { run(action); });
+    m_col->addWidget(row);
+}
+
+void Popup::addShortcutItem(const QString &iconKind, const QString &title,
+                            const QString &shortcut, std::function<void()> action) {
+    auto *row = new PopupRow(paintIcon(iconKind, QColor(Theme::muted())), title, QString(),
+                             [this, action] { run(action); }, nullptr, shortcut);
     m_col->addWidget(row);
 }
 

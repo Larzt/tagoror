@@ -1,7 +1,6 @@
 #include "ui/alertcenter.hpp"
 
 #include "audio/alarm.hpp"
-#include "core/lang.hpp"
 #include "core/store.hpp"
 
 AlertCenter::AlertCenter(Store *store, QObject *parent)
@@ -108,14 +107,6 @@ bool AlertCenter::acknowledgeAll() {
     return true;
 }
 
-void AlertCenter::stopStrip() {
-    for (Timer *t : m_store->timers())
-        if (t->ringing()) t->reset();
-    for (Event *e : m_store->events())
-        if (e->ringingMs) silenceEvent(e);
-    stopIfQuiet();
-}
-
 void AlertCenter::reconcileMerged() {
     // What was ringing here may have been silenced on the other machine: the
     // remote version carries the "fired" mark, so it is silenced here too.
@@ -130,23 +121,3 @@ void AlertCenter::reconcileMerged() {
     stopIfQuiet();
 }
 
-AlertCenter::Strip AlertCenter::strip() const {
-    Strip out;
-    for (Timer *t : m_store->timers())
-        if (t->ringing()) {
-            out.lines << L("%1 · tiempo cumplido").arg(t->name);
-            out.timers = true;
-        }
-    for (Event *e : m_store->events())
-        if (e->ringingMs) {
-            // With hours or a day of lead, "at 10:00" may be tomorrow: then say the day.
-            const QDateTime at = QDateTime::fromMSecsSinceEpoch(e->ringingMs);
-            const QString title = e->title.isEmpty() ? L("Sin título") : e->title;
-            if (at.date() == QDate::currentDate())
-                out.lines << L("%1 · empieza a las %2").arg(title, at.toString("HH:mm"));
-            else
-                out.lines << L("%1 · empieza el %2")
-                                 .arg(title, Lang::locale().toString(at, "ddd d, HH:mm"));
-        }
-    return out;
-}

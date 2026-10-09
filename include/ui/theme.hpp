@@ -117,6 +117,29 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawLine(QPointF(c, c - 5.8), QPointF(c, c - 4.0));
         p.drawLine(QPointF(c + 3.8, c - 3.4), QPointF(c + 4.8, c - 4.4));
         p.drawLine(QPointF(c, c + 1.0), QPointF(c + 2.2, c - 1.4));
+    } else if (kind == "more") {
+        // Three dots in a row: the header's "more options".
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        for (int i = -1; i <= 1; ++i) p.drawEllipse(QPointF(c + i * 4.5, c), 1.35, 1.35);
+    } else if (kind == "info") {
+        p.drawEllipse(QPointF(c, c), 5.6, 5.6);
+        p.drawLine(QPointF(c, c - 0.6), QPointF(c, c + 3.0));
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        p.drawEllipse(QPointF(c, c - 3.0), 0.95, 0.95);
+    } else if (kind == "command") {
+        // A prompt in a box: the command palette.
+        p.drawRoundedRect(QRectF(c - 6, c - 5, 12, 10), 2.4, 2.4);
+        p.drawPolyline(QPolygonF({QPointF(c - 3.4, c - 1.8), QPointF(c - 1.2, c),
+                                  QPointF(c - 3.4, c + 1.8)}));
+        p.drawLine(QPointF(c + 0.4, c + 2.0), QPointF(c + 3.4, c + 2.0));
+    } else if (kind == "dock") {
+        // A small rounded square in a corner: fold into the dock.
+        p.drawRoundedRect(QRectF(c - 6, c - 6, 12, 12), 3, 3);
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        p.drawRoundedRect(QRectF(c + 0.2, c + 0.2, 4.2, 4.2), 1.2, 1.2);
     } else if (kind == "chevronLeft") {
         p.drawPolyline(QPolygonF({QPointF(c + 2.0, c - 4.4), QPointF(c - 2.4, c),
                                   QPointF(c + 2.0, c + 4.4)}));
@@ -326,11 +349,56 @@ QFrame#shell {
 }
 /* App mode: the frame is the system's, which has its own corners. */
 QFrame#shell[app="true"] { border: none; border-radius: 0; }
-QFrame#header { border: none; border-bottom: 1px solid %2; }
+QFrame#header { border: none; }
+/* 5.0 chrome: a 36px tools row over the list, and the navigation as a bar
+   along the bottom or a rail down the left. */
+QFrame#toolsRow { border: none; border-bottom: 1px solid %2; }
+QWidget#navBar { background: transparent; border: none; border-top: 1px solid %2; }
+QWidget#navBar[rail="true"] { border-top: none; border-right: 1px solid %2; }
+QToolButton#addNote { background: %5; border: none; border-radius: 8px; }
+QToolButton#addNote:hover { background: %5; border: 1px solid rgba(255,255,255,0.35); }
+QLineEdit#searchField {
+    background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px;
+    padding: 4px 8px; margin-left: 8px; font-size: 12px; color: %3;
+}
+QLineEdit#searchField:focus { border: 1px solid %5; }
+/* Notices (ui/alertzone.cpp): an alarm is red and has two buttons; the rest
+   are a raised card with one action in the accent. */
+QFrame#noticeAlarm {
+    background: #2a1d1d; border: 1px solid rgba(255,122,107,0.5); border-radius: 10px;
+}
+QFrame#notice, QFrame#noticeList {
+    background: #1c1f26; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+}
+QWidget#noticeRow { background: transparent; border-radius: 7px; }
+QWidget#noticeRow:hover { background: %7; }
+QLabel#noticeTitle { font-size: 12.5px; font-weight: 600; }
+QLabel#noticeSub { font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
+QToolButton#noticeCount {
+    color: #d9dbe0; background: transparent; border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px; padding: 2px 7px; font-size: 10.5px;
+    font-family: "IBM Plex Mono", monospace;
+}
+QToolButton#noticeCount:hover { background: %7; }
+QToolButton#noticeGhost {
+    color: %3; background: transparent; border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 8px; padding: 6px 8px; font-size: 12px; font-weight: 500;
+}
+QToolButton#noticeGhost:hover { background: %7; }
+QToolButton#noticeStop {
+    color: #2b0e0a; background: #ff7a6b; border: none;
+    border-radius: 8px; padding: 6px 8px; font-size: 12px; font-weight: 600;
+}
+QToolButton#noticeStop:hover { background: #ff8d80; }
+QToolButton#noticeAction {
+    color: %5; background: transparent; border: none;
+    border-radius: 7px; padding: 4px 9px; font-size: 12px; font-weight: 500;
+}
+QToolButton#noticeAction:hover { background: %7; }
 QFrame#footer { border: none; border-top: 1px solid %2; background: %6; }
 
 QLabel          { color: %3; font-size: 12px; }
-QLabel#title    { font-size: 12.5px; font-weight: 600; }
+QLabel#title    { font-size: 13px; font-weight: 600; }
 QLabel#cardTitle{ font-size: {fs:12}px;   font-weight: 600; }
 QLabel#body     { color: %4; font-size: {fs:11.5}px; }
 QLabel#meta     { color: %4; font-size: 9.5px; font-family: "IBM Plex Mono", monospace; }
