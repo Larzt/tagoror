@@ -8,6 +8,13 @@ All notable changes to Tagoror are recorded here. Versions follow
 
 A simpler interface: one fixed place for everything.
 
+### Added
+
+- **Command palette (Ctrl+K)**, also in the ⋯ menu: type to go to any page,
+  create any kind of note or switch area, from anywhere. Accents don't matter —
+  *cumple* finds Birthdays, *recor* a new reminder — and ↑↓, Enter and Esc
+  drive it.
+
 ### Changed
 
 - **Navigation that stays put.** Notes, Planner, Timers and Birthdays live in a

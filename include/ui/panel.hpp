@@ -26,6 +26,7 @@ class QToolButton;
 class QVBoxLayout;
 class AlertCenter;
 class AlertZone;
+class CommandPalette;
 class AreaTabs;
 class NavBar;
 class QHBoxLayout;
@@ -186,6 +187,7 @@ private:
     /// @{
     void openNewNoteMenu(QWidget *anchor);
     void openMoreMenu(QWidget *anchor);   ///< "⋯" in the header.
+    void openPalette();                   ///< Ctrl+K; again closes it.
     void openAbout(QWidget *anchor);
     void refreshSettings();
     void openAccentEditor(QWidget *anchor);
@@ -286,6 +288,7 @@ private:
     NavBar *m_navBar = nullptr;
     QWidget *m_bodyHost = nullptr;       ///< The pages, with the notices over them.
     AlertZone *m_alertZone = nullptr;
+    CommandPalette *m_palette = nullptr;
 
     QStackedWidget *m_body = nullptr;    ///< Note list / pages.
     QScrollArea *m_scroll = nullptr;

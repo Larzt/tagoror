@@ -12,6 +12,7 @@
 #include "ui/navbar.hpp"
 #include "ui/navigator.hpp"
 #include "ui/alertzone.hpp"
+#include "ui/palette.hpp"
 #include "ui/notecard.hpp"
 #include "ui/popup.hpp"
 #include "ui/workarea.hpp"
@@ -279,6 +280,9 @@ void Panel::buildShell() {
     m_nav->setListOnly({m_tools});
     m_nav->initBody();
 
+    // Over the whole shell, dimming it; created last so it stacks above the rest.
+    m_palette = new CommandPalette(&m_theme, m_shell);
+
     installShortcuts();
     setMinimumSize(Navigator::kShellMinWidth + shadowMargin() * 2, Navigator::kShellMinHeight);
 }
@@ -288,6 +292,7 @@ void Panel::installShortcuts() {
         auto *sc = new QShortcut(seq, this);
         connect(sc, &QShortcut::activated, this, std::move(fn));
     };
+    key(QKeySequence(Qt::CTRL | Qt::Key_K), [this] { openPalette(); });
     // Pages: the bar's order. Settings has the platform's usual key.
     key(QKeySequence(Qt::CTRL | Qt::Key_1), [this] { showNotes(); });
     key(QKeySequence(Qt::CTRL | Qt::Key_2), [this] { openPage(m_planner); });
@@ -2116,6 +2121,7 @@ void Panel::snoozeNote(Note *n, int minutes) {
 /// "⋯": what used to be header buttons and has no place in the bar.
 void Panel::openMoreMenu(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
+    menu->addShortcutItem("command", L("Paleta de comandos"), "Ctrl+K", [this] { openPalette(); });
     menu->addShortcutItem("gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); });
     menu->addShortcutItem(appMode() ? "check" : "window", L("Modo aplicación"), QString(),
                           [this] { setAppMode(!appMode()); });
@@ -2129,6 +2135,46 @@ void Panel::openMoreMenu(QWidget *anchor) {
         QTimer::singleShot(0, this, [this, at] { if (at) openAbout(at); });
     });
     menu->showUnder(anchor);
+}
+
+/// Ctrl+K from anywhere. The list is built on every open: the areas, and
+/// whatever else changes, are read fresh.
+void Panel::openPalette() {
+    if (m_nav->folded()) expand();
+    if (m_palette->isOpen()) {
+        m_palette->close();
+        return;
+    }
+    using Command = CommandPalette::Command;
+    QList<Command> cmds;
+    const QString go = L("Ir a"), create = L("Crear"), areas = L("Áreas");
+    cmds << Command{go, "notes", L("Notas"), "Ctrl+1", [this] { showNotes(); }}
+         << Command{go, "calendar", L("Planner"), "Ctrl+2", [this] { openPage(m_planner); }}
+         << Command{go, "timer", L("Timers"), "Ctrl+3", [this] { openPage(m_timerView); }}
+         << Command{go, "cake", L("Cumpleaños"), "Ctrl+4", [this] { openPage(m_birthdays); }}
+         << Command{go, "gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); }};
+    const auto make = [this](Note::Type type) {
+        return [this, type] {
+            showNotes();
+            addNote(type);
+        };
+    };
+    cmds << Command{create, "text", L("Nueva nota de texto"), "Ctrl+N", make(Note::Text)}
+         << Command{create, "check", L("Nueva checklist"), "Ctrl+⇧L", make(Note::Check)}
+         << Command{create, "bell", L("Nuevo recordatorio"), "Ctrl+⇧R", make(Note::Reminder)}
+         << Command{create, "mic", L("Nueva nota de voz"), "Ctrl+⇧V", make(Note::Voice)};
+    const QList<Area *> &list = m_store.areas();
+    const QString open = currentArea();
+    for (int i = 0; i < list.size(); ++i) {
+        if (list.at(i)->id == open) continue;   // already there
+        const QString id = list.at(i)->id;
+        cmds << Command{areas, list.at(i)->glyph.isEmpty() ? "notes" : "glyph-" + list.at(i)->glyph,
+                        L("Cambiar a %1").arg(list.at(i)->name),
+                        i < 9 ? QString("Alt+%1").arg(i + 1) : QString(),
+                        [this, id] { switchArea(id); }};
+    }
+    cmds << Command{areas, "plus", L("Nueva área"), "Ctrl+T", [this] { newArea(); }};
+    m_palette->open(cmds);
 }
 
 void Panel::openAbout(QWidget *anchor) {

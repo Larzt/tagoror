@@ -395,6 +395,23 @@ QToolButton#noticeAction {
     border-radius: 7px; padding: 4px 9px; font-size: 12px; font-weight: 500;
 }
 QToolButton#noticeAction:hover { background: %7; }
+/* Command palette (ui/palette.cpp): a raised dialog over the dimmed panel. */
+QWidget#paletteDialog {
+    background: #1c1f26; border: 1px solid rgba(255,255,255,0.13); border-radius: 12px;
+}
+QWidget#paletteTop { background: transparent; border: none; border-bottom: 1px solid %2; }
+QLineEdit#paletteField {
+    background: transparent; border: none; padding: 0; font-size: 13px; color: %3;
+}
+QLabel#paletteKey {
+    color: %4; border: 1px solid %2; border-radius: 4px; padding: 1px 5px;
+    font-size: 10px; font-family: "IBM Plex Mono", monospace;
+}
+QScrollArea#paletteScroll, QWidget#paletteViewport { background: transparent; border: none; }
+QLabel#paletteFoot {
+    color: #636872; border-top: 1px solid %2; font-size: 10px;
+    font-family: "IBM Plex Mono", monospace;
+}
 QFrame#footer { border: none; border-top: 1px solid %2; background: %6; }
 
 QLabel          { color: %3; font-size: 12px; }
