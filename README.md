@@ -1,13 +1,14 @@
 <h1 align="center">Tagoror</h1>
 
 <p align="center">
-  A sticky-notes widget for the Linux desktop, written in C++20 with Qt 6.<br>
+  A sticky-notes widget for the Linux and Windows desktop, written in C++20 with Qt 6.<br>
   Frameless, translucent, and made to sit <em>on</em> the desktop rather than get in
-  the way — text notes, checklists, reminders that actually ring (with a month
-  view to go with them), birthdays that do not get forgotten, voice notes with a
-  waveform, and links you can attach to any of them.<br>
-  Your notes are kept where you choose — including a USB stick — and backed up
-  on a schedule you set.
+  the way — text and Markdown notes, checklists, reminders that actually ring,
+  a planner for your week, timers, birthdays that do not get forgotten and voice
+  notes with a waveform, all one click or one <kbd>Ctrl+K</kbd> away.<br>
+  Your notes are kept where you choose — including a USB stick — backed up on a
+  schedule you set, and synced between computers through Google Drive, your own
+  WebDAV server or a folder you already sync, only if you want to.
 </p>
 
 <p align="center">
@@ -60,10 +61,11 @@
   or the entry in the note's menu.
 - Colour tells you the state at a glance: a muted clock while it is still ahead,
   a red bell once the time has passed — whether or not it has already rung.
-- When one fires it plays a looping tone until you stop it, from the button on
-  the note, the note's menu, or simply by opening the panel.
-- Folded away, the dock itself turns into a red bell, so an alarm is visible
-  even when the panel is not.
+- When one fires it plays a tone and shows up in the notice card above the
+  navigation, with **Stop** and **Snooze 10 min**; the button on the note and the
+  note's menu stop it too. Folded to its title, the note shows its time in red.
+- Folded away, the dock's ring of stones turns red, a halo beats around it and a
+  badge counts what is ringing, so an alarm is visible even when the panel is not.
 
 ### A planner for your week
 
@@ -130,7 +132,7 @@
   order is yours: *Coming up* runs from this month forward and wraps round the
   year, *Months* is the plain January-to-December agenda.
 - **They can ring.** Give one an hour and it goes off that day through the same
-  alarm as a reminder — red dock, red tray icon — until you stop it.
+  alarm as a reminder — red stones on the dock, red tray icon — until you stop it.
 - On the day, the card offers to mark the person as greeted. The mark expires by
   itself at the end of the year, so nothing has to be cleared by hand.
 - A 29 February is only ever a 29 February: it waits for the leap year instead
@@ -236,7 +238,12 @@
 - **One place for notices**: what rings, a missing data folder, a failed sync
   and a new version share a single card above the navigation, most urgent first,
   with *1 of N* for the rest. Nothing slides in pushing your notes down.
-- `--tray` starts it straight into the tray, for autostart.
+- A start screen says what it is waiting for — loading, syncing, looking for
+  updates — while the stones of the tagoror light up in a ring. It only shows
+  when there is something to wait for; `--tray` skips it and starts straight
+  into the tray, for autostart.
+- **App mode** (*⋯ → App mode*) turns it into an ordinary window with the
+  system's title bar, in the taskbar and Alt+Tab.
 - **Each page keeps its own size**: make the planner or the settings bigger and
   the note list stays as it was. *Size per page* in settings turns it off, back
   to one size for everything. It is the widget's thing: in app mode the window
@@ -320,16 +327,20 @@
 - It never merges while you are typing in the panel; it waits until you are
   done, so the list is not rebuilt under your cursor.
 - If two computers upload at the same moment, neither loses anything: the one
-  that is overwritten in Drive still has its changes locally and puts them back
-  on its next pass.
+  that is overwritten on the server still has its changes locally and puts them
+  back on its next pass.
 - Only what changed is transferred, and your window size, position and other
   settings of each computer stay on that computer.
-- It asks for the narrowest permission Google has (`drive.file`): the app sees
-  the files it created and nothing else in your Drive.
+- With Google Drive it asks for the narrowest permission Google has
+  (`drive.file`): the app sees the files it created and nothing else in your
+  Drive. With WebDAV, an *app password* (Nextcloud and ownCloud have them) can
+  be revoked on its own without touching your real one.
 - The connection belongs to the computer, not to the notes: it is kept in the
   app's settings, not in `notes.json`, so it does not travel to a USB stick or
-  into the backups. **Disconnect** revokes it; your notes stay on the computer
-  and in Drive. Local backups are not synced.
+  into the backups. **Disconnect** or **Forget** removes it; your notes stay on
+  the computer and on the server. Local backups are not synced.
+- If you used Drive sync before 5.0, it keeps working as it was: nothing to set
+  up again.
 - Keep the clocks of your computers right (they normally are): "newer" is
   decided by the time each change was made.
 - What is sent where, and what is not, is spelled out in the
@@ -337,18 +348,23 @@
 
 #### Setting it up (for whoever builds Tagoror)
 
-Google only lets registered applications ask for access, so a build needs an
-OAuth client of its own. Without one Tagoror builds and works as always, and the
-Drive row in settings is simply disabled.
+WebDAV and the synced folder need nothing at build time. Google only lets
+registered applications ask for access, so Google Drive and Google Calendar
+need an OAuth client of its own. Without one Tagoror builds and works as
+always, and those two rows in settings are simply disabled.
 
 1. In the [Google Cloud console](https://console.cloud.google.com/) create a
-   project and enable the **Google Drive API** for it.
+   project and enable the **Google Drive API** for it, and the **Google
+   Calendar API** too if you want the planner sync.
 2. Set up the **OAuth consent screen** (*Google Auth Platform → Branding /
    Audience*): external, with an app name and a support e-mail. Add the scope
-   `.../auth/drive.file`. While the app is in *Testing*, only the accounts listed
-   as test users can connect **and their access expires after 7 days**; publish
-   it (*In production*) to avoid that. `drive.file` is not a sensitive scope, so
-   publishing does not require Google's verification.
+   `.../auth/drive.file` (and, for Calendar, `.../auth/calendar.events` and
+   `.../auth/calendar.calendarlist.readonly`). While the app is in *Testing*,
+   only the accounts listed as test users can connect **and their access
+   expires after 7 days**; publish it (*In production*) to avoid that.
+   `drive.file` is not a sensitive scope, so with Drive alone publishing does
+   not require Google's verification; the Calendar scopes are sensitive, and
+   with them Google may ask for it.
 3. Under *Clients* create an **OAuth client ID** of type **Desktop app** and copy
    its ID and secret. (A desktop client's secret is not really secret — it ships
    inside every binary — but there is no need to publish it either.)
@@ -407,7 +423,7 @@ Drive row in settings is simply disabled.
 - An empty panel offers a button to create the first note.
 - Everything is saved automatically, a moment after you stop typing — and a
   copy of the previous file is kept on the schedule you choose.
-- The settings page shows which version you are running.
+- *Settings → About* shows which version you are running.
 
 ## Building
 
@@ -522,7 +538,7 @@ file arrives without its executable bit (GitHub downloads drop it), it needs a
 ### AppImage
 
 ```sh
-sh packaging/appimage/build-appimage.sh          # → Tagoror-1.2-x86_64.AppImage
+sh packaging/appimage/build-appimage.sh          # → Tagoror-<version>-x86_64.AppImage
 ```
 
 One file, Qt included, nothing to install on the other end (~93 MB). It bundles
@@ -569,7 +585,7 @@ either toolchain:
 
 ```powershell
 # MSVC + Qt from the official installer
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DTAGOROR_VERSION=1.2.0
+cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release
 cmake --install build --config Release --prefix dist
 windeployqt --release dist\tagoror.exe
@@ -687,11 +703,20 @@ wiped.
 The code is split into three layers, and headers mirror the sources:
 
 ```
-include/core/    note, birthday, event, timer, paths, store, updater   the data, where it is
-                 kept, and the update check
-include/ui/      panel, notecard, planner, timers, birthdays, settings, popup,
-                 theme, keynav, waveform, dragwidgets
-include/audio/   recorder, alarm, wave          microphone, alarm tone, WAV
+include/core/    note, area, birthday, event, timer, paths,   the data, where it is kept
+                 store, updater                               and the update check
+                 synccontroller, syncengine, syncbackend,     sync: which backend and when,
+                 drivesync, webdavbackend, folderbackend,     the merge, and Google Calendar
+                 calendarsync
+include/ui/      panel, navigator, navbar, areatabs,          the window, its pages and how
+                 alertcenter, alertzone, palette, splash,     you move between them
+                 dock
+                 notecard, mdpage, markdown, planner,         what is on each page
+                 timers, birthdays, settings,
+                 datetimepicker
+                 popup, theme, keynav, waveform,              shared pieces
+                 dragwidgets, elidedlabel, imagethumb
+include/audio/   recorder, alarm, wave                        microphone, alarm tone, WAV
 src/             the matching implementations, same folders
 packaging/       .desktop template and the rasterised icons
 tagoror.svg        app icon
@@ -699,14 +724,19 @@ tagoror-small.svg  simplified variant, used below 32px
 ```
 
 `core` knows nothing about the interface, `ui` never touches the disk — it goes
-through `Store`, which owns the notes, the timers, the birthdays, the events and
-their three JSON files — and `audio` only deals with the microphone and WAV files.
+through `Store`, which owns the notes, the areas, the timers, the birthdays, the
+events and their JSON files — and `audio` only deals with the microphone and WAV
+files. Sync is the same pass whatever the backend: `SyncEngine` merges, a
+`SyncBackend` (Drive, WebDAV or a folder) only lists, downloads and uploads, and
+`SyncController` picks one and decides when to run it.
 
-The panel is one window with five pages inside it: the note list, the planner,
-the timers, the birthdays and the settings. `PlannerView`, `TimerView`,
-`BirthdayView` and `SettingsView` are built the same way — each reads from the `Store` and reports
-what the user asked for upwards, leaving `Panel` as the only thing that changes
-anything or saves.
+The panel is one window with six pages inside it: the note list, the planner,
+the timers, the birthdays, the settings and a Markdown note's own page.
+`PlannerView`, `TimerView`, `BirthdayView` and `SettingsView` are built the same
+way — each reads from the `Store` and reports what the user asked for upwards,
+leaving `Panel` as the only thing that changes anything or saves. `Panel` has
+help: `Navigator` decides which page is open and how big the window is for it,
+`AlertCenter` decides what rings, and `AlertZone` shows the notices.
 
 The icon ships twice on purpose: the detailed five-ring mark as the scalable
 SVG, and the simplified three-ring one rasterised into the small sizes, where
@@ -749,6 +779,7 @@ synthesised at runtime.
   requests the compositor may decline.
 - Reminders and birthday alarms are checked every 5 seconds, so one can be up
   to that late.
-- It is a utility window by design, so it stays out of the taskbar and the
-  alt-tab list. Fold it into the dock instead of minimising it.
+- As a widget it is a utility window by design, so it stays out of the taskbar
+  and the alt-tab list: fold it into the dock instead of minimising it, or
+  switch to app mode for an ordinary window.
 - There is no automated test suite yet.

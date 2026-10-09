@@ -105,6 +105,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       <span>Tagoror</span>
     </a>
     <nav data-hide-sm="" style="display: flex; gap: 22px; font-size: 14px; white-space: nowrap; flex: none;">
+      <a href="#novedades" style="color: var(--muted);"><span lang="es">Novedades</span><span lang="en">What's new</span></a>
       <a href="#notas" style="color: var(--muted);"><span lang="es">Funciones</span><span lang="en">Features</span></a>
       <a href="#datos" style="color: var(--muted);"><span lang="es">Tus datos</span><span lang="en">Your data</span></a>
       <a href="#descargar" style="color: var(--muted);"><span lang="es">Descargar</span><span lang="en">Download</span></a>
@@ -133,6 +134,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         <span style="padding: 4px 10px; border: 1px solid var(--line2); border-radius: 999px;">Linux · Windows</span>
         <span style="padding: 4px 10px; border: 1px solid var(--line2); border-radius: 999px;">C++20 · Qt 6</span>
         <span style="padding: 4px 10px; border: 1px solid var(--accent-line); color: var(--ink); border-radius: 999px;">Open source · MIT</span>
+        <a href="#novedades" style="padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); text-decoration: none;"><span lang="es">Nuevo · versión 5.0</span><span lang="en">New · version 5.0</span></a>
       </div>
       <div style="display: flex; flex-direction: column; gap: 18px;">
         <h1 style="margin: 0; font-size: clamp(38px,5.6vw,66px); line-height: 1.02; letter-spacing: -.035em; font-weight: 600; text-wrap: balance;"><span lang="es">Siempre a la vista. Guardado donde tú decidas.</span><span lang="en">Always in sight. Saved where you decide.</span></h1>
@@ -174,11 +176,11 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       <div class="mono" style="position: absolute; top: 0; left: 0; right: 0; height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: rgba(0,0,0,.35); font-size: 11px; color: rgba(255,255,255,.6);">
         <span><span lang="es">Escritorio</span><span lang="en">Desktop</span></span><span id="clock"></span>
       </div>
-      <div style="position: absolute; left: 6%; top: 44%; display: flex; flex-direction: column; align-items: center; gap: 8px;">
-        <img src="dock.png" alt="Dock" style="width: 76px; display: block; filter: drop-shadow(0 12px 18px rgba(0,0,0,.5));">
+      <div style="position: absolute; left: 5%; top: 44%; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+        <img src="v5-dock.png" alt="Dock" style="width: 96px; display: block;">
         <span class="mono" style="font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55);"><span lang="es">plegado</span><span lang="en">folded</span></span>
       </div>
-      <img src="panel.png" alt="Tagoror panel" style="position: absolute; right: 7%; top: 11%; width: min(62%, 330px); display: block; filter: drop-shadow(0 30px 40px rgba(0,0,0,.55));">
+      <img src="v5-notas.png" alt="Tagoror panel" style="position: absolute; right: 3%; top: 3%; width: min(66%, 380px); display: block;">
     </div>
   </div>
 </section>
@@ -189,39 +191,106 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
   </div>
 </div>
 
+<section id="novedades" class="wrap sec">
+  <div style="display: flex; flex-direction: column; gap: 14px; max-width: 680px; margin-bottom: 40px;">
+    <div class="eyebrow">
+      <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
+      <span lang="es">Nuevo en la 5.0</span><span lang="en">New in 5.0</span>
+    </div>
+    <h2 class="h2"><span lang="es">Más simple: un sitio fijo para todo.</span><span lang="en">Simpler: one fixed place for everything.</span></h2>
+    <p class="lead"><span lang="es">Una barra de navegación que no se mueve, una sola fila de herramientas, un menú ⋯ y una tarjeta para todos los avisos. Nada aparece empujando tus notas.</span><span lang="en">A navigation bar that stays put, a single row of tools, a ⋯ menu and one card for every notice. Nothing slides in pushing your notes down.</span></p>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px;">
+    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Navegación fija</span><span lang="en">Navigation that stays put</span></div>
+      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Notas, Planner, Timers y Cumpleaños en una barra abajo, con la página abierta marcada. Si ensanchas el panel, pasa a ser un raíl a la izquierda.</span><span lang="en">Notes, Planner, Timers and Birthdays in a bar along the bottom, with the open page marked. Widen the panel and it becomes a rail on the left.</span></div>
+      <div style="display: flex; gap: 4px; margin-top: auto; padding-top: 6px;"><kbd>Ctrl</kbd><kbd>1…4</kbd></div>
+    </div>
+    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Paleta de comandos</span><span lang="en">Command palette</span></div>
+      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Desde cualquier sitio: escribe para ir a una página, crear cualquier nota o cambiar de área. Los acentos dan igual: «cumple» encuentra Cumpleaños.</span><span lang="en">From anywhere: type to go to any page, create any kind of note or switch area. Accents don't matter: «cumple» finds Birthdays.</span></div>
+      <div style="display: flex; gap: 4px; margin-top: auto; padding-top: 6px;"><kbd>Ctrl</kbd><kbd>K</kbd></div>
+    </div>
+    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Notas Markdown</span><span lang="en">Markdown notes</span></div>
+      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Un tipo de nota propio: formateada en la tarjeta y, al abrirla, el texto en crudo con números de línea o la vista previa, con barra de formato.</span><span lang="en">A note type of its own: rendered on the card and, once opened, the raw text with line numbers or the preview, with a formatting bar.</span></div>
+      <div style="display: flex; gap: 4px; margin-top: auto; padding-top: 6px;"><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>M</kbd></div>
+    </div>
+    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Pliega cualquier nota</span><span lang="en">Fold any note</span></div>
+      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Hasta su título, con la flecha. Plegada sigue diciendo lo que importa: el 2/4 de una lista, la hora de un recordatorio, lo que dura una grabación.</span><span lang="en">Down to its title, with the chevron. Folded, it still says what matters: a checklist's 2/4, a reminder's time, a recording's length.</span></div>
+    </div>
+    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Un solo sitio para los avisos</span><span lang="en">One place for notices</span></div>
+      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Lo que suena, una carpeta que falta, un error de sincronización o una versión nueva: en una tarjeta sobre la barra, lo más urgente primero.</span><span lang="en">What rings, a missing folder, a failed sync or a new version: in one card above the bar, most urgent first.</span></div>
+    </div>
+    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Sincroniza donde quieras</span><span lang="en">Sync wherever you like</span></div>
+      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Además de Google Drive, tu servidor WebDAV o Nextcloud, o una carpeta que ya sincronizan Syncthing, Dropbox u OneDrive. Google Calendar va aparte.</span><span lang="en">Besides Google Drive, your own WebDAV or Nextcloud server, or a folder Syncthing, Dropbox or OneDrive already keep in step. Google Calendar is a connection of its own.</span></div>
+    </div>
+  </div>
+  <div class="stage" style="margin-top: 20px; border-radius: 22px; padding: clamp(16px,3vw,36px) clamp(8px,2vw,24px) 0; background-image: var(--noise), radial-gradient(80% 70% at 50% 110%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), linear-gradient(170deg, #1b2029, #0a0c10); display: flex; flex-wrap: wrap; justify-content: center; gap: 0 clamp(8px,3vw,40px); overflow: hidden;">
+    <figure style="margin: 0; display: flex; flex-direction: column; align-items: center; width: min(100%, 360px);">
+      <img src="v5-paleta.png" alt="" loading="lazy" style="width: 100%; display: block;">
+      <figcaption class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55); padding: 0 0 22px;"><span lang="es">Paleta de comandos</span><span lang="en">Command palette</span></figcaption>
+    </figure>
+    <figure style="margin: 0; display: flex; flex-direction: column; align-items: center; width: min(100%, 360px);">
+      <img src="v5-avisos.png" alt="" loading="lazy" style="width: 100%; display: block;">
+      <figcaption class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55); padding: 0 0 22px;"><span lang="es">Avisos</span><span lang="en">Notices</span></figcaption>
+    </figure>
+  </div>
+  <p style="margin: 22px 0 0; font-size: 15px;"><a href="https://github.com/Larzt/tagoror/blob/main/CHANGELOG.md"><span lang="es">Todos los cambios de la 5.0 →</span><span lang="en">Everything that changed in 5.0 →</span></a></p>
+</section>
+
 <section id="notas" class="wrap sec">
   <div style="display: flex; flex-direction: column; gap: 14px; max-width: 640px; margin-bottom: 44px;">
     <div class="eyebrow">
       <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
-      <span lang="es">Cuatro tipos de nota</span><span lang="en">Four kinds of note</span>
+      <span lang="es">Cinco tipos de nota</span><span lang="en">Five kinds of note</span>
     </div>
-    <h2 class="h2"><span lang="es">Escribe, marca, programa o dicta.</span><span lang="en">Write, tick, schedule or speak.</span></h2>
-    <p class="lead"><span lang="es">Pulsa + en el panel y elige. Cada nota es una tarjeta compacta que puedes reordenar, buscar y editar sin salir del escritorio.</span><span lang="en">Hit + in the panel and pick one. Every note is a compact card you can reorder, search and edit without leaving the desktop.</span></p>
+    <h2 class="h2"><span lang="es">Escribe, formatea, marca, programa o dicta.</span><span lang="en">Write, format, tick, schedule or speak.</span></h2>
+    <p class="lead"><span lang="es">Pulsa + en el panel o usa su atajo. Cada nota es una tarjeta compacta que puedes plegar, reordenar, buscar y editar sin salir del escritorio.</span><span lang="en">Hit + in the panel or use its shortcut. Every note is a compact card you can fold, reorder, search and edit without leaving the desktop.</span></p>
   </div>
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; align-items: stretch;">
     <div style="background: #15171c; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 4px; color: #e6e8ec;">
       <div class="mono" style="font-size: 11px; letter-spacing: .1em; color: #8d93a0; padding: 6px 12px 8px;"><span lang="es">NUEVA NOTA</span><span lang="en">NEW NOTE</span></div>
       <button class="nb" data-note="text">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="flex: none; color: #a4aab6;"><path d="M5 7h14M5 12h14M5 17h9"></path></svg>
-        <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;"><span lang="es">Texto</span><span lang="en">Text</span></span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Nota libre, con Markdown</span><span lang="en">Free-form, with Markdown</span></span></span>
+        <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;"><span lang="es">Texto</span><span lang="en">Text</span></span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Texto plano: lo que escribes es lo que ves</span><span lang="en">Plain text: what you type is what you see</span></span></span>
+        <span class="mono" style="margin-left: auto; font-size: 11px; color: #737a87;">Ctrl+N</span>
+      </button>
+      <button class="nb" data-note="markdown">
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; color: #a4aab6;"><rect x="1.5" y="3.5" width="13" height="9" rx="2"></rect><path d="M3.7 10V6l1.7 2 1.7-2v4M11 6v4M9.5 8.6L11 10l1.5-1.4"></path></svg>
+        <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;">Markdown <span class="mono" style="font-size: 10px; font-weight: 600; letter-spacing: .06em; padding: 1px 6px; border-radius: 5px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); vertical-align: 2px;"><span lang="es">NUEVA</span><span lang="en">NEW</span></span></span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Formateada, con su página y vista previa</span><span lang="en">Formatted, with its own page and preview</span></span></span>
+        <span class="mono" style="margin-left: auto; font-size: 11px; color: #737a87;">Ctrl+⇧M</span>
       </button>
       <button class="nb" data-note="checklist" aria-pressed="true">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; color: #a4aab6;"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>
         <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;">Checklist</span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Tareas con barra de progreso</span><span lang="en">Tasks with a progress bar</span></span></span>
+        <span class="mono" style="margin-left: auto; font-size: 11px; color: #737a87;">Ctrl+⇧L</span>
       </button>
       <button class="nb" data-note="reminder">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="flex: none; color: #a4aab6;"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg>
         <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;"><span lang="es">Recordatorio</span><span lang="en">Reminder</span></span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Con fecha y alarma</span><span lang="en">With a date and an alarm</span></span></span>
+        <span class="mono" style="margin-left: auto; font-size: 11px; color: #737a87;">Ctrl+⇧R</span>
       </button>
       <button class="nb" data-note="voice">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="flex: none; color: #a4aab6;"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M6 11a6 6 0 0 0 12 0M12 17v4"></path></svg>
         <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;"><span lang="es">Nota de voz</span><span lang="en">Voice note</span></span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Graba del micrófono, con forma de onda</span><span lang="en">Records from the mic, with a waveform</span></span></span>
+        <span class="mono" style="margin-left: auto; font-size: 11px; color: #737a87;">Ctrl+⇧V</span>
       </button>
     </div>
 
     <div class="stage" style="position: relative; border-radius: 18px; overflow: hidden; min-height: 340px; padding: clamp(20px,4vw,40px); display: grid; place-items: center; background-image: var(--noise), linear-gradient(160deg, #1b2029, #0b0d11);">
       <div style="width: 100%; max-width: 360px; background: rgba(24,27,33,.92); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.09); border-radius: 12px; padding: 14px 16px; color: #e6e8ec; font-size: 14px; box-shadow: 0 24px 40px -18px rgba(0,0,0,.7);">
         <div class="preview" data-preview="text" hidden>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="font-weight: 500;"><span lang="es">Lista de la compra</span><span lang="en">Shopping list</span></div>
+            <div style="line-height: 1.5; color: #c9ccd4;"><span lang="es">Pan, café y tomates.<br>Pasar por la ferretería: tacos del 6.</span><span lang="en">Bread, coffee and tomatoes.<br>Stop by the hardware shop: size 6 plugs.</span></div>
+            <div class="mono" style="font-size: 11px; color: #8d93a0; letter-spacing: .06em;"><span lang="es">TEXTO</span><span lang="en">TEXT</span></div>
+          </div>
+        </div>
+        <div class="preview" data-preview="markdown" hidden>
           <div style="display: flex; flex-direction: column; gap: 10px;">
             <div style="font-weight: 500;"><span lang="es">Ideas para el blog</span><span lang="en">Blog ideas</span></div>
             <div style="background: #1f2229; border: 1px solid rgba(255,255,255,.06); border-radius: 8px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; line-height: 1.45;">
@@ -235,7 +304,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         </div>
         <div class="preview" data-preview="checklist">
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-weight: 500; margin-bottom: 4px;">Release 1.3</div>
+            <div style="font-weight: 500; margin-bottom: 4px;">Release 5.0</div>
             <div id="checkItems" style="display: flex; flex-direction: column; gap: 6px;"></div>
             <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
               <div style="flex: 1; height: 4px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden;"><div id="progressBar" style="height: 100%; width: 50%; background: var(--accent); border-radius: 4px; transition: width .3s;"></div></div>
@@ -279,10 +348,11 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         <span lang="es">Recordatorios</span><span lang="en">Reminders</span>
       </div>
       <h2 class="h2"><span lang="es">Recordatorios que suenan de verdad.</span><span lang="en">Reminders that actually ring.</span></h2>
-      <p class="lead"><span lang="es">No es una notificación que se pierde en una esquina. La alarma suena en bucle hasta que la paras, con un tono que Tagoror sintetiza al momento.</span><span lang="en">Not a notification lost in a corner. The alarm loops until you stop it, with a tone Tagoror synthesises on the spot.</span></p>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 8px;">
-        <div class="card" style="padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">En bucle</span><span lang="en">On loop</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Sigue sonando hasta que la detienes.</span><span lang="en">Keeps ringing until you stop it.</span></div></div>
+      <p class="lead"><span lang="es">No es una notificación que se pierde en una esquina. Suena con un tono que Tagoror sintetiza al momento, y el aviso se queda en rojo hasta que lo atiendes.</span><span lang="en">Not a notification lost in a corner. It rings with a tone Tagoror synthesises on the spot, and stays red until you deal with it.</span></p>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 8px;">
+        <div class="card" style="padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Detener o posponer</span><span lang="en">Stop or snooze</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Desde la tarjeta de avisos: para la alarma o la retrasa 10 minutos.</span><span lang="en">From the notice card: stop the alarm or push it back 10 minutes.</span></div></div>
         <div class="card" style="padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Semanal o anual</span><span lang="en">Weekly or yearly</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Repite lo que se repite.</span><span lang="en">Repeat what repeats.</span></div></div>
+        <div class="card" style="padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Fecha en dos clics</span><span lang="en">A date in two clicks</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Mes pequeño, horas cada 5 o 15 minutos y atajos como «mañana a las 9».</span><span lang="en">A small month, times every 5 or 15 minutes, and picks like "tomorrow at 9".</span></div></div>
       </div>
     </div>
     <div style="display: flex; flex-direction: column; gap: 14px;">
@@ -297,14 +367,12 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         </div>
       </div>
       <div class="card" style="padding: 22px; border-radius: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 22px;">
-        <div style="display: flex; align-items: center; gap: 14px; padding: 16px; border-radius: 14px; background-color: #101318; background-image: var(--noise), linear-gradient(160deg, #1b2029, #0b0d11);">
-          <img src="dock.png" alt="" style="width: 64px; display: block;">
+        <div style="display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 14px; background-color: #101318; background-image: var(--noise), linear-gradient(160deg, #1b2029, #0b0d11);">
+          <img src="v5-dock.png" alt="" style="width: 84px; display: block;">
           <span style="color: rgba(255,255,255,.5);">→</span>
-          <div style="width: 50px; height: 50px; margin: 7px; border-radius: 14px; background: #2a1414; border: 1px solid rgba(244,92,80,.6); display: grid; place-items: center; box-shadow: 0 0 0 5px rgba(244,92,80,.14), 0 10px 20px rgba(0,0,0,.5);">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f36a5e" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15zM10 21h4"></path></svg>
-          </div>
+          <img src="v5-dock-alarma.png" alt="" style="width: 84px; display: block;">
         </div>
-        <p style="margin: 0; flex: 1; min-width: 200px; color: var(--muted); font-size: 15px; text-wrap: pretty;"><span lang="es">Con el panel plegado no te lo pierdes: el dock se convierte en una campana roja mientras haya una alarma.</span><span lang="en">Even with the panel folded you won't miss it: the dock turns into a red bell while an alarm is active.</span></p>
+        <p style="margin: 0; flex: 1; min-width: 200px; color: var(--muted); font-size: 15px; text-wrap: pretty;"><span lang="es">Con el panel plegado no te lo pierdes: las piedras del dock se vuelven rojas, un halo late a su alrededor y una insignia cuenta las alarmas.</span><span lang="en">Even with the panel folded you won't miss it: the dock's stones turn red, a halo beats around it and a badge counts the alarms.</span></p>
       </div>
     </div>
   </div>
@@ -318,11 +386,12 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         <span lang="es">Planificador</span><span lang="en">Planner</span>
       </div>
       <h2 class="h2"><span lang="es">Tu semana, en la misma rejilla.</span><span lang="en">Your week, on one grid.</span></h2>
-      <p class="lead"><span lang="es">Eventos y tareas con categorías. Los recordatorios y cumpleaños aparecen solos, junto a todo lo demás.</span><span lang="en">Events and tasks with categories. Reminders and birthdays show up on their own, next to everything else.</span></p>
+      <p class="lead"><span lang="es">Eventos y tareas con categorías, que mueves arrastrándolos. Los recordatorios y cumpleaños aparecen solos, junto a todo lo demás, y Google Calendar se sincroniza en los dos sentidos.</span><span lang="en">Events and tasks with categories, moved by dragging them. Reminders and birthdays show up on their own, next to everything else, and Google Calendar syncs both ways.</span></p>
     </div>
     <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px;">
       <span class="pill"><span lang="es">Día · Semana · Mes</span><span lang="en">Day · Week · Month</span></span>
-      <span class="pill"><span lang="es">Aviso 10 min antes</span><span lang="en">Heads-up 10 min before</span></span>
+      <span class="pill"><span lang="es">Aviso de 5 min a 1 día antes</span><span lang="en">Heads-up 5 min to 1 day before</span></span>
+      <span class="pill">Google Calendar ⇄</span>
     </div>
   </div>
   <div class="stage" style="border-radius: 22px; padding: clamp(14px,3vw,40px); background-image: var(--noise), radial-gradient(80% 70% at 50% 110%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), linear-gradient(170deg, #1b2029, #0a0c10); display: grid; place-items: center; overflow: hidden;">
@@ -336,20 +405,20 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       <div style="padding: clamp(22px,3vw,32px); display: flex; flex-direction: column; gap: 10px;">
         <div class="eyebrow"><span lang="es">Temporizadores</span><span lang="en">Timers</span></div>
         <h3 style="margin: 0; font-size: clamp(24px,2.6vw,30px); line-height: 1.15; letter-spacing: -.02em; font-weight: 600; text-wrap: balance;"><span lang="es">Siguen corriendo aunque cierres la app.</span><span lang="en">They keep running even if you close the app.</span></h3>
-        <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">Guarda tu Pomodoro como plantilla y arráncalo con un clic. Varios a la vez, con pausa y reinicio.</span><span lang="en">Save your Pomodoro as a template and start it in one click. Several at once, with pause and restart.</span></p>
+        <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">El que corre, arriba con su anillo, Pausar y +1 min; su cuenta atrás también sale en la barra. Los rápidos, de 1′ a 45′, arrancan con un clic, y tu Pomodoro queda guardado para mañana.</span><span lang="en">The running one sits on top with its ring, Pause and +1 min; its countdown shows in the bar too. Quick ones, 1′ to 45′, start in one click, and your Pomodoro stays saved for tomorrow.</span></p>
       </div>
-      <div style="margin-top: auto; padding: 28px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
-        <img src="timers.png" alt="Timers" loading="lazy" style="width: 300px; max-width: 90%; align-self: flex-start; display: block; filter: drop-shadow(0 20px 30px rgba(0,0,0,.5));">
+      <div style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
+        <img src="v5-timers.png" alt="Timers" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
       </div>
     </div>
     <div class="card" style="border-radius: 22px; overflow: hidden; display: flex; flex-direction: column;">
       <div style="padding: clamp(22px,3vw,32px); display: flex; flex-direction: column; gap: 10px;">
         <div class="eyebrow"><span lang="es">Cumpleaños</span><span lang="en">Birthdays</span></div>
         <h3 style="margin: 0; font-size: clamp(24px,2.6vw,30px); line-height: 1.15; letter-spacing: -.02em; font-weight: 600; text-wrap: balance;"><span lang="es">El próximo, siempre arriba.</span><span lang="en">The next one, always on top.</span></h3>
-        <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">Agrupados por mes, con la edad que cumplen y un aviso a la hora que quieras.</span><span lang="en">Grouped by month, with the age they turn and a heads-up at the time you choose.</span></p>
+        <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">En una tarjeta con fondo de color y los días que faltan en grande. Los demás, en tarjetas por meses, con la edad que cumplen y un aviso a la hora que quieras.</span><span lang="en">On a card with a soft colour backdrop and the days left in large figures. Everyone else in cards by month, with the age they turn and a heads-up at the time you choose.</span></p>
       </div>
-      <div style="margin-top: auto; padding: 28px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
-        <img src="birthdays.png" alt="Birthdays" loading="lazy" style="width: 300px; max-width: 90%; align-self: flex-start; display: block; filter: drop-shadow(0 20px 30px rgba(0,0,0,.5));">
+      <div style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
+        <img src="v5-cumples.png" alt="Birthdays" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
       </div>
     </div>
   </div>
@@ -364,7 +433,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         <span lang="es">Privacidad y control</span><span lang="en">Privacy and control</span>
       </div>
       <h2 style="margin: 0; font-size: clamp(34px,5vw,58px); line-height: 1.02; letter-spacing: -.035em; font-weight: 600; text-wrap: balance;"><span lang="es">Tus datos, donde tú quieras.</span><span lang="en">Your data, wherever you want.</span></h2>
-      <p style="margin: 0; color: var(--muted); font-size: 18px; text-wrap: pretty;"><span lang="es">Tagoror guarda las notas como archivos en una carpeta que eliges tú. No hay servidor, no hay cuenta y nada sale de tu equipo si no lo pides.</span><span lang="en">Tagoror stores notes as files in a folder you pick. No server, no account, and nothing leaves your machine unless you ask.</span></p>
+      <p style="margin: 0; color: var(--muted); font-size: 18px; text-wrap: pretty;"><span lang="es">Tagoror guarda las notas como archivos en una carpeta que eliges tú. No hay servidor nuestro ni cuenta, y nada sale de tu equipo si no lo pides.</span><span lang="en">Tagoror stores notes as files in a folder you pick. No server of ours, no account, and nothing leaves your machine unless you ask.</span></p>
     </div>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px;">
       <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
@@ -375,7 +444,14 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
         <div style="font-weight: 600; font-size: 17px;"><span lang="es">Si la carpeta no está, no escribe</span><span lang="en">No folder, no writes</span></div>
         <div style="color: var(--muted); font-size: 15px;"><span lang="es">Si desconectas el USB, Tagoror no guarda en otro sitio a escondidas: te avisa y espera.</span><span lang="en">Unplug the USB and Tagoror won't quietly save elsewhere: it warns you and waits.</span></div>
-        <div style="margin-top: 4px; padding: 10px 12px; border-radius: 8px; background: rgba(244,92,80,.12); border: 1px solid rgba(244,92,80,.35); color: #e0584c; font-size: 13px;"><span lang="es">La carpeta de notas no está disponible. Nada de lo que escribas se guardará.</span><span lang="en">The notes folder is not available. Nothing you write will be saved.</span></div>
+        <div style="margin-top: 4px; display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 12px; border-radius: 10px; background: #1c1f26; border: 1px solid rgba(255,255,255,.12); color: #e9eaee;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#f2b757" stroke-width="1.5" stroke-linejoin="round" style="flex: none;"><path d="M2.2 12.4V3.6h4l1.4 1.6h6.2v7.2z"></path></svg>
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column;">
+            <span style="font-size: 13px; font-weight: 600;"><span lang="es">Carpeta de datos no disponible</span><span lang="en">Data folder not available</span></span>
+            <span class="mono" style="font-size: 11px; color: #8b909a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">/run/media/usb/Notas · <span lang="es">no se guarda nada</span><span lang="en">nothing is saved</span></span>
+          </span>
+          <span style="font-size: 13px; font-weight: 500; color: #7c9cff;"><span lang="es">Reintentar</span><span lang="en">Retry</span></span>
+        </div>
       </div>
       <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
         <div style="font-weight: 600; font-size: 17px;"><span lang="es">Guardado atómico</span><span lang="en">Atomic saves</span></div>
@@ -386,20 +462,21 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         <div style="color: var(--muted); font-size: 15px;"><span lang="es">Cada día, cada semana o nunca, a la hora que digas. Vuelve a cualquier copia con un clic.</span><span lang="en">Daily, weekly or never, at the time you say. Go back to any copy in one click.</span></div>
       </div>
       <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
-        <div style="font-weight: 600; font-size: 17px;"><span lang="es">Sincronización opcional con Google Drive</span><span lang="en">Optional Google Drive sync</span></div>
-        <div style="color: var(--muted); font-size: 15px;"><span lang="es">Entre varios ordenadores, fusionando cambios nota a nota. Con el permiso mínimo: <code class="mono" style="font-size: 13px;">drive.file</code>, que solo ve lo que crea Tagoror.</span><span lang="en">Across computers, merging changes item by item. With the minimum scope: <code class="mono" style="font-size: 13px;">drive.file</code>, which only sees what Tagoror creates.</span></div>
+        <div style="font-weight: 600; font-size: 17px;"><span lang="es">Sincronización opcional, donde tú digas</span><span lang="en">Optional sync, wherever you say</span></div>
+        <div style="color: var(--muted); font-size: 15px;"><span lang="es">Google Drive, tu servidor WebDAV o Nextcloud, o una carpeta que ya sincronizan Syncthing, Dropbox u OneDrive. Fusiona nota a nota, así que dos equipos a la vez no se pisan. En Drive, con el permiso mínimo: <code class="mono" style="font-size: 13px;">drive.file</code>.</span><span lang="en">Google Drive, your own WebDAV or Nextcloud server, or a folder Syncthing, Dropbox or OneDrive already keep in step. It merges note by note, so two computers at once don't overwrite each other. On Drive, with the minimum scope: <code class="mono" style="font-size: 13px;">drive.file</code>.</span></div>
+        <div class="mono" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--muted);"><span class="pill">Google Drive</span><span class="pill">WebDAV · Nextcloud</span><span class="pill"><span lang="es">Carpeta sincronizada</span><span lang="en">Synced folder</span></span></div>
       </div>
       <div style="padding: 22px; border-radius: 16px; border: 1px solid var(--accent-line); background: var(--card); display: flex; flex-direction: column; gap: 12px;">
-        <div style="font-weight: 600; font-size: 17px;"><span lang="es">La red, solo para dos cosas</span><span lang="en">The network, for two things only</span></div>
+        <div style="font-weight: 600; font-size: 17px;"><span lang="es">La red, solo si la pides</span><span lang="en">The network, only if you ask</span></div>
         <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line);"><span>Google Drive</span><span class="mono" style="font-size: 12px; color: var(--muted);"><span lang="es">opcional · se apaga</span><span lang="en">optional · can be off</span></span></div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line);"><span><span lang="es">Sincronización</span><span lang="en">Sync</span></span><span class="mono" style="font-size: 12px; color: var(--muted);"><span lang="es">opcional · se apaga</span><span lang="en">optional · can be off</span></span></div>
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line);"><span>Google Calendar</span><span class="mono" style="font-size: 12px; color: var(--muted);"><span lang="es">opcional · aparte</span><span lang="en">optional · separate</span></span></div>
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line);"><span><span lang="es">Buscar actualizaciones</span><span lang="en">Check for updates</span></span><span class="mono" style="font-size: 12px; color: var(--muted);"><span lang="es">solo avisa · se apaga</span><span lang="en">notify only · can be off</span></span></div>
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0;"><span><span lang="es">Todo lo demás</span><span lang="en">Everything else</span></span><span class="mono" style="font-size: 12px; color: var(--muted);"><span lang="es">sin conexión</span><span lang="en">offline</span></span></div>
         </div>
       </div>
     </div>
     <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 28px; margin-top: 48px;">
-      <img src="no-folder.png" alt="" loading="lazy" style="width: 280px; max-width: 80vw; display: block; filter: drop-shadow(0 20px 30px rgba(0,0,0,.35));">
       <img src="backups.png" alt="" loading="lazy" style="width: 216px; max-width: 70vw; display: block; filter: drop-shadow(0 20px 30px rgba(0,0,0,.35));">
     </div>
     <p style="margin: 36px 0 0; text-align: center; font-size: 15px;"><a href="https://github.com/Larzt/tagoror/blob/main/PRIVACY.md"><span lang="es">Leer la política de privacidad →</span><span lang="en">Read the privacy policy →</span></a></p>
@@ -444,7 +521,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; font-size: 14px; color: var(--muted);">
           <span><span lang="es">Idioma</span><span lang="en">Language</span>: <button class="linkbtn" data-set-lang="es">Español</button> / <button class="linkbtn" data-set-lang="en">English</button></span>
           <span style="display: flex; align-items: center; gap: 6px;"><span lang="es">Teclado:</span><span lang="en">Keyboard:</span>
-            <kbd>Tab</kbd><kbd>↑↓</kbd><kbd>Enter</kbd><kbd>Esc</kbd>
+            <kbd>Ctrl</kbd><kbd>K</kbd><kbd>Tab</kbd><kbd>↑↓</kbd><kbd>Esc</kbd>
           </span>
         </div>
       </div>
@@ -452,13 +529,16 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
     <div class="stage" style="position: relative; border-radius: 22px; overflow: hidden; min-height: 460px; display: grid; place-items: center; padding: 28px; background-image: var(--noise), radial-gradient(90% 70% at 30% 90%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 65%), linear-gradient(160deg, #222835, #0b0d11);">
       <svg viewBox="0 0 512 512" style="position: absolute; left: -10%; bottom: -35%; width: 100%;" fill="none" stroke="#e4eaf7" aria-hidden="true"><ellipse cx="256" cy="226" rx="168" ry="160" stroke-opacity=".12" stroke-width="10"></ellipse><ellipse cx="256" cy="260" rx="116" ry="102" stroke-opacity=".16" stroke-width="8"></ellipse><ellipse cx="256" cy="290" rx="74" ry="59" stroke-opacity=".2" stroke-width="6"></ellipse></svg>
       <div style="position: relative; width: 300px; max-width: 100%; border-radius: 14px; border: 1px solid rgba(255,255,255,.1); background: rgba(21,23,28,var(--demo-op)); backdrop-filter: blur(6px); color: #e6e8ec; font-size: var(--demo-fs); box-shadow: 0 30px 50px -20px rgba(0,0,0,.7); overflow: hidden;">
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,.07);">
-          <span style="font-weight: 500;">Tagoror</span>
-          <span style="display: flex; gap: 12px; color: #a4aab6;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6"></circle><path d="M20 20l-4.5-4.5"></path></svg>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 12h14"></path></svg>
-          </span>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 10px 11px 14px;">
+          <span style="font-weight: 600;"><span lang="es">Notas</span><span lang="en">Notes</span></span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="#a4aab6" aria-hidden="true"><circle cx="3.5" cy="8" r="1.35"></circle><circle cx="8" cy="8" r="1.35"></circle><circle cx="12.5" cy="8" r="1.35"></circle></svg>
+        </div>
+        <div style="display: flex; align-items: center; gap: 4px; padding: 0 6px 6px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: .88em;">
+          <span style="display: flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 7px; background: rgba(255,255,255,.075); border: 1px solid rgba(255,255,255,.08); font-weight: 600;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--accent);"></span>Personal</span>
+          <span style="padding: 4px 9px; color: #8b909a;"><span lang="es">Trabajo</span><span lang="en">Work</span></span>
+          <span style="flex: 1;"></span>
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#8b909a" stroke-width="1.5" stroke-linecap="round" style="margin: 0 6px;"><circle cx="6.5" cy="6.5" r="4.2"></circle><path d="M9.8 9.8l3.2 3.2"></path></svg>
+          <span style="width: 26px; height: 26px; border-radius: 8px; background: var(--accent); display: grid; place-items: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#0d1014" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 8h9M8 3.5v9"></path></svg></span>
         </div>
         <div style="padding: 10px; display: flex; flex-direction: column; gap: 10px;">
           <div style="border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 12px; background: rgba(30,33,40,var(--demo-card-op)); display: flex; flex-direction: column; gap: 7px;">
@@ -471,7 +551,12 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
             <div style="font-weight: 500;"><span lang="es">Enlaces</span><span lang="en">Links</span></div>
             <span style="color: var(--accent);"><span lang="es">Horarios de guaguas</span><span lang="en">Bus timetable</span></span>
           </div>
-          <div style="align-self: flex-start; padding: 7px 14px; border-radius: 8px; background: var(--accent); color: #0b0e16; font-weight: 500; font-size: .9em;"><span lang="es">Nueva nota</span><span lang="en">New note</span></div>
+        </div>
+        <div style="display: flex; padding: 5px 6px 7px; border-top: 1px solid rgba(255,255,255,.07); font-size: 11px; color: #8b909a; text-align: center;">
+          <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #e6e8ec; font-weight: 600;"><span style="width: 42px; height: 22px; border-radius: 11px; background: color-mix(in srgb, var(--accent) 20%, transparent); display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="3"></rect><path d="M5 6h6M5 9.5h4"></path></svg></span><span lang="es">Notas</span><span lang="en">Notes</span></span>
+          <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;"><span style="height: 22px; display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.4" y="3.4" width="11.2" height="10.6" rx="2.4"></rect><path d="M2.4 6.4h11.2M5 1.8v2.6M11 1.8v2.6"></path></svg></span>Planner</span>
+          <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--accent);" class="mono"><span style="height: 22px; display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#8b909a" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="9" r="5"></circle><path d="M6.4 2.2h3.2M8 2.2V4M8 9l2.2-2.4"></path></svg></span>18:42</span>
+          <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;"><span style="height: 22px; display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.4" y="7.4" width="11.2" height="6.4" rx="1.8"></rect><path d="M2.4 10.4h11.2M8 4.6v2.8"></path></svg></span><span lang="es">Cumpleaños</span><span lang="en">Birthdays</span></span>
         </div>
       </div>
     </div>
@@ -568,7 +653,11 @@ cmake --build build</pre>
     </details>
     <details name="faq">
       <summary><span><span lang="es">¿Necesito una cuenta?</span><span lang="en">Do I need an account?</span></span></summary>
-      <p><span lang="es">No. Se abre y funciona. Solo si activas la sincronización te pedirá acceso a tu Google Drive, con el permiso mínimo.</span><span lang="en">No. Open it and it works. Only if you turn on sync will it ask for access to your Google Drive, with the minimum scope.</span></p>
+      <p><span lang="es">No. Se abre y funciona. Solo si sincronizas con Google Drive o Google Calendar te pedirá acceso a tu cuenta de Google, con el permiso mínimo.</span><span lang="en">No. Open it and it works. Only if you sync with Google Drive or Google Calendar will it ask for access to your Google account, with the minimum scope.</span></p>
+    </details>
+    <details name="faq">
+      <summary><span><span lang="es">¿Puedo sincronizar sin Google?</span><span lang="en">Can I sync without Google?</span></span></summary>
+      <p><span lang="es">Sí. Desde la 5.0 puedes usar tu propio servidor WebDAV (Nextcloud, ownCloud, la mayoría de NAS) o una carpeta que ya sincronizan Syncthing, Dropbox, OneDrive o el cliente de Nextcloud. Los tres fusionan nota a nota.</span><span lang="en">Yes. Since 5.0 you can use your own WebDAV server (Nextcloud, ownCloud, most NAS) or a folder that Syncthing, Dropbox, OneDrive or the Nextcloud client already keep in step. All three merge note by note.</span></p>
     </details>
     <details name="faq">
       <summary><span><span lang="es">¿Funciona en Wayland?</span><span lang="en">Does it work on Wayland?</span></span></summary>
@@ -659,7 +748,7 @@ cmake --build build</pre>
   });
 
   // Checklist de ejemplo
-  var CHECK = [['Vista de calendario', 'Calendar view'], ['Renombrar a Tagoror', 'Rename to Tagoror'], ['Escribir el changelog', 'Write the changelog'], ['Publicar en el foro', 'Post on the forum']];
+  var CHECK = [['Paleta de comandos', 'Command palette'], ['Notas Markdown', 'Markdown notes'], ['Escribir el changelog', 'Write the changelog'], ['Publicar en el foro', 'Post on the forum']];
   var checks = [true, true, false, false], box = document.getElementById('checkItems');
   CHECK.forEach(function (c, i) {
     var b = document.createElement('button');
