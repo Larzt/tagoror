@@ -162,6 +162,24 @@ const QHash<QString, QString> &table() {
         {"Revisar", "Check"},
         {"Tagoror %1 disponible", "Tagoror %1 available"},
         {"Novedades en GitHub", "Release notes on GitHub"},
+        // Markdown notes and folding cards.
+        {"Nota Markdown", "Markdown note"},
+        {"Nueva nota Markdown", "New Markdown note"},
+        {"Desplegar nota", "Unfold note"},
+        {"Plegar nota", "Fold note"},
+        {"Hoy %1", "Today %1"},
+        {"Vacía · pulsa para escribir", "Empty · click to write"},
+        {"Abrir para editar", "Open to edit"},
+        {"Negrita · Ctrl+B", "Bold · Ctrl+B"},
+        {"Cursiva · Ctrl+I", "Italic · Ctrl+I"},
+        {"Código", "Code"},
+        {"Escribe en Markdown: # título, **negrita**, - lista…",
+         "Write in Markdown: # heading, **bold**, - list…"},
+        {"Guardado", "Saved"},
+        {"Vista previa", "Preview"},
+        {"Texto en crudo · Ctrl+E", "Raw text · Ctrl+E"},
+        {"Cómo se verá · Ctrl+E", "How it will look · Ctrl+E"},
+        {"Todavía no hay nada que ver.", "Nothing to show yet."},
         // Command palette.
         {"Paleta de comandos", "Command palette"},
         {"Página, acción o área…", "Page, action or area…"},
@@ -468,7 +486,6 @@ const QHash<QString, QString> &table() {
         {"Así se verán las notas, las listas y el planificador.", "This is how notes, lists and the planner will look."},
 
         // Markdown
-        {"Escribe… admite Markdown", "Write… Markdown works"},
 
         // Google Drive
         {"GOOGLE DRIVE", "GOOGLE DRIVE"},

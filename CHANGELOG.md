@@ -10,6 +10,14 @@ A simpler interface: one fixed place for everything.
 
 ### Added
 
+- **Markdown notes.** A note type of its own (Ctrl+⇧M): the card shows it
+  rendered, and clicking opens its page — the raw text with the syntax dimmed
+  and line numbers, or the preview (Ctrl+E), with a formatting bar (bold,
+  italic, heading, list, code; Ctrl+B and Ctrl+I) while you edit. There Enter
+  is a new line and Ctrl+Enter takes you back.
+- **Fold any note** to its title with the chevron. Folded, it still says what
+  matters: a checklist's 2/4, a reminder's time (in red while it rings), a
+  recording's length.
 - **Command palette (Ctrl+K)**, also in the ⋯ menu: type to go to any page,
   create any kind of note or switch area, from anywhere. Accents don't matter —
   *cumple* finds Birthdays, *recor* a new reminder — and ↑↓, Enter and Esc
@@ -17,6 +25,9 @@ A simpler interface: one fixed place for everything.
 
 ### Changed
 
+- **Text notes are plain text.** What you type is what you see. Text notes you
+  had already written in Markdown were turned into Markdown notes when 5.0
+  first opened them, so none of your formatting was lost.
 - **Navigation that stays put.** Notes, Planner, Timers and Birthdays live in a
   bar along the bottom, with the open page marked; widen the panel past 480 px
   (the planner does) and it becomes a rail on the left. Before, each page was a

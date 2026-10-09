@@ -71,6 +71,8 @@ add_executable(tagoror
     src/ui/alertzone.cpp
     src/ui/navbar.cpp
     src/ui/palette.cpp
+    src/ui/markdown.cpp
+    src/ui/mdpage.cpp
     src/ui/waveform.cpp
     src/ui/workarea.cpp
     include/ui/panel.hpp
@@ -88,6 +90,8 @@ add_executable(tagoror
     include/ui/alertzone.hpp
     include/ui/navbar.hpp
     include/ui/palette.hpp
+    include/ui/markdown.hpp
+    include/ui/mdpage.hpp
     include/ui/theme.hpp
     include/ui/waveform.hpp
     include/ui/workarea.hpp

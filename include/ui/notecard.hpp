@@ -49,6 +49,8 @@ signals:
     void dragStarted();
     void dragMoved(const QPoint &globalPos);
     void dragFinished();
+    /// A Markdown note's card was clicked: its own page edits it.
+    void openRequested(Note *);
 
 protected:
     void contextMenuEvent(QContextMenuEvent *e) override;
@@ -61,6 +63,12 @@ private:
     void buildCheck(QVBoxLayout *l);
     void buildReminder(QVBoxLayout *l);
     void buildText(QVBoxLayout *l);
+    void buildMarkdown(QVBoxLayout *l);
+    /// Folded: only the title row, with the indicator standing in for the body.
+    void applyCollapsed();
+    /// What a folded card says about its content: 2/4, the reminder's time, the
+    /// take's length, MD.
+    QString indicatorText() const;
     void buildVoice(QVBoxLayout *l);
     void addCheckRow(QVBoxLayout *l, int index);
     void rebuildItems();          ///< Renumbers the rows after a structural change.
@@ -112,6 +120,9 @@ private:
     QLabel *m_progress = nullptr;
     QToolButton *m_clearBtn = nullptr;
     QLabel *m_meta = nullptr;
+    QWidget *m_bodyBox = nullptr;       ///< Everything under the title row.
+    QToolButton *m_foldBtn = nullptr;   ///< Chevron before the title.
+    QLabel *m_indicator = nullptr;      ///< Right of the title, while folded.
     QVBoxLayout *m_itemsLayout = nullptr;
     QLineEdit *m_newItem = nullptr;
     int m_editingItem = -1;       ///< Item being renamed, or -1.

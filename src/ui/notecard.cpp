@@ -3,6 +3,7 @@
 #include "ui/elidedlabel.hpp"
 #include "ui/imagethumb.hpp"
 #include "ui/keynav.hpp"
+#include "ui/markdown.hpp"
 #include "ui/popup.hpp"
 #include "audio/recorder.hpp"
 #include "ui/theme.hpp"
@@ -19,6 +20,7 @@
 #include <QApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QHash>
 #include <QStyle>
 #include <QFile>
 #include <QFileDialog>
@@ -72,38 +74,28 @@ void autoGrow(QTextEdit *e, const QString &placeholder) {
                      });
 }
 
-/// In CommonMark a single line break does not split a paragraph ("milk\nbread"
-/// reads "milk bread"). In a quick note every line is a line, as existing
-/// notes were written. Marks them as hard breaks (two trailing spaces) unless
-/// the next line starts a block of its own, and never inside a code fence.
-QString hardBreaks(const QString &source) {
-    static const QRegularExpression blockStart(
-        R"(^\s*([-*+]\s|\d+[.)]\s|#{1,6}\s|>|```|~~~))");
-    const QStringList lines = source.split('\n');
-    QStringList out;
-    bool fenced = false;
-    for (int i = 0; i < lines.size(); ++i) {
-        const QString &line = lines.at(i);
-        const QString trimmed = line.trimmed();
-        if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) fenced = !fenced;
-        const bool hasNext = i + 1 < lines.size();
-        const bool breakHere = !fenced && hasNext && !trimmed.isEmpty() &&
-                               !lines.at(i + 1).trimmed().isEmpty() &&
-                               !blockStart.match(lines.at(i + 1)).hasMatch();
-        out << (breakHere ? line + "  " : line);
-    }
-    return out.join('\n');
-}
-
-/// A note body with Markdown: rendered at rest, source while focused. One
-/// editor, not two widgets taking turns, so height, focus and tab order never
-/// change owner. @c m_source is the truth: the rendered document is never
-/// written to the note.
+/// A note body. Three uses of one editor, so height, focus and tab order are
+/// the same everywhere:
+///  - Rendered (reminder details): Markdown at rest, source while focused.
+///  - Plain (text notes since 5.0): the source, always.
+///  - Preview (a Markdown note's card): rendered and read-only; a click or
+///    Enter calls @c activated, which opens the note's own page.
+/// @c m_source is the truth: the rendered document is never written to the note.
 class MarkdownEdit : public QTextEdit {
 public:
-    std::function<void(const QString &)> edited;   ///< The source text changed.
+    enum Mode { Rendered, Plain, Preview };
 
-    MarkdownEdit(const QString &source, const QColor &accent) : m_source(source) {
+    std::function<void(const QString &)> edited;   ///< The source text changed.
+    std::function<void()> activated;                ///< Preview only.
+
+    MarkdownEdit(const QString &source, const QColor &accent, Mode mode = Rendered)
+        : m_source(source), m_mode(mode) {
+        if (mode == Preview) {
+            setReadOnly(true);
+            setTextInteractionFlags(Qt::LinksAccessibleByMouse);
+            viewport()->setCursor(Qt::PointingHandCursor);
+            setFocusPolicy(Qt::TabFocus);
+        }
         // Links in the accent. The stylesheet does not touch this role, so the
         // widget's palette decides.
         QPalette pal = palette();
@@ -124,7 +116,7 @@ public:
     bool editing() const { return m_editing; }
 
     void beginEdit() {
-        if (m_editing) return;
+        if (m_editing || m_mode == Preview) return;
         m_editing = true;
         m_internal = true;
         setPlainText(m_source);
@@ -148,6 +140,7 @@ protected:
 
     void focusInEvent(QFocusEvent *e) override {
         QTextEdit::focusInEvent(e);
+        if (m_mode == Preview) return;
         // With the mouse, wait for the release: the click may be on a link, which
         // should open instead of editing.
         if (e->reason() == Qt::MouseFocusReason && !m_editing) m_clickPending = true;
@@ -167,6 +160,15 @@ protected:
     /// box; Ctrl+Enter finishes too. Never while an input method is composing:
     /// there Enter picks the candidate, and stealing it would cut the word.
     void keyPressEvent(QKeyEvent *e) override {
+        if (m_mode == Preview) {
+            const int k = e->key();
+            if ((k == Qt::Key_Return || k == Qt::Key_Enter || k == Qt::Key_Space) && activated) {
+                activated();
+                return;
+            }
+            QTextEdit::keyPressEvent(e);
+            return;
+        }
         if (e->key() == Qt::Key_Escape && m_editing) {
             clearFocus();   // focusOut renders
             return;
@@ -192,6 +194,11 @@ protected:
     }
 
     void mouseMoveEvent(QMouseEvent *e) override {
+        if (m_mode == Preview) {
+            viewport()->setCursor(Qt::PointingHandCursor);
+            QTextEdit::mouseMoveEvent(e);
+            return;
+        }
         if (!m_editing)
             viewport()->setCursor(anchorAt(e->position().toPoint()).isEmpty()
                                       ? Qt::IBeamCursor : Qt::PointingHandCursor);
@@ -199,6 +206,12 @@ protected:
     }
 
     void mouseReleaseEvent(QMouseEvent *e) override {
+        if (m_mode == Preview && e->button() == Qt::LeftButton) {
+            const QString href = anchorAt(e->position().toPoint());
+            if (!href.isEmpty()) QDesktopServices::openUrl(QUrl(href));
+            else if (activated) activated();
+            return;
+        }
         if (m_clickPending && e->button() == Qt::LeftButton) {
             m_clickPending = false;
             const QPoint at = e->position().toPoint();
@@ -223,77 +236,17 @@ private:
         m_internal = true;
         if (m_source.trimmed().isEmpty()) {
             clear();   // so the placeholder shows
+        } else if (m_mode == Plain) {
+            // Plain text: what was typed is what is shown, asterisks and all.
+            setPlainText(m_source);
         } else {
-            setMarkdown(hardBreaks(m_source));
-            tidy();
+            md::render(this, m_source);
         }
         m_internal = false;
     }
 
-    /// Reshapes what Qt's importer produces for a document into something for a
-    /// 300px card: a "#" came out at twice the text size, lists indented 40px and
-    /// links used the application palette's blue instead of the accent.
-    void tidy() {
-        QTextDocument *doc = document();
-        doc->setIndentWidth(14);
-        const int base = QFontInfo(font()).pixelSize();
-        const QColor accent = palette().color(QPalette::Link);
-        QColor tint = accent;
-        tint.setAlphaF(0.16);
-
-        QTextCursor c(doc);
-        for (QTextBlock b = doc->begin(); b.isValid(); b = b.next()) {
-            QTextBlockFormat f = b.blockFormat();
-            const int level = f.headingLevel();
-            // 12px between lines made a shopping list twice as tall as plain text.
-            f.setTopMargin(level > 0 && b != doc->begin() ? 6 : 0);
-            f.setBottomMargin(level > 0 ? 2 : 1);
-            // A quote was indented 40px on each side: half a line in a narrow card.
-            const bool quote = f.hasProperty(QTextFormat::BlockQuoteLevel);
-            if (quote) {
-                f.setLeftMargin(10);
-                f.setRightMargin(0);
-            }
-            c.setPosition(b.position());
-            c.setBlockFormat(f);
-
-            for (auto it = b.begin(); !it.atEnd(); ++it) {
-                const QTextFragment frag = it.fragment();
-                QTextCharFormat cf = frag.charFormat();
-                bool touched = false;
-                if (level > 0) {
-                    // The importer's relative size must be cleared, not set to 0: while the
-                    // property exists it wins over the pixel size and the heading stays body-sized.
-                    cf.clearProperty(QTextFormat::FontSizeAdjustment);
-                    cf.clearProperty(QTextFormat::FontPointSize);
-                    cf.setProperty(QTextFormat::FontPixelSize,
-                                   qRound(base * (level == 1 ? 1.3 : level == 2 ? 1.15 : 1.05)));
-                    cf.setFontWeight(QFont::Bold);
-                    touched = true;
-                }
-                if (quote) {
-                    cf.setFontItalic(true);
-                    cf.setForeground(QColor(Theme::muted()));
-                    touched = true;
-                }
-                if (cf.isAnchor()) {
-                    cf.setForeground(accent);
-                    touched = true;
-                }
-                if (cf.fontFixedPitch()) {
-                    cf.setForeground(accent);
-                    cf.setBackground(tint);
-                    touched = true;
-                }
-                if (!touched) continue;
-                c.setPosition(frag.position());
-                c.setPosition(frag.position() + frag.length(), QTextCursor::KeepAnchor);
-                c.setCharFormat(cf);
-            }
-        }
-    }
-
     QString m_source;
+    Mode m_mode;
     bool m_editing = false;
     bool m_internal = false;       ///< The editor's own changes, not the user's.
     bool m_clickPending = false;
@@ -396,6 +349,7 @@ QString typeLabel(Note::Type t) {
         case Note::Check:    return L("Lista");
         case Note::Reminder: return L("Recordatorio");
         case Note::Voice:    return L("Nota de voz");
+        case Note::Markdown: return L("Nota Markdown");
         default:             return L("Nota");
     }
 }
@@ -471,16 +425,25 @@ NoteCard::NoteCard(Note *note, const Theme &theme, QWidget *parent)
 }
 
 void NoteCard::build() {
-    auto *l = new QVBoxLayout(this);
-    l->setContentsMargins(11, 9, 11, 10);
-    l->setSpacing(7);
+    auto *outer = new QVBoxLayout(this);
+    outer->setContentsMargins(11, 9, 11, 10);
+    outer->setSpacing(7);
 
-    buildTitleRow(l);
+    buildTitleRow(outer);
+
+    // Everything else lives in one box, so folding is hiding it. The builders
+    // below only ever see this layout.
+    m_bodyBox = new QWidget;
+    auto *l = new QVBoxLayout(m_bodyBox);
+    l->setContentsMargins(0, 0, 0, 0);
+    l->setSpacing(7);
+    outer->addWidget(m_bodyBox);
 
     switch (m_note->type) {
         case Note::Check:    buildCheck(l);    break;
         case Note::Reminder: buildReminder(l); refreshDue(); break;
         case Note::Voice:    buildVoice(l);    break;
+        case Note::Markdown: buildMarkdown(l); break;
         default:             buildText(l);     break;
     }
 
@@ -498,6 +461,43 @@ void NoteCard::build() {
     if (at >= 0) l->insertWidget(at, m_linksBox);
     else l->addWidget(m_linksBox);
     refreshLinks();
+    applyCollapsed();
+}
+
+void NoteCard::applyCollapsed() {
+    const bool folded = m_note->collapsed;
+    m_bodyBox->setVisible(!folded);
+    m_foldBtn->setIcon(paintIcon(folded ? "chevronRight" : "chevronDown", QColor(Theme::muted()), 12));
+    m_foldBtn->setToolTip(folded ? L("Desplegar nota") : L("Plegar nota"));
+    const QString ind = folded ? indicatorText() : QString();
+    m_indicator->setText(ind);
+    m_indicator->setVisible(!ind.isEmpty());
+    // A ringing reminder folded away is still the alarm: its time in red.
+    m_indicator->setProperty("alarm", folded && m_note->ringing);
+    m_indicator->style()->unpolish(m_indicator);
+    m_indicator->style()->polish(m_indicator);
+}
+
+QString NoteCard::indicatorText() const {
+    switch (m_note->type) {
+        case Note::Check:
+            return QString("%1/%2").arg(m_note->doneCount()).arg(m_note->items.size());
+        case Note::Reminder: {
+            if (!m_note->isScheduled()) return m_note->due;
+            const QDateTime at = m_note->dueAt();
+            if (at.date() == QDate::currentDate()) return L("Hoy %1").arg(at.toString("HH:mm"));
+            return Lang::locale().toString(at, "d MMM");
+        }
+        case Note::Voice: {
+            if (m_note->durationMs <= 0) return QString();
+            const qint64 s = (m_note->durationMs + 500) / 1000;
+            return QString("%1:%2").arg(s / 60).arg(s % 60, 2, 10, QChar('0'));
+        }
+        case Note::Markdown:
+            return QStringLiteral("MD");
+        default:
+            return QString();
+    }
 }
 
 /// Editable title with the reorder grip on its right. The grip is dimmed and
@@ -506,6 +506,30 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
     auto *row = new QHBoxLayout;
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(4);
+
+    // Fold: the chevron, then the type's icon, as in the 5.0 design.
+    m_foldBtn = new QToolButton;
+    m_foldBtn->setObjectName("foldBtn");
+    m_foldBtn->setIconSize(QSize(12, 12));
+    m_foldBtn->setFixedSize(18, 18);
+    m_foldBtn->setCursor(Qt::PointingHandCursor);
+    m_foldBtn->setFocusPolicy(Qt::TabFocus);
+    connect(m_foldBtn, &QToolButton::clicked, this, [this] {
+        m_note->collapsed = !m_note->collapsed;
+        applyCollapsed();
+        emit dirty();
+    });
+    row->addWidget(m_foldBtn, 0, Qt::AlignVCenter);
+
+    static const QHash<int, QString> icons{{Note::Text, "text"}, {Note::Check, "check"},
+                                           {Note::Reminder, "bell"}, {Note::Voice, "mic"},
+                                           {Note::Markdown, "markdown"}};
+    auto *typeIcon = new QLabel;
+    typeIcon->setFixedSize(14, 14);
+    const QColor iconColor = m_note->ringing ? QColor("#ff7a6b") : QColor(Theme::muted());
+    typeIcon->setPixmap(paintIcon(icons.value(m_note->type), iconColor, 14).pixmap(14, 14));
+    row->addWidget(typeIcon, 0, Qt::AlignVCenter);
+    row->addSpacing(2);
 
     m_title = new QLineEdit(m_note->title);
     m_title->setContextMenuPolicy(Qt::NoContextMenu);
@@ -520,6 +544,11 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
     // itself and this does not fire.
     connect(m_title, &QLineEdit::returnPressed, m_title, [this] { m_title->clearFocus(); });
     row->addWidget(m_title, 1);
+
+    m_indicator = new QLabel;
+    m_indicator->setObjectName("foldIndicator");
+    m_indicator->hide();
+    row->addWidget(m_indicator, 0, Qt::AlignVCenter);
 
     auto *handle = new DragHandle;
     handle->setObjectName("dragHandle");
@@ -542,8 +571,9 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
 }
 
 void NoteCard::buildText(QVBoxLayout *l) {
-    auto *body = new MarkdownEdit(m_note->body, m_theme.accent);
-    autoGrow(body, L("Escribe… admite Markdown"));
+    // Plain text since 5.0; formatting is the Markdown note's job.
+    auto *body = new MarkdownEdit(m_note->body, m_theme.accent, MarkdownEdit::Plain);
+    autoGrow(body, L("Escribe…"));
     body->edited = [this](const QString &text) {
         m_note->body = text;
         emit dirty();
@@ -551,6 +581,20 @@ void NoteCard::buildText(QVBoxLayout *l) {
     l->addWidget(body);
 
     m_meta = new QLabel(L("TEXTO"));
+    m_meta->setObjectName("meta");
+    l->addWidget(m_meta);
+}
+
+/// The card shows the note rendered; writing happens on its own page, where
+/// there is room for the raw text, the preview and the formatting bar.
+void NoteCard::buildMarkdown(QVBoxLayout *l) {
+    auto *body = new MarkdownEdit(m_note->body, m_theme.accent, MarkdownEdit::Preview);
+    autoGrow(body, L("Vacía · pulsa para escribir"));
+    body->setToolTip(L("Abrir para editar"));
+    body->activated = [this] { emit openRequested(m_note); };
+    l->addWidget(body);
+
+    m_meta = new QLabel(QStringLiteral("MARKDOWN"));
     m_meta->setObjectName("meta");
     l->addWidget(m_meta);
 }
@@ -1426,6 +1470,7 @@ void NoteCard::refreshDue() {
         m_meta->setText(ringing ? L("¡AHORA!") : (overdue ? L("VENCIDO") : idle));
     }
     refreshRepeat();
+    if (m_foldBtn && m_bodyBox) applyCollapsed();   // the folded indicator turns red
 }
 
 void NoteCard::buildVoice(QVBoxLayout *l) {

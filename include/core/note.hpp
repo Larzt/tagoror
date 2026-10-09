@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
+#include <QRegularExpression>
 #include <QString>
 #include <QStringList>
 #include <QUuid>
@@ -24,7 +25,10 @@ struct Link {
 };
 
 struct Note {
-    enum Type { Text, Check, Reminder, Voice };
+    /// Text is plain text since 5.0; Markdown is the note that renders (raw
+    /// editor with highlighting ⇄ preview). Appended last: the order is not
+    /// stored, but nothing gains from moving the existing ones.
+    enum Type { Text, Check, Reminder, Voice, Markdown };
     /// How often a reminder comes back. A Weekly or Yearly reminder appears on
     /// every matching date in the planner, not only on the next one.
     enum Repeat { Once, Weekly, Yearly };
@@ -39,6 +43,8 @@ struct Note {
     QList<QString> images;    ///< File names inside imageDir().
     /// Whether the image strip is folded. Per note, not per panel.
     bool imagesHidden = false;
+    /// Folded to its title row in the list (5.0). Per note, so it syncs.
+    bool collapsed = false;
     /// Area the note belongs to (see area.hpp). Empty means Area::kDefaultId, so
     /// notes from before areas keep their bytes and sync does not see them as
     /// edited. Always assign through Store::setNoteArea().
@@ -180,6 +186,9 @@ struct Note {
         o["imagesHidden"] = imagesHidden;
         o["updated"] = double(updatedMs);
         if (!area.isEmpty()) o["area"] = area;
+        // Only when set: an untouched note keeps its bytes, and sync does not see
+        // every note as edited the first time 5.0 saves.
+        if (collapsed) o["folded"] = true;
 
         QJsonArray imgArr;
         for (const QString &name : images) imgArr.append(name);
@@ -217,6 +226,7 @@ struct Note {
         n->imagesHidden = o["imagesHidden"].toBool();
         n->updatedMs = qint64(o["updated"].toDouble());
         n->area = o["area"].toString();
+        n->collapsed = o["folded"].toBool();
         for (const QJsonValue v : o["images"].toArray())
             n->images.append(v.toString());
         for (const QJsonValue v : o["peaks"].toArray())
@@ -232,6 +242,17 @@ struct Note {
             n->links.append(Link{lo["url"].toString(), lo["label"].toString()});
         }
         return n;
+    }
+
+    /// Whether a text body was written as Markdown: headings, lists, quotes,
+    /// fences, emphasis, inline code or links. Used once, when text notes
+    /// stopped rendering (5.0), so nobody's formatting turned into symbols.
+    static bool looksLikeMarkdown(const QString &body) {
+        static const QRegularExpression block(
+            R"((^|\n)\s*(#{1,6}\s|[-*+]\s+\S|\d+[.)]\s+\S|>\s|```|~~~))");
+        static const QRegularExpression inl(
+            R"(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\[[^\]\n]+\]\([^)\s]+\))");
+        return block.match(body).hasMatch() || inl.match(body).hasMatch();
     }
 
     int doneCount() const {
@@ -282,6 +303,7 @@ struct Note {
             case Check:    return "check";
             case Reminder: return "reminder";
             case Voice:    return "voice";
+            case Markdown: return "markdown";
             default:       return "text";
         }
     }
@@ -290,6 +312,7 @@ struct Note {
         if (s == "check")    return Check;
         if (s == "reminder") return Reminder;
         if (s == "voice")    return Voice;
+        if (s == "markdown") return Markdown;
         return Text;
     }
 };

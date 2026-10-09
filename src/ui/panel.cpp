@@ -13,6 +13,7 @@
 #include "ui/navigator.hpp"
 #include "ui/alertzone.hpp"
 #include "ui/palette.hpp"
+#include "ui/mdpage.hpp"
 #include "ui/notecard.hpp"
 #include "ui/popup.hpp"
 #include "ui/workarea.hpp"
@@ -55,6 +56,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QSystemTrayIcon>
+#include <QPlainTextEdit>
 #include <QTextEdit>
 #include <QTimer>
 #include <QPointer>
@@ -275,6 +277,8 @@ void Panel::buildShell() {
     // Settings has no item in the bar: it comes from "⋯", and leaving parks the
     // focus there.
     m_nav->addPage(m_settings, m_moreBtn, "settings", "Ajustes");
+    // A Markdown note opens on its own page; back returns to the list.
+    m_nav->addPage(m_mdPage, m_backBtn, "markdown", "Nota Markdown");
     // The rail takes its width out of the planner, which then widens by as much.
     m_nav->setWidePage(m_planner, PlannerView::kPreferredWidth + NavBar::kRailWidth);
     m_nav->setListOnly({m_tools});
@@ -318,6 +322,7 @@ void Panel::installShortcuts() {
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L), [this] { showNotes(); addNote(Note::Check); });
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), [this] { showNotes(); addNote(Note::Reminder); });
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), [this] { showNotes(); addNote(Note::Voice); });
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M), [this] { showNotes(); addNote(Note::Markdown); });
 }
 
 QFrame *Panel::buildHeader() {
@@ -632,12 +637,17 @@ QWidget *Panel::buildBody() {
         m_sync->syncNow();
     });
 
+    m_mdPage = new MarkdownPage(m_theme);
+    connect(m_mdPage, &MarkdownPage::edited, this, &Panel::scheduleSave);
+    connect(m_mdPage, &MarkdownPage::closeRequested, this, &Panel::showNotes);
+
     m_body = new QStackedWidget;
     m_body->addWidget(m_scroll);
     m_body->addWidget(m_planner);
     m_body->addWidget(m_timerView);
     m_body->addWidget(m_birthdays);
     m_body->addWidget(m_settings);
+    m_body->addWidget(m_mdPage);
 
     // The notices float over the bottom of the page instead of taking height in
     // the layout: m_bodyHost carries them as an unmanaged child (placeAlertZone()).
@@ -730,6 +740,7 @@ void Panel::applyTheme() {
     // Settings is not rebuilt: it repaints what carries the accent and keeps the
     // opacity slider alive, which is what just called here.
     if (m_settings) m_settings->setTheme(m_theme);
+    if (m_mdPage) m_mdPage->setTheme(m_theme);
     applyBadgeAlert();
 
     // The dock is styled inline because its background depends on the opacity.
@@ -775,6 +786,7 @@ void Panel::retranslate() {
         m_birthdays->retranslate();
     }
     if (m_settings) m_settings->retranslate();
+    m_mdPage->retranslate();
     refreshTitle();
     // Rebuilds the cards and with them the planner and the dock.
     rebuildList();
@@ -814,6 +826,7 @@ void Panel::rebuildList() {
         connect(card, &NoteCard::dragMoved, this,
                 [this, card](const QPoint &at) { dragCardTo(card, at); });
         connect(card, &NoteCard::dragFinished, this, [this, card] { endCardDrag(card); });
+        connect(card, &NoteCard::openRequested, this, &Panel::openMarkdown);
         m_listLayout->insertWidget(m_listLayout->count() - 2, card);
     }
 
@@ -841,7 +854,10 @@ void Panel::rebuildList() {
 void Panel::refreshNav() {
     if (!m_navBar) return;
     QWidget *current = m_body ? m_body->currentWidget() : nullptr;
-    m_navBar->setActive(current == m_settings ? nullptr : current);
+    // Settings is out of the bar; a Markdown note's page belongs to Notas.
+    m_navBar->setActive(current == m_settings ? nullptr
+                        : current == m_mdPage ? static_cast<QWidget *>(m_scroll)
+                                              : current);
 
     const Timer *next = nullptr;
     for (const Timer *t : m_store.timers())
@@ -859,6 +875,7 @@ void Panel::addNote(Note::Type type) {
     n->title = type == Note::Check    ? L("Nueva lista")
              : type == Note::Reminder ? L("Nuevo recordatorio")
              : type == Note::Voice    ? L("Nota de voz")
+             : type == Note::Markdown ? L("Nota Markdown")
                                       : L("Nueva nota");
     if (type == Note::Reminder) {
         // A real instant from the start, so the new reminder rings and appears in the
@@ -871,6 +888,16 @@ void Panel::addNote(Note::Type type) {
     m_store.setNoteArea(n, currentArea());
     m_store.add(n);
     rebuildList();
+    // A Markdown note is written on its own page, straight away.
+    if (type == Note::Markdown) openMarkdown(n);
+}
+
+void Panel::openMarkdown(Note *n) {
+    if (!m_store.notes().contains(n)) return;
+    m_mdPage->setNote(n);
+    if (m_body->currentWidget() == m_mdPage) refreshTitle();
+    else openPage(m_mdPage);
+    m_mdPage->focusEditor();
 }
 
 void Panel::removeNote(Note *n) {
@@ -878,8 +905,10 @@ void Panel::removeNote(Note *n) {
     // nothing on screen to explain or stop it. Asked before deleting, since
     // afterwards there is no one to ask.
     const bool wasRinging = n->ringing;
+    if (m_mdPage->note() == n) m_mdPage->forget();   // about to be freed
     m_store.remove(n);
     if (wasRinging) m_alerts->stopIfQuiet();
+    if (m_body->currentWidget() == m_mdPage) showNotes();
     rebuildList();   // also repaints the dock and the tray
 }
 
@@ -1307,8 +1336,14 @@ void Panel::expand() {
 
 void Panel::showNotes() {
     if (m_body->currentWidget() == m_scroll) return;
+    // The card was built with the body from before the page edited it.
+    const bool fromMarkdown = m_body->currentWidget() == m_mdPage;
 
     m_nav->open(m_scroll);
+    if (fromMarkdown) {
+        rebuildList();
+        if (Note *n = m_mdPage->note()) revealNote(n);
+    }
     refreshNav();
     refreshTitle();
 }
@@ -1320,9 +1355,11 @@ void Panel::refreshTitle() {
     QString title = L("Notas");
     for (const Navigator::Page &p : m_nav->pages())
         if (p.page == m_body->currentWidget()) title = L(p.name);
+    if (m_body->currentWidget() == m_mdPage && m_mdPage->note())
+        title = m_mdPage->note()->title.isEmpty() ? L("Sin título") : m_mdPage->note()->title;
     m_titleLabel->setText(title);
     m_titleLabel->update();   // ElidedLabel paints itself
-    const bool back = m_body->currentWidget() == m_settings;
+    const bool back = m_body->currentWidget() == m_settings || m_body->currentWidget() == m_mdPage;
     m_backBtn->setVisible(back);
     m_header->layout()->setContentsMargins(back ? 6 : 14, 0, 6, 0);
 }
@@ -1650,6 +1687,7 @@ void Panel::openNewNoteMenu(QWidget *anchor) {
     menu->addShortcutItem("check", L("Checklist"), "Ctrl+⇧L", [this] { addNote(Note::Check); });
     menu->addShortcutItem("bell", L("Recordatorio"), "Ctrl+⇧R", [this] { addNote(Note::Reminder); });
     menu->addShortcutItem("mic", L("Nota de voz"), "Ctrl+⇧V", [this] { addNote(Note::Voice); });
+    menu->addShortcutItem("markdown", L("Nota Markdown"), "Ctrl+⇧M", [this] { addNote(Note::Markdown); });
     // Right-aligned under "+", which sits at the right end of the row.
     menu->adjustSize();
     menu->showAt(anchor->mapToGlobal(QPoint(anchor->width() - menu->width() + 36, anchor->height() + 2)));
@@ -1946,7 +1984,17 @@ void Panel::pollDataDir() {
     m_store.retryLoad();   // emits reloaded() the time it succeeds
 }
 
+/// The open Markdown note was deleted or replaced underneath (a sync, a
+/// reload): the page lets go of it rather than write into freed memory.
+void Panel::dropMissingMarkdown() {
+    Note *n = m_mdPage->note();
+    if (!n || m_store.notes().contains(n)) return;
+    m_mdPage->forget();
+    if (m_body->currentWidget() == m_mdPage) showNotes();
+}
+
 void Panel::onStoreReloaded() {
+    dropMissingMarkdown();
     m_theme.accent = m_store.prefs().accent;
     m_theme.opacity = m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
@@ -1973,10 +2021,12 @@ bool Panel::userIdle() const {
     if (!isActiveWindow()) return true;
     QWidget *f = QApplication::focusWidget();
     if (!f || f->window() != this) return true;
-    return !qobject_cast<QLineEdit *>(f) && !qobject_cast<QTextEdit *>(f);
+    return !qobject_cast<QLineEdit *>(f) && !qobject_cast<QTextEdit *>(f) &&
+           !qobject_cast<QPlainTextEdit *>(f);
 }
 
 void Panel::onStoreMerged() {
+    dropMissingMarkdown();
     m_alerts->reconcileMerged();
 
     rebuildList();          // cards, footer, planner, birthdays and dock
@@ -2162,7 +2212,8 @@ void Panel::openPalette() {
     cmds << Command{create, "text", L("Nueva nota de texto"), "Ctrl+N", make(Note::Text)}
          << Command{create, "check", L("Nueva checklist"), "Ctrl+⇧L", make(Note::Check)}
          << Command{create, "bell", L("Nuevo recordatorio"), "Ctrl+⇧R", make(Note::Reminder)}
-         << Command{create, "mic", L("Nueva nota de voz"), "Ctrl+⇧V", make(Note::Voice)};
+         << Command{create, "mic", L("Nueva nota de voz"), "Ctrl+⇧V", make(Note::Voice)}
+         << Command{create, "markdown", L("Nueva nota Markdown"), "Ctrl+⇧M", make(Note::Markdown)};
     const QList<Area *> &list = m_store.areas();
     const QString open = currentArea();
     for (int i = 0; i < list.size(); ++i) {
@@ -2237,6 +2288,7 @@ void Panel::buildTrayMenu() {
         {L("Checklist"), Note::Check},
         {L("Recordatorio"), Note::Reminder},
         {L("Nota de voz"), Note::Voice},
+        {L("Nota Markdown"), Note::Markdown},
     };
     for (const auto &[label, type] : types)
         connect(create->addAction(label), &QAction::triggered, this, [this, type] {

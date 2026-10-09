@@ -117,6 +117,17 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawLine(QPointF(c, c - 5.8), QPointF(c, c - 4.0));
         p.drawLine(QPointF(c + 3.8, c - 3.4), QPointF(c + 4.8, c - 4.4));
         p.drawLine(QPointF(c, c + 1.0), QPointF(c + 2.2, c - 1.4));
+    } else if (kind == "markdown") {
+        // The usual Markdown mark: an M and a down arrow in a box.
+        p.drawRoundedRect(QRectF(c - 6.5, c - 4.5, 13, 9), 2, 2);
+        pen.setWidthF(1.3);
+        p.setPen(pen);
+        p.drawPolyline(QPolygonF({QPointF(c - 4.3, c + 2), QPointF(c - 4.3, c - 2),
+                                  QPointF(c - 2.6, c), QPointF(c - 0.9, c - 2),
+                                  QPointF(c - 0.9, c + 2)}));
+        p.drawLine(QPointF(c + 3, c - 2), QPointF(c + 3, c + 2));
+        p.drawPolyline(QPolygonF({QPointF(c + 1.5, c + 0.6), QPointF(c + 3, c + 2),
+                                  QPointF(c + 4.5, c + 0.6)}));
     } else if (kind == "more") {
         // Three dots in a row: the header's "more options".
         p.setPen(Qt::NoPen);
@@ -353,6 +364,26 @@ QFrame#header { border: none; }
 /* 5.0 chrome: a 36px tools row over the list, and the navigation as a bar
    along the bottom or a rail down the left. */
 QFrame#toolsRow { border: none; border-bottom: 1px solid %2; }
+/* Folding a card (5.0): the chevron and what stands in for the body. */
+QToolButton#foldBtn { background: transparent; border: none; border-radius: 5px; }
+QToolButton#foldBtn:hover { background: %7; }
+/* A Markdown note's page: raw editor in mono, preview in the body font. */
+QPlainTextEdit#mdEditor, QTextBrowser#mdPreview {
+    background: rgba(0,0,0,0.18); border: 1px solid %2; border-radius: 8px;
+    padding: 6px 8px; color: %3; font-size: {fs:12.5}px;
+    selection-background-color: %9;
+}
+QPlainTextEdit#mdEditor { font-family: "IBM Plex Mono", monospace; font-size: {fs:12}px; }
+QPlainTextEdit#mdEditor:focus { border: 1px solid %5; }
+QToolButton#mdFormat {
+    color: %4; background: transparent; border: none; border-radius: 6px; font-size: 12px;
+}
+QToolButton#mdFormat:hover { color: %3; background: %7; }
+QLabel#mdStatus { color: #636872; font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
+QLabel#foldIndicator { color: %4; font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
+QLabel#foldIndicator[alarm="true"] {
+    color: #ff7a6b; background: rgba(255,122,107,0.14); border-radius: 4px; padding: 1px 5px;
+}
 QWidget#navBar { background: transparent; border: none; border-top: 1px solid %2; }
 QWidget#navBar[rail="true"] { border-top: none; border-right: 1px solid %2; }
 QToolButton#addNote { background: %5; border: none; border-radius: 8px; }

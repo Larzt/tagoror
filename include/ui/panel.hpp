@@ -27,6 +27,7 @@ class QVBoxLayout;
 class AlertCenter;
 class AlertZone;
 class CommandPalette;
+class MarkdownPage;
 class AreaTabs;
 class NavBar;
 class QHBoxLayout;
@@ -107,6 +108,9 @@ private:
     /// @{
     void addNote(Note::Type type);
     void removeNote(Note *n);
+    /// A Markdown note opens on its own page.
+    void openMarkdown(Note *n);
+    void dropMissingMarkdown();
     /// @}
 
     /// @name Workspace areas
@@ -289,6 +293,7 @@ private:
     QWidget *m_bodyHost = nullptr;       ///< The pages, with the notices over them.
     AlertZone *m_alertZone = nullptr;
     CommandPalette *m_palette = nullptr;
+    MarkdownPage *m_mdPage = nullptr;
 
     QStackedWidget *m_body = nullptr;    ///< Note list / pages.
     QScrollArea *m_scroll = nullptr;

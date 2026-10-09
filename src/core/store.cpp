@@ -373,6 +373,7 @@ void Store::save() {
     root["birthdaysByMonth"] = m_prefs.birthdaysByMonth;
     root["textScale"] = m_prefs.textScale;
     root["font"] = m_prefs.font;
+    root["plainText"] = true;   // text notes are plain text (see readObject())
     root["plannerView"] = m_prefs.plannerView;
     root["plannerHidden"] = QJsonArray::fromStringList(m_prefs.plannerHidden);
     QJsonArray timers;
@@ -805,6 +806,13 @@ bool Store::readObject(const QJsonObject &root) {
 
     for (const QJsonValue v : root["notes"].toArray())
         m_notes.append(Note::fromJson(v.toObject()));
+    // 5.0: text notes stopped rendering Markdown. A file from before says so by
+    // not having the mark, and its text notes written in Markdown become Markdown
+    // notes, once, so no formatting turns into a row of symbols. Not a user change
+    // (load() snapshots after this), and every machine converts the same way.
+    if (!root["plainText"].toBool())
+        for (Note *n : m_notes)
+            if (n->type == Note::Text && Note::looksLikeMarkdown(n->body)) n->type = Note::Markdown;
     for (const QJsonValue v : root["areas"].toArray())
         m_areas.append(Area::fromJson(v.toObject()));
     m_prefs.activeArea = root["activeArea"].toString();
