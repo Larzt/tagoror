@@ -23,6 +23,9 @@
 #include "core/calendarsync.hpp"
 #include "core/drivesync.hpp"
 #include "core/synccontroller.hpp"
+#include "core/folderbackend.hpp"
+#include "core/syncengine.hpp"
+#include "core/webdavbackend.hpp"
 #include "core/lang.hpp"
 #include "core/updater.hpp"
 
@@ -159,7 +162,7 @@ Panel::Panel() {
     m_sync->setCanApply([this] { return userIdle(); });
     m_drive = m_sync->drive();
     connect(m_drive, &DriveSync::openUrl, this, [](const QUrl &url) { QDesktopServices::openUrl(url); });
-    connect(m_drive, &DriveSync::attachmentsArrived, this, [this] {
+    connect(m_sync->engine(), &SyncEngine::attachmentsArrived, this, [this] {
         // The cards were built without those images or that recording.
         if (userIdle()) rebuildList();
     });
@@ -207,7 +210,7 @@ Panel::Panel() {
 /// straight to the notes.
 void Panel::startUp(bool visible) {
     // Changes made while the app was closed, or an upload that failed last time.
-    const bool sync = m_drive->connected() && m_store.available();
+    const bool sync = m_sync->active() && m_store.available();
     const bool updates = updateCheckDue();
     if (sync) m_sync->syncNow();
     if (updates) pollUpdates();
@@ -216,8 +219,9 @@ void Panel::startUp(bool visible) {
     QList<Splash::Step> steps;
     steps << Splash::Step{L("Cargando notas…"), nullptr, 300};
     if (sync)
-        steps << Splash::Step{L("Sincronizando con Google Drive…"),
-                              [this] { return m_drive->state() != DriveSync::Syncing; }, 4000};
+        steps << Splash::Step{L("Sincronizando…"),
+                              [this] { return m_sync->engine()->state() != SyncEngine::Syncing; },
+                              4000};
     if (updates)
         steps << Splash::Step{L("Buscando actualizaciones…"),
                               [this] { return !m_updater->busy(); }, 2500};
@@ -649,17 +653,46 @@ QWidget *Panel::buildBody() {
     connect(m_settings, &SettingsView::checkUpdatesRequested, this, &Panel::checkUpdatesNow);
     connect(m_settings, &SettingsView::openLatestRequested, this, &Panel::openLatestRelease);
     connect(m_settings, &SettingsView::quitRequested, qApp, &QApplication::quit);
-    m_settings->setDrive(m_drive);
-    connect(m_drive, &DriveSync::changed, m_settings, &SettingsView::refreshDrive);
-    connect(m_settings, &SettingsView::driveConnectRequested, m_drive, &DriveSync::connectAccount);
-    connect(m_settings, &SettingsView::driveCancelRequested, m_drive, &DriveSync::cancel);
-    connect(m_settings, &SettingsView::driveDisconnectRequested, m_drive, &DriveSync::disconnectAccount);
-    connect(m_drive->calendar(), &CalendarSync::changed, m_settings, &SettingsView::refreshDrive);
+    m_settings->setSync(m_sync);
+    connect(m_sync, &SyncController::changed, m_settings, &SettingsView::refreshSync);
+    connect(m_sync, &SyncController::changed, this, [this] { refreshNotices(); });
+    connect(m_settings, &SettingsView::googleConnectRequested, m_drive, &DriveSync::connectAccount);
+    connect(m_settings, &SettingsView::googleCancelRequested, m_drive, &DriveSync::cancel);
+    connect(m_settings, &SettingsView::googleDisconnectRequested, m_drive, &DriveSync::disconnectAccount);
+    connect(m_settings, &SettingsView::syncProviderPicked, this, [this](const QString &id) {
+        m_sync->setProvider(id);
+        m_settings->refresh();
+        m_sync->syncNow();
+    });
+    connect(m_settings, &SettingsView::syncWhenPicked, this, [this](int when) {
+        m_sync->setWhen(SyncController::When(when));
+        m_settings->refresh();
+    });
+    connect(m_settings, &SettingsView::webdavSaveRequested, this,
+            [this](const QString &server, const QString &user, const QString &password) {
+        m_sync->webdav()->setCredentials(server, user, password);
+        m_settings->refresh();
+        m_sync->syncNow();   // the first pass also tells whether the credentials work
+    });
+    connect(m_settings, &SettingsView::webdavForgetRequested, this, [this] {
+        m_sync->webdav()->forget();
+        m_settings->refresh();
+    });
+    connect(m_settings, &SettingsView::folderChooseRequested, this, [this] {
+        const QString start = m_sync->folder()->path().isEmpty() ? QDir::homePath()
+                                                                 : m_sync->folder()->path();
+        const QString to = QFileDialog::getExistingDirectory(
+            this, L("Carpeta donde dejar la copia sincronizada"), start);
+        if (to.isEmpty()) return;
+        if (m_sync->folder()->setPath(to)) m_sync->syncNow();
+        m_settings->refresh();
+    });
     connect(m_settings, &SettingsView::calendarToggled, this, [this](bool on) {
         m_drive->calendar()->setEnabled(on);
         // Without the scope, enabling it means re-authorising the account.
         if (on && !m_drive->hasCalendarScope()) m_drive->connectAccount();
-        else if (on && m_store.available()) m_drive->syncNow();
+        else if (on) m_sync->syncNow();
+        m_settings->refresh();
     });
     connect(m_settings, &SettingsView::calendarGrantRequested, m_drive, &DriveSync::connectAccount);
     connect(m_settings, &SettingsView::calendarFollowToggled, this,
@@ -668,13 +701,13 @@ QWidget *Panel::buildBody() {
         if (on) {
             cal->follow(calId);
             refreshPlanner();
-            if (m_store.available()) m_drive->syncNow();
+            m_sync->syncNow();
         } else if (Event::Category *c = cal->categoryFor(calId)) {
             removeCategory(c);
         }
     });
     connect(m_settings, &SettingsView::calendarTargetRequested, this, &Panel::openCalendarTarget);
-    connect(m_settings, &SettingsView::driveSyncRequested, this, [this] {
+    connect(m_settings, &SettingsView::syncNowRequested, this, [this] {
         if (!m_store.available()) return;
         save();                 // the latest edits, before uploading
         m_sync->syncNow();
@@ -1423,7 +1456,7 @@ void Panel::openCalendarTarget(QWidget *anchor) {
         menu->addItem(c.id == cal->target() ? "check" : "calendar", c.name, QString(),
                       [this, id = c.id] {
             m_drive->calendar()->setTarget(id);
-            if (m_store.available()) m_drive->syncNow();
+            m_sync->syncNow();
         });
     }
     menu->addSeparator();
@@ -2162,14 +2195,17 @@ void Panel::refreshNotices() {
         x.act = [this] { pollDataDir(); };
         out << x;
     }
-    if (m_drive && m_drive->state() == DriveSync::Failed) {
+    if (m_sync && m_sync->engine()->state() == SyncEngine::Failed) {
         AlertZone::Notice x;
         x.kind = AlertZone::Notice::Warn;
         x.icon = "cloud";
         x.title = L("Error de sincronización");
-        x.sub = m_drive->lastError();
+        x.sub = m_sync->engine()->lastError();
         x.action = L("Revisar");
-        x.act = [this] { openPage(m_settings); };
+        x.act = [this] {
+            m_settings->setTab(SettingsView::Sync);
+            openPage(m_settings);
+        };
         out << x;
     }
     if (updateAvailable()) {

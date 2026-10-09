@@ -1124,7 +1124,7 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
         // The order of whoever changed it last. Ids it does not know (just created
         // here) go on top, in local order.
         const qint64 remoteOrder = qint64(notesRoot["orderUpdated"].toDouble());
-        if (remoteOrder > m_orderUpdatedMs) {
+        if (remoteOrder >= m_orderUpdatedMs) {
             QStringList ids;
             for (const QJsonValue v : remoteNotes) ids << v.toObject()["id"].toString();
             QList<Note *> ordered, fresh;
@@ -1136,9 +1136,24 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
             ordered = fresh;
             for (const QString &id : ids)
                 if (Note *n = byId.value(id)) ordered.append(n);
-            if (ordered != m_notes) result.changed = true;
-            m_notes = ordered;
-            m_orderUpdatedMs = remoteOrder;
+            // A tie (nobody has reordered since, typically two fresh installs each with
+            // its own demo notes on top) is broken the same way on every machine: the
+            // smaller id sequence wins. Keeping the local order on a tie, as before,
+            // left two machines uploading their own order to each other forever.
+            bool adopt = remoteOrder > m_orderUpdatedMs;
+            if (!adopt && ordered != m_notes) {
+                const auto key = [](const QList<Note *> &list) {
+                    QStringList out;
+                    for (const Note *n : list) out << n->id;
+                    return out.join(',');
+                };
+                adopt = key(ordered) < key(m_notes);
+            }
+            if (adopt) {
+                if (ordered != m_notes) result.changed = true;
+                m_notes = ordered;
+                m_orderUpdatedMs = remoteOrder;
+            }
         }
     }
     if (m_birthdaysReadable && birthdaysRoot.contains("birthdays"))

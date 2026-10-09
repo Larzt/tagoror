@@ -18,6 +18,16 @@ A simpler interface: one fixed place for everything.
 - **Fold any note** to its title with the chevron. Folded, it still says what
   matters: a checklist's 2/4, a reminder's time (in red while it rings), a
   recording's length.
+- **Sync with more than Google Drive.** *Settings → Sync* offers a **WebDAV**
+  server (Nextcloud, ownCloud, most NAS — best with an app password) or a
+  **synced folder** kept in step by Syncthing, Dropbox, OneDrive or the
+  Nextcloud client, besides Google Drive. All three merge note by note, so two
+  computers editing at once don't overwrite each other. Choose when it runs: on
+  save, every 5 minutes, or by hand. If you already used Drive, nothing changes.
+- **Google Calendar is a connection of its own**, independent of where the
+  notes sync: it works with any of the three, or with none.
+- **Settings in tabs**: General, Appearance, Sync, Shortcuts (every shortcut
+  in one place) and About.
 - **A start screen** that says what it is waiting for — loading, syncing,
   looking for updates — while the stones of the tagoror light up in a ring.
   It only appears when there is something to wait for, and never when
@@ -62,6 +72,11 @@ A simpler interface: one fixed place for everything.
   stones turn red, a halo beats around it and a badge counts the alarms.
 - **The running timer's countdown** shows in the navigation, and a red dot on
   Notes tells you a reminder is ringing while you are on another page.
+
+### Fixed
+
+- Two computers that had never reordered their notes could keep sending their
+  own order to each other on every sync; they now settle on one.
 
 ### Removed
 

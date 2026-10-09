@@ -482,11 +482,16 @@ void CalendarSync::request(const QByteArray &verb, const QString &path, const QS
                  hasBody ? QJsonDocument(body).toJson(QJsonDocument::Compact) : QByteArray(),
                  hasBody ? QByteArray("application/json; charset=UTF-8") : QByteArray(),
                  [this, pass, done](QNetworkReply *r) {
-                     // An old pass (account disconnected, or Drive failed and started another)
+                     // An old pass (the account disconnected, or another pass began)
                      // stops here: nobody waits for its done() any more.
-                     if (pass != m_pass || !m_running ||
-                         m_drive->state() != DriveSync::Syncing)
+                     if (pass != m_pass || !m_running) return;
+                     // No token (revoked, offline): the pass ends here, saying why,
+                     // and whoever ran it carries on.
+                     if (!r) {
+                         m_error = L("Google Calendar: %1").arg(m_drive->error());
+                         finish();
                          return;
+                     }
                      done(r);
                  });
 }

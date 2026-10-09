@@ -426,6 +426,24 @@ QToolButton#heroStop { color: #2b0e0a; background: #ff7a6b; border: none; font-w
 QWidget#bdayCard { background: rgba(255,255,255,0.045); border: 1px solid %2; border-radius: 10px; }
 QWidget#bdayCard:hover { background: rgba(255,255,255,0.065); }
 QWidget#bdayCard[kbfocus="true"]:focus { border: 1px solid %5; }
+/* Settings (5.0): tabs, provider cards and their fields. */
+QScrollArea#setTabs, QWidget#setTabsHost { background: transparent; border: none; }
+QToolButton#setTab {
+    color: %4; background: transparent; border: 1px solid transparent; border-radius: 7px;
+    padding: 4px 9px; font-size: 12px; font-weight: 500;
+}
+QToolButton#setTab:hover { color: %3; background: %7; }
+QToolButton#setTab[chosen="true"] { color: %3; background: rgba(255,255,255,0.075); border: 1px solid rgba(255,255,255,0.08); font-weight: 600; }
+QWidget#provCard { background: transparent; border: 1px solid transparent; border-radius: 9px; }
+QWidget#provCard:hover { background: %7; }
+QWidget#provCard[chosen="true"] { background: %8; border: 1px solid %9; }
+QLabel#setFieldLabel { color: %4; font-size: 11px; }
+QLineEdit#setField {
+    background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px;
+    padding: 5px 8px; font-size: 11.5px; color: %3; font-family: "IBM Plex Mono", monospace;
+}
+QLineEdit#setField:focus { border: 1px solid %5; }
+QLabel#syncStatus { font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
 /* Folding a card (5.0): the chevron and what stands in for the body. */
 QToolButton#foldBtn { background: transparent; border: none; border-radius: 5px; }
 QToolButton#foldBtn:hover { background: %7; }

@@ -43,10 +43,17 @@ add_executable(tagoror
     src/core/updater.cpp
     src/core/drivesync.cpp
     src/core/synccontroller.cpp
+    src/core/syncengine.cpp
+    src/core/webdavbackend.cpp
+    src/core/folderbackend.cpp
     src/core/calendarsync.cpp
     include/core/birthday.hpp
     include/core/drivesync.hpp
     include/core/synccontroller.hpp
+    include/core/syncbackend.hpp
+    include/core/syncengine.hpp
+    include/core/webdavbackend.hpp
+    include/core/folderbackend.hpp
     include/core/calendarsync.hpp
     include/core/area.hpp
     include/core/event.hpp

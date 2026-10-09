@@ -4,7 +4,7 @@
 #include <QColor>
 #include <QWidget>
 
-#include "core/drivesync.hpp"
+#include "core/synccontroller.hpp"
 #include "core/lang.hpp"
 #include "core/store.hpp"
 #include "ui/theme.hpp"
@@ -18,7 +18,9 @@ class QToolButton;
 class QVBoxLayout;
 
 /// The settings page. It used to be a Popup and outgrew it: a menu row has no
-/// room for a switch, a slider and a folder path.
+/// room for a switch, a slider and a folder path. Since 5.0 it has tabs —
+/// General, Apariencia, Sincronización, Atajos, Acerca de — and only the open
+/// one is built.
 ///
 /// Like the other pages it touches no disk: it reads the Store and emits one
 /// signal per change for Panel to apply and save.
@@ -43,11 +45,15 @@ public:
     /// the page: the daily check may finish mid-drag of the slider.
     void setUpdateState(bool busy, const QString &error);
 
-    /// Drive state changes on its own (an upload finishing, a token expiring), so
-    /// the card is rewritten in place. Only switching between connected and not
-    /// connected rebuilds the page, since what is below changes.
-    void setDrive(const DriveSync *drive);
-    void refreshDrive();
+    /// Sync state changes on its own (a pass finishing, a token expiring), so
+    /// the status line is rewritten in place. Only a change in what the tab
+    /// shows (another provider, an account connected) rebuilds it — and never
+    /// while a field of it has the focus, or what is being typed would go.
+    void setSync(const SyncController *sync);
+    void refreshSync();
+
+    enum Tab { General, Appearance, Sync, Shortcuts, About };
+    void setTab(Tab tab);
 
 signals:
     void accentPicked(const QColor &c);
@@ -67,10 +73,15 @@ signals:
     void checkUpdatesRequested();
     void openLatestRequested();
     void quitRequested();
-    void driveConnectRequested();
-    void driveCancelRequested();
-    void driveSyncRequested();
-    void driveDisconnectRequested();
+    void googleConnectRequested();
+    void googleCancelRequested();
+    void googleDisconnectRequested();
+    void syncNowRequested();
+    void syncProviderPicked(const QString &id);
+    void syncWhenPicked(int when);   ///< SyncController::When
+    void webdavSaveRequested(const QString &server, const QString &user, const QString &password);
+    void webdavForgetRequested();
+    void folderChooseRequested();
     void calendarToggled(bool on);
     void calendarGrantRequested();   ///< Re-authorise with the Calendar scope.
     void calendarFollowToggled(const QString &calId, bool on);
@@ -89,10 +100,16 @@ private:
     void addData();
     void addInputs();
     void addUpdates();
-    void addDrive();
+    void addSync();
+    void addProvider(const QString &id, const QString &icon, const QString &title,
+                     const QString &hint, bool chosen);
     void addCalendar();
-    /// What the Calendar section shows; when it changes the page is rebuilt.
-    QString calendarSignature() const;
+    void addShortcuts();
+    void addAbout();
+    /// What the sync tab shows; when it changes the tab is rebuilt.
+    QString syncSignature() const;
+    /// "Sincronizado hace 2 min", "Sincronizando…", the error.
+    QString syncStatus(bool *bad) const;
     void addQuit();
     /// What the update card says right now.
     QString updateSubtitle(bool busy, const QString &error) const;
@@ -121,9 +138,10 @@ private:
     bool m_updateBusy = false;
     QString m_updateError;
 
-    const DriveSync *m_drive = nullptr;
-    class ElidedLabel *m_driveSub = nullptr;
-    class QToolButton *m_driveBtn = nullptr;
-    bool m_driveBuiltConnected = false;
-    QString m_calendarBuilt;   ///< calendarSignature() the section was built with.
+    const SyncController *m_sync = nullptr;
+    class ElidedLabel *m_syncStatus = nullptr;
+    class QToolButton *m_syncBtn = nullptr;
+    QString m_syncBuilt;      ///< syncSignature() the tab was built with.
+    Tab m_tab = General;
+    QList<class QToolButton *> m_tabButtons;
 };

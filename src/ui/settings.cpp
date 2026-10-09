@@ -2,6 +2,10 @@
 
 #include "audio/recorder.hpp"
 #include "core/calendarsync.hpp"
+#include "core/drivesync.hpp"
+#include "core/folderbackend.hpp"
+#include "core/syncengine.hpp"
+#include "core/webdavbackend.hpp"
 #include "core/lang.hpp"
 #include "core/updater.hpp"
 #include "ui/elidedlabel.hpp"
@@ -10,11 +14,14 @@
 #include <QApplication>
 #include <QAudioDevice>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
+#include <QUrl>
 #include <QEnterEvent>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMediaDevices>
 #include <QMouseEvent>
 #include <QPainter>
@@ -22,6 +29,7 @@
 #include <QScrollArea>
 #include <QSettings>
 #include <QSlider>
+#include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -216,7 +224,42 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
 
     auto *col = new QVBoxLayout(this);
     col->setContentsMargins(9, 4, 9, 8);
-    col->setSpacing(0);
+    col->setSpacing(6);
+
+    // The tabs, in a strip that scrolls sideways when the panel is narrow rather
+    // than demanding the width of all five names (see *Card widths*).
+    auto *tabs = new QWidget;
+    auto *tl = new QHBoxLayout(tabs);
+    tl->setContentsMargins(0, 0, 0, 0);
+    tl->setSpacing(2);
+    const QList<QPair<Tab, const char *>> names{{General, "General"},
+                                                {Appearance, "Apariencia"},
+                                                {Sync, "Sincronización"},
+                                                {Shortcuts, "Atajos"},
+                                                {About, "Acerca de"}};
+    for (const auto &[tab, name] : names) {
+        auto *b = new QToolButton;
+        b->setObjectName("setTab");
+        b->setProperty("tip", name);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setFocusPolicy(Qt::TabFocus);
+        connect(b, &QToolButton::clicked, this, [this, tab = tab] { setTab(tab); });
+        tl->addWidget(b);
+        m_tabButtons << b;
+    }
+    tl->addStretch();
+    auto *tabScroll = new QScrollArea;
+    tabScroll->setObjectName("setTabs");
+    tabScroll->setWidget(tabs);
+    tabScroll->setWidgetResizable(true);
+    tabScroll->setFrameShape(QFrame::NoFrame);
+    tabScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    tabScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    tabScroll->setFixedHeight(32);
+    tabScroll->viewport()->setAutoFillBackground(false);
+    tabScroll->viewport()->setObjectName("scrollViewport");
+    tabs->setObjectName("setTabsHost");
+    col->addWidget(tabScroll);
 
     auto *host = new QWidget;
     host->setObjectName("listHost");
@@ -251,11 +294,16 @@ void SettingsView::setTheme(const Theme &theme) {
     for (QWidget *w : findChildren<QWidget *>()) w->update();
 }
 
+void SettingsView::setTab(Tab tab) {
+    m_tab = tab;
+    refresh();
+}
+
 void SettingsView::refresh() {
     m_updateSub = nullptr;   // whatever was there dies in this same sweep
     m_updateBtn = nullptr;
-    m_driveSub = nullptr;
-    m_driveBtn = nullptr;
+    m_syncStatus = nullptr;
+    m_syncBtn = nullptr;
     m_group = nullptr;
     while (m_layout->count() > 1) {
         QLayoutItem *item = m_layout->takeAt(0);
@@ -265,21 +313,41 @@ void SettingsView::refresh() {
         }
         delete item;
     }
+    for (int i = 0; i < m_tabButtons.size(); ++i) {
+        QToolButton *b = m_tabButtons.at(i);
+        b->setText(L(b->property("tip").toString()));
+        b->setProperty("chosen", i == m_tab);
+        b->style()->unpolish(b);
+        b->style()->polish(b);
+    }
     if (!m_store) return;
 
-    // Before building anything: addDrive() ends in refreshDrive(), which compares
-    // against this and calls refresh() if it differs. Recorded later, in
-    // addCalendar(), it never matched and the page rebuilt itself forever.
-    m_calendarBuilt = calendarSignature();
-    addAppearance();
-    addLanguage();
-    addWindow();
-    addData();
-    addDrive();
-    addCalendar();
-    addInputs();
-    addUpdates();
-    addQuit();
+    switch (m_tab) {
+        case General:
+            addLanguage();
+            addWindow();
+            addData();
+            addInputs();
+            addUpdates();
+            addQuit();
+            break;
+        case Appearance:
+            addAppearance();
+            break;
+        case Sync:
+            // Recorded before building: refreshSync() compares against it and would
+            // rebuild forever if it were taken afterwards.
+            m_syncBuilt = syncSignature();
+            addSync();
+            addCalendar();
+            break;
+        case Shortcuts:
+            addShortcuts();
+            break;
+        case About:
+            addAbout();
+            break;
+    }
 }
 
 /// Every section is a header (accent icon plus name) and a group whose rows
@@ -499,117 +567,267 @@ void SettingsView::addData() {
               [this](QWidget *anchor) { emit backupsRequested(anchor); });
 }
 
-void SettingsView::setDrive(const DriveSync *drive) {
-    m_drive = drive;
+void SettingsView::setSync(const SyncController *sync) {
+    m_sync = sync;
     refresh();
 }
 
-void SettingsView::addDrive() {
-    if (!m_drive) return;
-    beginGroup(L("GOOGLE DRIVE"), "cloud");
-
-    // Elided, full text in the tooltip: a Google error can be long and must not
-    // widen the page (see *Card widths*).
-    m_driveBtn = addAction(L("Sincronizar con Google Drive"), QString(), QString(), true,
-                           [this](QWidget *) {
-        switch (m_drive->state()) {
-            case DriveSync::Disconnected: emit driveConnectRequested(); break;
-            case DriveSync::Authorizing:  emit driveCancelRequested(); break;
-            case DriveSync::Idle:
-            case DriveSync::Failed:       emit driveSyncRequested(); break;
-            default: break;
-        }
-    }, &m_driveSub);
-
-    m_driveBuiltConnected = m_drive->connected();
-    if (m_driveBuiltConnected) {
-        // What it does and how to stop it, inside the same group.
-        auto *row = new QWidget;
-        auto *rl = new QHBoxLayout(row);
-        rl->setContentsMargins(8, 6, 6, 7);
-        rl->setSpacing(8);
-        auto *what = new QLabel(L("Tus equipos conectados a esta cuenta comparten notas, tareas, cumpleaños y temporizadores a través de la carpeta Tagoror de tu Drive."));
-        what->setObjectName("meta");
-        what->setWordWrap(true);
-        what->setMinimumWidth(24);   // see *Card widths*
-        rl->addWidget(what, 1);
-        auto *off = actionButton(L("Desconectar"));
-        connect(off, &QToolButton::clicked, this, [this] { emit driveDisconnectRequested(); });
-        rl->addWidget(off, 0, Qt::AlignVCenter);
-        addToGroup(row);
-    }
-    refreshDrive();
-}
-
-void SettingsView::refreshDrive() {
-    if (!m_drive || !m_driveSub || !m_driveBtn) return;
-    if (m_drive->connected() != m_driveBuiltConnected ||
-        calendarSignature() != m_calendarBuilt) {
-        refresh();
-        return;
-    }
-
-    const QString error = m_drive->lastError();
-    const QString account = m_drive->account().isEmpty() ? L("Conectado") : m_drive->account();
-    QString sub, button;
-    bool enabled = true, bad = false;
-    switch (m_drive->state()) {
-        case DriveSync::Unavailable:
-            sub = L("No incluida en esta compilación");
-            button = L("Conectar");
-            enabled = false;
-            break;
-        case DriveSync::Disconnected:
-            bad = !error.isEmpty();
-            sub = bad ? error : L("Sin conectar · las notas se quedan en este equipo");
-            button = L("Conectar");
-            break;
-        case DriveSync::Authorizing:
-            sub = L("Autoriza el acceso en el navegador…");
-            button = L("Cancelar");
-            break;
-        case DriveSync::Syncing:
-            sub = account + " · " + L("sincronizando…");
-            button = L("Sincronizar");
-            enabled = false;
-            break;
-        case DriveSync::Failed:
-            bad = true;
-            sub = error;
-            button = L("Reintentar");
-            break;
-        case DriveSync::Idle: {
-            const QDateTime last = m_drive->lastSync();
-            sub = account + " · " +
-                  (last.isValid()
-                       ? L("sincronizado %1").arg(Lang::locale().toString(last, "d MMM · HH:mm"))
-                       : L("sin sincronizar todavía"));
-            button = L("Sincronizar");
-            break;
-        }
-    }
-    m_driveSub->setText(sub);
-    m_driveSub->setToolTip(sub);
-    m_driveSub->setColor(bad ? QColor("#ff7a6b") : QColor(Theme::muted()));
-    m_driveBtn->setText(button);
-    m_driveBtn->setEnabled(enabled);
-}
-
-QString SettingsView::calendarSignature() const {
-    if (!m_drive || !m_drive->connected()) return QString();
-    const CalendarSync *cal = m_drive->calendar();
-    QStringList parts{cal->enabled() ? "on" : "off", m_drive->hasCalendarScope() ? "scope" : "",
-                      cal->target(), cal->lastError()};
+/// What the sync tab is built from. When it changes the tab is rebuilt; the
+/// rest (a pass starting or ending) only rewrites the status line.
+QString SettingsView::syncSignature() const {
+    if (!m_sync) return QString();
+    const DriveSync *g = m_sync->drive();
+    QStringList parts{m_sync->provider(), QString::number(m_sync->when()),
+                      QString::number(g->state()), g->account(), g->lastError(),
+                      m_sync->webdav()->server(), m_sync->webdav()->user(),
+                      m_sync->webdav()->ready() ? "ready" : "", m_sync->folder()->path(),
+                      m_sync->folder()->error()};
+    const CalendarSync *cal = g->calendar();
+    parts << (cal->enabled() ? "on" : "off") << (g->hasCalendarScope() ? "scope" : "")
+          << cal->target() << cal->lastError();
     for (const CalendarSync::Calendar &c : cal->calendars())
         parts << c.id + (cal->isFollowed(c.id) ? "+" : "-") + c.name;
     return parts.join('\n');
 }
 
-/// Google Calendar, using Drive's account: shown only while connected. Each
-/// followed calendar is a planner category.
+namespace {
+/// "hace 2 min", "hace 3 h", or the date: how long since the last pass.
+QString ago(const QDateTime &when) {
+    const qint64 s = when.secsTo(QDateTime::currentDateTime());
+    if (s < 60) return L("hace un momento");
+    if (s < 3600) return L("hace %1 min").arg(s / 60);
+    if (s < 86400) return L("hace %1 h").arg(s / 3600);
+    return Lang::locale().toString(when, "d MMM · HH:mm");
+}
+}  // namespace
+
+QString SettingsView::syncStatus(bool *bad) const {
+    *bad = false;
+    const SyncEngine *e = m_sync->engine();
+    const SyncBackend *b = e->backend();
+    if (!b) return L("Sin sincronizar · las notas se quedan en este equipo");
+    if (!b->ready()) return L("Sin configurar todavía");
+    if (e->state() == SyncEngine::Syncing) return L("Sincronizando…");
+    if (e->state() == SyncEngine::Failed) {
+        *bad = true;
+        return e->lastError();
+    }
+    return e->lastSync().isValid() ? L("Sincronizado %1").arg(ago(e->lastSync()))
+                                   : L("Sin sincronizar todavía");
+}
+
+void SettingsView::refreshSync() {
+    if (!m_sync || m_tab != Sync) return;
+    if (syncSignature() != m_syncBuilt) {
+        // Never under the cursor: a field of this tab being typed in would lose it.
+        QWidget *f = QApplication::focusWidget();
+        if (!(f && isAncestorOf(f) && qobject_cast<QLineEdit *>(f))) {
+            refresh();
+            return;
+        }
+    }
+    if (!m_syncStatus || !m_syncBtn) return;
+    bool bad = false;
+    const QString text = syncStatus(&bad);
+    m_syncStatus->setText(text);
+    m_syncStatus->setToolTip(text);
+    m_syncStatus->setColor(bad ? QColor("#ff7a6b") : QColor(Theme::muted()));
+    const SyncBackend *b = m_sync->engine()->backend();
+    m_syncBtn->setEnabled(b && b->ready() && m_sync->engine()->state() != SyncEngine::Syncing);
+}
+
+/// Where the shared copy of the notes, areas and timers lives: one provider of
+/// three, each card showing its own fields only while chosen.
+void SettingsView::addSync() {
+    if (!m_sync) return;
+    beginGroup(L("SINCRONIZAR NOTAS"), "cloud");
+    auto *intro = new QLabel(L("Dónde se guarda la copia de tus notas, áreas y timers para tus otros equipos."));
+    intro->setObjectName("meta");
+    intro->setWordWrap(true);
+    intro->setMinimumWidth(24);   // see *Card widths*
+    intro->setContentsMargins(8, 6, 8, 6);
+    addToGroup(intro);
+
+    const QString p = m_sync->provider();
+    addProvider("", "minus", L("Ninguno"), L("Las notas se quedan en este equipo"), p.isEmpty());
+    addProvider("drive", "cloud", QStringLiteral("Google Drive"),
+                L("Carpeta privada de la app en tu Drive"), p == "drive");
+    addProvider("webdav", "folder", QStringLiteral("WebDAV / Nextcloud"),
+                L("Tu servidor; mejor con una contraseña de aplicación"), p == "webdav");
+    addProvider("folder", "folder", L("Carpeta sincronizada"),
+                L("Syncthing, Dropbox, OneDrive… Tagoror solo escribe en ella"), p == "folder");
+
+    // When, for whichever provider.
+    QVBoxLayout *b = addBlock();
+    b->addLayout(textColumn(L("Cuándo sincronizar"),
+                            L("Al guardar también recoge los cambios de los otros equipos")));
+    b->addWidget(segments({L("Al guardar"), L("Cada 5 min"), L("A mano")}, m_sync->when(),
+                          [this](int i) { emit syncWhenPicked(i); }));
+}
+
+void SettingsView::addProvider(const QString &id, const QString &icon, const QString &title,
+                               const QString &hint, bool chosen) {
+    auto *card = new SettingRow;
+    card->setObjectName("provCard");
+    card->setProperty("chosen", chosen);
+    card->setCursor(chosen ? Qt::ArrowCursor : Qt::PointingHandCursor);
+    if (!chosen) card->setClick([this, id] { emit syncProviderPicked(id); });
+    auto *col = new QVBoxLayout(card);
+    col->setContentsMargins(8, 8, 8, 8);
+    col->setSpacing(7);
+
+    auto *head = new QHBoxLayout;
+    head->setSpacing(9);
+    auto *radio = new QLabel;
+    radio->setFixedSize(16, 16);
+    {
+        QPixmap pm(32, 32);
+        pm.setDevicePixelRatio(2);
+        pm.fill(Qt::transparent);
+        QPainter rp(&pm);
+        rp.setRenderHint(QPainter::Antialiasing);
+        rp.setPen(QPen(chosen ? m_theme.accent : QColor(Theme::muted()), 1.5));
+        rp.setBrush(Qt::NoBrush);
+        rp.drawEllipse(QPointF(8, 8), 6.5, 6.5);
+        if (chosen) {
+            rp.setPen(Qt::NoPen);
+            rp.setBrush(m_theme.accent);
+            rp.drawEllipse(QPointF(8, 8), 3.5, 3.5);
+        }
+        rp.end();
+        radio->setPixmap(pm);
+    }
+    head->addWidget(radio, 0, Qt::AlignTop);
+    head->addLayout(textColumn(title, hint), 1);
+    head->addWidget(new AccentIcon(chosen ? icon : QString(), &m_theme, 14), 0, Qt::AlignTop);
+    col->addLayout(head);
+    addToGroup(card);
+    if (!chosen) return;
+
+    const auto field = [](const QString &placeholder, const QString &text, bool secret) {
+        auto *e = new QLineEdit(text);
+        e->setObjectName("setField");
+        e->setPlaceholderText(placeholder);
+        e->setMinimumWidth(24);   // see *Card widths*
+        e->setContextMenuPolicy(Qt::NoContextMenu);
+        if (secret) e->setEchoMode(QLineEdit::Password);
+        return e;
+    };
+    const auto actionRow = [this, col](const QString &label, bool enabled,
+                                       std::function<void()> clicked) {
+        auto *row = new QHBoxLayout;
+        row->addStretch();
+        auto *b = actionButton(label);
+        b->setEnabled(enabled);
+        connect(b, &QToolButton::clicked, this, [clicked] { clicked(); });
+        row->addWidget(b);
+        col->addLayout(row);
+        return b;
+    };
+
+    if (id == "drive") {
+        const DriveSync *g = m_sync->drive();
+        QString line;
+        switch (g->state()) {
+            case DriveSync::Unavailable: line = L("No incluida en esta compilación"); break;
+            case DriveSync::Authorizing: line = L("Autoriza el acceso en el navegador…"); break;
+            case DriveSync::Disconnected:
+                line = g->lastError().isEmpty() ? L("Sin conectar") : g->lastError();
+                break;
+            default: line = g->account().isEmpty() ? L("Conectado") : g->account(); break;
+        }
+        auto *account = new ElidedLabel(line, QColor(g->lastError().isEmpty() ? Theme::muted()
+                                                                              : "#ff7a6b"));
+        account->setObjectName("meta");
+        account->setToolTip(line);
+        col->addWidget(account);
+        if (g->state() == DriveSync::Idle)
+            actionRow(L("Desconectar"), true, [this] { emit googleDisconnectRequested(); });
+        else if (g->state() == DriveSync::Authorizing)
+            actionRow(L("Cancelar"), true, [this] { emit googleCancelRequested(); });
+        else
+            actionRow(L("Conectar"), g->state() != DriveSync::Unavailable,
+                      [this] { emit googleConnectRequested(); });
+    } else if (id == "webdav") {
+        const WebDavBackend *w = m_sync->webdav();
+        auto *srvLabel = new QLabel(L("Servidor"));
+        srvLabel->setObjectName("setFieldLabel");
+        col->addWidget(srvLabel);
+        auto *server = field(QStringLiteral("https://nube.ejemplo.es/remote.php/dav/files/ana"),
+                             w->server(), false);
+        col->addWidget(server);
+        auto *pair = new QHBoxLayout;
+        pair->setSpacing(6);
+        auto *userCol = new QVBoxLayout;
+        auto *userLabel = new QLabel(L("Usuario"));
+        userLabel->setObjectName("setFieldLabel");
+        userCol->addWidget(userLabel);
+        auto *user = field(QString(), w->user(), false);
+        userCol->addWidget(user);
+        auto *passCol = new QVBoxLayout;
+        auto *passLabel = new QLabel(L("Contraseña de app"));
+        passLabel->setObjectName("setFieldLabel");
+        passCol->addWidget(passLabel);
+        // Never shown back: an empty field on save keeps the stored one.
+        auto *pass = field(w->hasPassword() ? L("guardada") : QString(), QString(), true);
+        passCol->addWidget(pass);
+        pair->addLayout(userCol, 1);
+        pair->addLayout(passCol, 1);
+        col->addLayout(pair);
+        auto *buttons = new QHBoxLayout;
+        if (w->ready()) {
+            auto *forget = actionButton(L("Olvidar"));
+            connect(forget, &QToolButton::clicked, this, [this] { emit webdavForgetRequested(); });
+            buttons->addWidget(forget);
+        }
+        buttons->addStretch();
+        auto *save = actionButton(L("Guardar"));
+        save->setProperty("chosen", true);
+        const auto submit = [this, server, user, pass] {
+            emit webdavSaveRequested(server->text(), user->text(), pass->text());
+        };
+        connect(save, &QToolButton::clicked, this, submit);
+        for (QLineEdit *e : {server, user, pass}) connect(e, &QLineEdit::returnPressed, this, submit);
+        buttons->addWidget(save);
+        col->addLayout(buttons);
+    } else if (id == "folder") {
+        const FolderBackend *f = m_sync->folder();
+        const QString shown = f->path().isEmpty() ? L("Ninguna elegida") : prettyPath(f->path());
+        const bool bad = !f->error().isEmpty() || (!f->path().isEmpty() && !f->ready());
+        const QString line = !f->error().isEmpty() ? f->error()
+                             : bad                 ? L("No disponible · %1").arg(shown)
+                                                   : shown;
+        auto *path = new ElidedLabel(line, QColor(bad ? "#ff7a6b" : Theme::muted()));
+        path->setObjectName("meta");
+        path->setToolTip(f->path());
+        col->addWidget(path);
+        actionRow(f->path().isEmpty() ? L("Elegir…") : L("Cambiar…"), true,
+                  [this] { emit folderChooseRequested(); });
+    }
+
+    if (id.isEmpty()) return;
+    // The state and the button to sync now, for the chosen provider.
+    auto *status = new QHBoxLayout;
+    status->setSpacing(6);
+    auto *dot = new AccentIcon(QStringLiteral("glyph-dot"), &m_theme, 8);
+    status->addWidget(dot, 0, Qt::AlignVCenter);
+    m_syncStatus = new ElidedLabel(QString(), QColor(Theme::muted()));
+    m_syncStatus->setObjectName("syncStatus");
+    status->addWidget(m_syncStatus, 1);
+    m_syncBtn = actionButton(L("Sincronizar ahora"));
+    connect(m_syncBtn, &QToolButton::clicked, this, [this] { emit syncNowRequested(); });
+    status->addWidget(m_syncBtn);
+    col->addLayout(status);
+    refreshSync();
+}
+
+/// Google Calendar: its own connection, whatever the notes sync with. It rides
+/// the Google account; each followed calendar is a planner category.
 void SettingsView::addCalendar() {
-    if (!m_drive || !m_drive->connected()) return;
-    const CalendarSync *cal = m_drive->calendar();
+    if (!m_sync) return;
+    const DriveSync *g = m_sync->drive();
+    if (g->state() == DriveSync::Unavailable) return;
+    const CalendarSync *cal = g->calendar();
     beginGroup(L("GOOGLE CALENDAR"), "calendar");
 
     addToggle(L("Sincronizar el planificador"),
@@ -617,10 +835,21 @@ void SettingsView::addCalendar() {
               [this](bool on) { emit calendarToggled(on); });
     if (!cal->enabled()) return;
 
-    if (!m_drive->hasCalendarScope()) {
+    if (!g->connected()) {
+        addAction(L("Cuenta de Google"),
+                  g->state() == DriveSync::Authorizing ? L("Autoriza el acceso en el navegador…")
+                                                       : L("Sin conectar"),
+                  g->state() == DriveSync::Authorizing ? L("Cancelar") : L("Conectar"), true,
+                  [this, g](QWidget *) {
+                      if (g->state() == DriveSync::Authorizing) emit googleCancelRequested();
+                      else emit googleConnectRequested();
+                  });
+        return;
+    }
+    if (!g->hasCalendarScope()) {
         addAction(L("Falta el permiso de Calendar"),
                   L("Vuelve a autorizar la cuenta para concederlo"), L("Autorizar"),
-                  m_drive->state() != DriveSync::Authorizing,
+                  g->state() != DriveSync::Authorizing,
                   [this](QWidget *) { emit calendarGrantRequested(); });
         return;
     }
@@ -660,6 +889,64 @@ void SettingsView::addCalendar() {
         sub->setColor(QColor("#ff7a6b"));
         addToGroup(row);
     }
+}
+
+/// Every shortcut, as a reference: the palette shows them too, next to what
+/// they do.
+void SettingsView::addShortcuts() {
+    const QList<QPair<const char *, QList<QPair<const char *, QString>>>> groups{
+        {"PÁGINAS", {{"Notas", "Ctrl+1"}, {"Planner", "Ctrl+2"}, {"Timers", "Ctrl+3"},
+                     {"Cumpleaños", "Ctrl+4"}, {"Ajustes", "Ctrl+,"},
+                     {"Paleta de comandos", "Ctrl+K"}, {"Volver a las notas", "Esc"}}},
+        {"NOTAS", {{"Nota de texto", "Ctrl+N"}, {"Checklist", "Ctrl+⇧L"},
+                   {"Recordatorio", "Ctrl+⇧R"}, {"Nota de voz", "Ctrl+⇧V"},
+                   {"Nota Markdown", "Ctrl+⇧M"}, {"Buscar", "Ctrl+F"},
+                   {"Terminar de escribir", "Enter"}, {"Nueva línea en una nota", "⇧+Enter"}}},
+        {"ÁREAS", {{"Nueva área", "Ctrl+T"}, {"Ir a un área", "Alt+1…9"},
+                   {"Renombrar", "F2"}, {"Mover", "Ctrl+⇧+← →"}}},
+        {"NOTA MARKDOWN", {{"Editar ⇄ vista previa", "Ctrl+E"}, {"Negrita", "Ctrl+B"},
+                           {"Cursiva", "Ctrl+I"}, {"Volver", "Ctrl+Enter"}}},
+        {"VENTANA", {{"Plegar a icono", "Ctrl+M"}}},
+    };
+    for (const auto &[title, rows] : groups) {
+        beginGroup(L(title), "command");
+        for (const auto &[what, keys] : rows) {
+            auto *row = new QWidget;
+            auto *l = new QHBoxLayout(row);
+            l->setContentsMargins(8, 6, 8, 6);
+            auto *name = new ElidedLabel(L(what), QColor(Theme::fg()));
+            name->setObjectName("setRowText");
+            l->addWidget(name, 1);
+            auto *key = new QLabel(keys);
+            key->setObjectName("paletteKey");
+            l->addWidget(key);
+            addToGroup(row);
+        }
+    }
+}
+
+void SettingsView::addAbout() {
+    beginGroup(QStringLiteral("TAGOROR"), "info");
+    QVBoxLayout *b = addBlock();
+    auto *version = new QLabel(L("Versión %1").arg(Updater::current()));
+    version->setObjectName("setRowText");
+    b->addWidget(version);
+    auto *text = new QLabel(L("Notas, recordatorios, planificador y temporizadores en un panel de "
+                              "escritorio. Un tagoror es el círculo de piedras donde se reunía el "
+                              "consejo guanche."));
+    text->setObjectName("meta");
+    text->setWordWrap(true);
+    text->setMinimumWidth(24);
+    b->addWidget(text);
+    addAction(L("Código y novedades"), QStringLiteral("github.com/Larzt/tagoror"), L("Abrir"), true,
+              [](QWidget *) { QDesktopServices::openUrl(QUrl("https://github.com/Larzt/tagoror")); });
+    QVBoxLayout *lic = addBlock();
+    auto *licText = new QLabel(L("Tagoror se publica con licencia MIT. Incluye IBM Plex Sans y IBM Plex Mono "
+                                 "(SIL Open Font License 1.1) y usa Qt 6 bajo LGPL-3.0."));
+    licText->setObjectName("meta");
+    licText->setWordWrap(true);
+    licText->setMinimumWidth(24);
+    lic->addWidget(licText);
 }
 
 void SettingsView::addInputs() {

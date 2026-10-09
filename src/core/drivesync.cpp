@@ -48,18 +48,6 @@ constexpr int kTimeoutMs = 60000;
 /// How long the browser authorisation may take before the port is released.
 constexpr int kAuthorizeMs = 5 * 60 * 1000;
 
-/// What is synced, relative to the data folder. Backups are not: they belong
-/// to each machine. The order matters: it is the order of the objects passed
-/// to Store::mergeRemote().
-const QStringList &jsonFiles() {
-    static const QStringList files{"notes.json", "birthdays.json", "events.json"};
-    return files;
-}
-const QStringList &subdirs() {
-    static const QStringList dirs{"audio", "images"};
-    return dirs;
-}
-
 QString randomToken(int length) {
     static const char alphabet[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
@@ -70,12 +58,8 @@ QString randomToken(int length) {
     return out;
 }
 
-QString fileMd5(const QString &path) {
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return QString();
-    QCryptographicHash h(QCryptographicHash::Md5);
-    h.addData(&f);
-    return QString::fromLatin1(h.result().toHex());
+QString md5Of(const QByteArray &data) {
+    return QString::fromLatin1(QCryptographicHash::hash(data, QCryptographicHash::Md5).toHex());
 }
 
 /// A string for a Drive query, with quotes and backslashes escaped.
@@ -94,7 +78,7 @@ DriveSync::Endpoints &DriveSync::endpoints() {
 
 bool DriveSync::configured() { return QByteArray(TAGOROR_GOOGLE_CLIENT_ID).size() > 0; }
 
-DriveSync::DriveSync(Store *store, QObject *parent) : QObject(parent), m_store(store) {
+DriveSync::DriveSync(Store *store, QObject *parent) : SyncBackend(parent), m_store(store) {
     m_net = new QNetworkAccessManager(this);
     m_net->setTransferTimeout(kTimeoutMs);
 
@@ -103,8 +87,6 @@ DriveSync::DriveSync(Store *store, QObject *parent) : QObject(parent), m_store(s
     m_refresh = s.value("refreshToken").toString();
     m_scopes = s.value("scopes").toString();
     m_account = s.value("account").toString();
-    const qint64 last = s.value("lastSync").toLongLong();
-    if (last > 0) m_lastSync = QDateTime::fromMSecsSinceEpoch(last);
     s.endGroup();
 
     if (!configured()) m_state = Unavailable;
@@ -129,7 +111,6 @@ void DriveSync::saveSettings() {
         s.setValue("refreshToken", m_refresh);
         s.setValue("scopes", m_scopes);
         s.setValue("account", m_account);
-        s.setValue("lastSync", m_lastSync.isValid() ? m_lastSync.toMSecsSinceEpoch() : 0);
     }
     s.endGroup();
 }
@@ -139,12 +120,10 @@ void DriveSync::setState(State s) {
     emit changed();
 }
 
-void DriveSync::fail(const QString &why) {
+void DriveSync::failAccount(const QString &why) {
+    m_accountError = why;
     m_error = why;
-    m_queue.clear();
-    m_remoteJson.clear();
-    m_again = false;
-    setState(connected() ? Failed : Disconnected);
+    setState(connected() ? Idle : Disconnected);
 }
 
 void DriveSync::connectAccount() {
@@ -155,7 +134,7 @@ void DriveSync::connectAccount() {
     // Loopback only: the authorisation code has no reason to be reachable from
     // outside the machine.
     if (!m_server->listen(QHostAddress::LocalHost, 0)) {
-        fail(L("No se pudo abrir un puerto local para la autorización."));
+        failAccount(L("No se pudo abrir un puerto local para la autorización."));
         return;
     }
     connect(m_server, &QTcpServer::newConnection, this, &DriveSync::onRedirect);
@@ -189,12 +168,12 @@ void DriveSync::connectAccount() {
     q.addQueryItem("prompt", "consent");
     url.setQuery(q);
 
-    m_error.clear();
+    m_accountError.clear();
     const int attempt = ++m_attempt;
     QTimer::singleShot(kAuthorizeMs, this, [this, attempt] {
         if (m_state == Authorizing && attempt == m_attempt) {
             cancel();
-            m_error = L("No se completó la autorización a tiempo.");
+            m_accountError = L("No se completó la autorización a tiempo.");
             emit changed();
         }
     });
@@ -263,7 +242,7 @@ void DriveSync::answerBrowser(QTcpSocket *socket, const QByteArray &request) {
     if (code.isEmpty()) {
         reply(200, L("No se ha dado acceso. Puedes cerrar esta pestaña."));
         cancel();
-        m_error = L("La autorización se canceló en el navegador.");
+        m_accountError = L("La autorización se canceló en el navegador.");
         emit changed();
         return;
     }
@@ -311,7 +290,7 @@ void DriveSync::exchangeCode(const QString &code) {
         const QJsonObject o = QJsonDocument::fromJson(r->readAll()).object();
         if (r->error() != QNetworkReply::NoError || !o.contains("refresh_token")) {
             m_verifier.clear();
-            fail(L("Google no aceptó la autorización (%1).")
+            failAccount(L("Google no aceptó la autorización (%1).")
                      .arg(o["error_description"].toString(o["error"].toString(r->errorString()))));
             return;
         }
@@ -331,12 +310,15 @@ void DriveSync::fetchAccount() {
     QUrl url(endpoints().api + "/about");
     url.setQuery("fields=user(emailAddress,displayName)");
     api("GET", url, {}, {}, [this](QNetworkReply *r) {
-        if (!ok(r)) return;
+        if (!ok(r)) {
+            failAccount(m_error);
+            return;
+        }
         const QJsonObject user = QJsonDocument::fromJson(r->readAll()).object()["user"].toObject();
         m_account = user["emailAddress"].toString(user["displayName"].toString());
         saveSettings();
         setState(Idle);
-        syncNow();   // the first sync, right away
+        emit connectedNow();   // the first sync, right away
     });
 }
 
@@ -355,18 +337,22 @@ void DriveSync::disconnectAccount() {
     m_scopes.clear();
     m_access.clear();
     m_account.clear();
-    m_lastSync = QDateTime();
     m_calendar->forget();
     m_error.clear();
-    m_queue.clear();
-    m_rootId.clear();
+    m_accountError.clear();
+    m_folders.clear();
     saveSettings();
     setState(configured() ? Disconnected : Unavailable);
 }
 
-void DriveSync::withToken(std::function<void()> next) {
+void DriveSync::withToken(std::function<void(bool)> next) {
     if (!m_access.isEmpty() && QDateTime::currentDateTime().secsTo(m_accessUntil) > 60) {
-        next();
+        next(true);
+        return;
+    }
+    if (m_refresh.isEmpty()) {
+        m_error = L("La cuenta de Google no está conectada.");
+        next(false);
         return;
     }
     QUrlQuery form;
@@ -387,11 +373,13 @@ void DriveSync::withToken(std::function<void()> next) {
             m_refresh.clear();
             m_access.clear();
             saveSettings();
-            fail(L("Google ha retirado el acceso. Vuelve a conectar la cuenta."));
+            failAccount(L("Google ha retirado el acceso. Vuelve a conectar la cuenta."));
+            next(false);
             return;
         }
         if (r->error() != QNetworkReply::NoError || !o.contains("access_token")) {
-            fail(L("Sin conexión con Google Drive."));
+            m_error = L("Sin conexión con Google.");
+            next(false);
             return;
         }
         m_access = o["access_token"].toString();
@@ -402,13 +390,18 @@ void DriveSync::withToken(std::function<void()> next) {
             m_scopes = scopes;
             saveSettings();
         }
-        next();
+        next(true);
     });
 }
 
 void DriveSync::api(const QByteArray &verb, const QUrl &url, const QByteArray &body,
                     const QByteArray &contentType, Done done, bool retried) {
-    withToken([=, this] {
+    withToken([=, this](bool haveToken) {
+        // No token: the caller hears it as a null reply, which ok() refuses.
+        if (!haveToken) {
+            done(nullptr);
+            return;
+        }
         QNetworkRequest req(url);
         req.setRawHeader("Authorization", "Bearer " + m_access.toLatin1());
         if (!contentType.isEmpty()) req.setHeader(QNetworkRequest::ContentTypeHeader, contentType);
@@ -427,254 +420,133 @@ void DriveSync::api(const QByteArray &verb, const QUrl &url, const QByteArray &b
 }
 
 bool DriveSync::ok(QNetworkReply *r) {
+    if (!r) return false;   // no token: m_error already says why
     const int status = r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     if (r->error() == QNetworkReply::NoError && status >= 200 && status < 300) return true;
     if (status == 0) {
-        fail(L("Sin conexión con Google Drive."));
+        m_error = L("Sin conexión con Google Drive.");
         return false;
     }
     const QJsonObject err = QJsonDocument::fromJson(r->readAll()).object()["error"].toObject();
     const QString reason = err["errors"].toArray().first().toObject()["reason"].toString();
     if (reason == "storageQuotaExceeded")
-        fail(L("No queda espacio en tu Google Drive."));
+        m_error = L("No queda espacio en tu Google Drive.");
     else
-        fail(L("Google Drive respondió con un error (%1).")
-                 .arg(err["message"].toString(QString::number(status))));
+        m_error = L("Google Drive respondió con un error (%1).")
+                      .arg(err["message"].toString(QString::number(status)));
     return false;
 }
 
-QString DriveSync::seenMd5(const QString &name) const {
-    return QSettings().value("drive/seen/" + name).toString();
-}
-
-void DriveSync::setSeenMd5(const QString &name, const QString &md5) {
-    QSettings().setValue("drive/seen/" + name, md5);
-}
-
-void DriveSync::syncNow() {
-    if (!connected() || !m_store || m_state == Authorizing) return;
-    if (m_state == Syncing) {
-        m_again = true;
-        return;
-    }
-    // A missing data folder is never synced: what is in memory then is not the
-    // notes, and merging or uploading it would spread emptiness to every machine.
-    if (!m_store->available() || !dataDirAvailable()) return;
-
-    m_error.clear();
-    m_queue.clear();
-    m_pull.clear();
-    m_remoteJson.clear();
-    m_rootFiles.clear();
-    m_gotFiles = false;
-    setState(Syncing);
-
-    findFolder(kRootFolder, "root", [this](const QString &rootId) {
-        m_rootId = rootId;
-        listFolder(rootId, QString(), &m_rootFiles, [this] { fetchRemoteJson(0); });
-    });
-}
-
-/// Downloads the remote JSON files that changed since the last merge. An
-/// unchanged one brings nothing new: it stays empty and the merge skips it.
-void DriveSync::fetchRemoteJson(int index) {
-    if (m_state != Syncing) return;
-    if (index >= jsonFiles().size()) {
-        mergeAndPlan();
-        return;
-    }
-    const QString name = jsonFiles().at(index);
-    const Remote there = m_rootFiles.value(name);
-    if (there.id.isEmpty() || there.md5 == seenMd5(name)) {
-        m_remoteJson.append(QJsonObject());
-        fetchRemoteJson(index + 1);
-        return;
-    }
-    QUrl url(endpoints().api + "/files/" + there.id);
-    url.setQuery("alt=media");
-    api("GET", url, {}, {}, [this, index](QNetworkReply *r) {
-        if (!ok(r)) return;
-        QJsonParseError err;
-        const QJsonDocument doc = QJsonDocument::fromJson(r->readAll(), &err);
-        // Unparseable: treated as empty, i.e. not merged.
-        m_remoteJson.append(err.error == QJsonParseError::NoError ? doc.object() : QJsonObject());
-        fetchRemoteJson(index + 1);
-    });
-}
-
-void DriveSync::mergeAndPlan() {
-    bool anything = false;
-    for (const QJsonObject &o : m_remoteJson) anything |= !o.isEmpty();
-
-    if (anything) {
-        // Merging rebuilds the list: wait while the user is typing.
-        if (canApply && !canApply()) {
-            m_remoteJson.clear();
-            setState(Idle);
-            emit deferred();
+void DriveSync::list(const QString &dir, std::function<void(bool, Listing)> done) {
+    // A pass starts by listing the root: the folders are looked up again, in case
+    // one was deleted or trashed in Drive meanwhile.
+    if (dir.isEmpty()) m_folders.clear();
+    folderFor(dir, [this, done](const QString &folderId) {
+        if (folderId.isEmpty()) {
+            done(false, {});
             return;
         }
-        if (!m_store->available()) {   // the drive went away mid-pass
-            fail(L("La carpeta de notas no está disponible."));
-            return;
-        }
-        const Store::MergeResult merged =
-            m_store->mergeRemote(m_remoteJson.value(0), m_remoteJson.value(1), m_remoteJson.value(2));
-        m_pull = merged.pull;
-        // Merged: next time it is not downloaded again unless it changed.
-        for (int i = 0; i < jsonFiles().size(); ++i)
-            if (!m_remoteJson.value(i).isEmpty())
-                setSeenMd5(jsonFiles().at(i), m_rootFiles.value(jsonFiles().at(i)).md5);
-    }
-
-    // Calendar runs between the merge and the upload, so what it brings reaches
-    // the other machines in this same pass.
-    m_calendar->run([this] {
-        if (m_state == Syncing) planUploads();
-    });
-}
-
-void DriveSync::planUploads() {
-    // The merged local data is uploaded if it differs from Drive's. What goes up
-    // is the shared payload (Store::syncPayload()), not the local file.
-    for (const QString &name : m_store->syncableFiles()) {
-        const QByteArray payload = m_store->syncPayload(name);
-        const QString md5 =
-            QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Md5).toHex());
-        const Remote there = m_rootFiles.value(name);
-        if (!there.id.isEmpty() && there.md5 == md5) continue;
-        m_queue.append({false, appDataDir() + "/" + name, name, m_rootId, there.id, payload});
-    }
-    planAttachments(0);
-}
-
-/// Plans the attachments the notes use, folder by folder. Files no note uses
-/// are left alone on both sides.
-void DriveSync::planAttachments(int index) {
-    if (m_state != Syncing) return;
-    if (index >= subdirs().size()) {
-        transferNext();
-        return;
-    }
-    const QString dir = subdirs().at(index);
-    QStringList wanted;
-    for (const QString &ref : m_store->attachments())
-        if (ref.startsWith(dir + "/")) wanted << ref.mid(dir.size() + 1);
-    if (wanted.isEmpty()) {   // no attachments of this kind: do not even create the folder
-        planAttachments(index + 1);
-        return;
-    }
-
-    findFolder(dir, m_rootId, [this, index, dir, wanted](const QString &folderId) {
-        auto *remote = new QHash<QString, Remote>;
-        listFolder(folderId, QString(), remote, [=, this] {
-            const QString base = appDataDir() + "/" + dir;
-            for (const QString &name : wanted) {
-                const QString path = base + "/" + name;
-                const Remote there = remote->value(name);
-                const bool here = QFileInfo::exists(path);
-                if (!here && there.id.isEmpty()) continue;   // nowhere
-                if (!here) {
-                    m_queue.append({true, path, name, folderId, there.id});
-                    continue;
-                }
-                if (!there.id.isEmpty() && there.md5 == fileMd5(path)) continue;
-                // Both exist and differ: the side the note's winning version came from wins.
-                if (!there.id.isEmpty() && m_pull.contains(dir + "/" + name))
-                    m_queue.append({true, path, name, folderId, there.id});
-                else
-                    m_queue.append({false, path, name, folderId, there.id});
-            }
-            delete remote;
-            planAttachments(index + 1);
+        auto *into = new Listing;
+        listFolder(folderId, QString(), into, [into, done](bool ok) {
+            const Listing out = *into;
+            delete into;
+            done(ok, out);
         });
     });
 }
 
-/// Runs the transfers one after another. Uploads are always resumable
-/// (multipart stops at 5 MB and a long voice note exceeds it): one request
-/// opens the session, another sends the content.
-void DriveSync::transferNext() {
-    if (m_state != Syncing) return;   // failed along the way
-    if (m_queue.isEmpty()) {
-        finishSync();
-        return;
-    }
-    const Transfer t = m_queue.first();
+void DriveSync::download(const QString &, const QString &, const Remote &remote,
+                         std::function<void(bool, QByteArray)> done) {
+    QUrl url(endpoints().api + "/files/" + remote.id);
+    url.setQuery("alt=media");
+    api("GET", url, {}, {}, [this, done](QNetworkReply *r) {
+        if (!ok(r)) {
+            done(false, {});
+            return;
+        }
+        done(true, r->readAll());
+    });
+}
 
-    if (t.download) {
-        QUrl url(endpoints().api + "/files/" + t.fileId);
-        url.setQuery("alt=media");
-        api("GET", url, {}, {}, [this, t](QNetworkReply *r) {
-            if (!ok(r)) return;
-            // Creates the subfolder (the root exists, or we would not be here) and writes
-            // all or nothing.
-            QDir().mkpath(QFileInfo(t.path).path());
-            QSaveFile f(t.path);
-            const QByteArray data = r->readAll();
-            if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit()) {
-                fail(L("No se pudo escribir %1.").arg(t.name));
+/// Uploads are always resumable (multipart stops at 5 MB and a long voice note
+/// exceeds it): one request opens the session, another sends the content.
+void DriveSync::upload(const QString &dir, const QString &name, const Remote &existing,
+                       const QByteArray &content, std::function<void(bool, Remote)> done) {
+    folderFor(dir, [=, this](const QString &folderId) {
+        if (folderId.isEmpty()) {
+            done(false, {});
+            return;
+        }
+        const QString mime = QMimeDatabase().mimeTypeForFile(name, QMimeDatabase::MatchExtension).name();
+        QJsonObject meta{{"name", name}};
+        if (existing.id.isEmpty()) meta["parents"] = QJsonArray{folderId};
+        QUrl url(endpoints().upload + "/files" + (existing.id.isEmpty() ? "" : "/" + existing.id));
+        url.setQuery("uploadType=resumable&fields=id");
+
+        withToken([=, this](bool haveToken) {
+            if (!haveToken) {
+                done(false, {});
                 return;
             }
-            m_gotFiles = true;
-            if (!m_queue.isEmpty()) m_queue.removeFirst();
-            transferNext();
-        });
-        return;
-    }
-
-    QByteArray content = t.data;
-    if (content.isEmpty()) {
-        QFile f(t.path);
-        if (!f.open(QIODevice::ReadOnly)) {   // deleted meanwhile: not an error
-            m_queue.removeFirst();
-            transferNext();
-            return;
-        }
-        content = f.readAll();
-    }
-    const QString mime = QMimeDatabase().mimeTypeForFile(t.path).name();
-
-    QJsonObject meta{{"name", t.name}};
-    if (t.fileId.isEmpty()) meta["parents"] = QJsonArray{t.folderId};
-    QUrl url(endpoints().upload + "/files" + (t.fileId.isEmpty() ? "" : "/" + t.fileId));
-    url.setQuery("uploadType=resumable&fields=id");
-
-    withToken([=, this] {
-        QNetworkRequest req(url);
-        req.setRawHeader("Authorization", "Bearer " + m_access.toLatin1());
-        req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json; charset=UTF-8");
-        req.setRawHeader("X-Upload-Content-Type", mime.toLatin1());
-        req.setRawHeader("X-Upload-Content-Length", QByteArray::number(content.size()));
-        QNetworkReply *r = m_net->sendCustomRequest(req, t.fileId.isEmpty() ? "POST" : "PATCH",
-                                                    QJsonDocument(meta).toJson(QJsonDocument::Compact));
-        connect(r, &QNetworkReply::finished, this, [=, this] {
-            r->deleteLater();
-            if (!ok(r)) return;
-            const QUrl session(QString::fromLatin1(r->rawHeader("Location")));
-            QNetworkRequest put(session);
-            put.setHeader(QNetworkRequest::ContentTypeHeader, mime);
-            QNetworkReply *pr = m_net->put(put, content);
-            connect(pr, &QNetworkReply::finished, this, [this, pr, t, content] {
-                pr->deleteLater();
-                if (!ok(pr)) return;
-                // What was just uploaded is already merged: do not download it next pass just
-                // because its MD5 changed there.
-                if (jsonFiles().contains(t.name) && t.folderId == m_rootId)
-                    setSeenMd5(t.name, QString::fromLatin1(
-                                           QCryptographicHash::hash(content, QCryptographicHash::Md5)
-                                               .toHex()));
-                if (!m_queue.isEmpty()) m_queue.removeFirst();
-                transferNext();
+            QNetworkRequest req(url);
+            req.setRawHeader("Authorization", "Bearer " + m_access.toLatin1());
+            req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json; charset=UTF-8");
+            req.setRawHeader("X-Upload-Content-Type", mime.toLatin1());
+            req.setRawHeader("X-Upload-Content-Length", QByteArray::number(content.size()));
+            QNetworkReply *r = m_net->sendCustomRequest(req, existing.id.isEmpty() ? "POST" : "PATCH",
+                                                        QJsonDocument(meta).toJson(QJsonDocument::Compact));
+            connect(r, &QNetworkReply::finished, this, [=, this] {
+                r->deleteLater();
+                if (!ok(r)) {
+                    done(false, {});
+                    return;
+                }
+                const QUrl session(QString::fromLatin1(r->rawHeader("Location")));
+                QNetworkRequest put(session);
+                put.setHeader(QNetworkRequest::ContentTypeHeader, mime);
+                QNetworkReply *pr = m_net->put(put, content);
+                connect(pr, &QNetworkReply::finished, this, [this, pr, existing, content, done] {
+                    pr->deleteLater();
+                    if (!ok(pr)) {
+                        done(false, {});
+                        return;
+                    }
+                    const QString id = QJsonDocument::fromJson(pr->readAll()).object()["id"].toString(existing.id);
+                    // Drive's md5Checksum is the content's MD5: known without asking.
+                    const QString md5 = md5Of(content);
+                    done(true, Remote{id, md5, md5});
+                });
             });
         });
+    });
+}
+
+void DriveSync::folderFor(const QString &dir, std::function<void(const QString &)> next) {
+    if (m_folders.contains(dir)) {
+        next(m_folders.value(dir));
+        return;
+    }
+    const auto remember = [this, dir, next](const QString &id) {
+        if (!id.isEmpty()) m_folders.insert(dir, id);
+        next(id);
+    };
+    if (dir.isEmpty()) {
+        findFolder(kRootFolder, "root", remember);
+        return;
+    }
+    folderFor(QString(), [this, dir, remember](const QString &rootId) {
+        if (rootId.isEmpty()) {
+            remember(QString());
+            return;
+        }
+        findFolder(dir, rootId, remember);
     });
 }
 
 /// Finds the folder, creating it if missing. With drive.file only folders the
 /// app created are visible, so a hand-made "Tagoror" is never confused with
 /// ours; and since the grant is per app, every machine on the account sees
-/// the same one.
+/// the same one. An empty id means it failed (error() says why).
 void DriveSync::findFolder(const QString &name, const QString &parent,
                            std::function<void(const QString &)> next) {
     QUrl url(endpoints().api + "/files");
@@ -686,7 +558,10 @@ void DriveSync::findFolder(const QString &name, const QString &parent,
     url.setQuery(q);
 
     api("GET", url, {}, {}, [=, this](QNetworkReply *r) {
-        if (!ok(r)) return;
+        if (!ok(r)) {
+            next(QString());
+            return;
+        }
         const QJsonArray files = QJsonDocument::fromJson(r->readAll()).object()["files"].toArray();
         if (!files.isEmpty()) {
             next(files.first().toObject()["id"].toString());
@@ -698,14 +573,17 @@ void DriveSync::findFolder(const QString &name, const QString &parent,
         create.setQuery("fields=id");
         api("POST", create, QJsonDocument(meta).toJson(QJsonDocument::Compact),
             "application/json; charset=UTF-8", [=, this](QNetworkReply *cr) {
-                if (!ok(cr)) return;
+                if (!ok(cr)) {
+                    next(QString());
+                    return;
+                }
                 next(QJsonDocument::fromJson(cr->readAll()).object()["id"].toString());
             });
     });
 }
 
-void DriveSync::listFolder(const QString &folderId, const QString &pageToken,
-                           QHash<QString, Remote> *into, std::function<void()> next) {
+void DriveSync::listFolder(const QString &folderId, const QString &pageToken, Listing *into,
+                           std::function<void(bool)> next) {
     QUrl url(endpoints().api + "/files");
     QUrlQuery q;
     q.addQueryItem("q", QString("%1 in parents and trashed = false").arg(quoted(folderId)));
@@ -716,28 +594,17 @@ void DriveSync::listFolder(const QString &folderId, const QString &pageToken,
 
     api("GET", url, {}, {}, [=, this](QNetworkReply *r) {
         if (!ok(r)) {
-            if (into != &m_rootFiles) delete into;
+            next(false);
             return;
         }
         const QJsonObject o = QJsonDocument::fromJson(r->readAll()).object();
         for (const QJsonValue v : o["files"].toArray()) {
             const QJsonObject f = v.toObject();
-            into->insert(f["name"].toString(), {f["id"].toString(), f["md5Checksum"].toString()});
+            const QString md5 = f["md5Checksum"].toString();
+            into->insert(f["name"].toString(), {f["id"].toString(), md5, md5});
         }
         const QString nextToken = o["nextPageToken"].toString();
         if (!nextToken.isEmpty()) listFolder(folderId, nextToken, into, next);
-        else next();
+        else next(true);
     });
-}
-
-void DriveSync::finishSync() {
-    m_lastSync = QDateTime::currentDateTime();
-    m_remoteJson.clear();
-    saveSettings();
-    setState(Idle);
-    if (m_gotFiles) emit attachmentsArrived();
-    if (m_again) {
-        m_again = false;
-        syncNow();
-    }
 }
