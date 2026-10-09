@@ -7,7 +7,7 @@
 class QNetworkAccessManager;
 class QNetworkReply;
 
-/// WebDAV as a sync backend (5.0): Nextcloud, ownCloud, most NAS, a Raspberry
+/// WebDAV as a sync backend (1.0): Nextcloud, ownCloud, most NAS, a Raspberry
 /// Pi. The shared copy is a "Tagoror" collection under the address given,
 /// created on first use. Files are told apart by their ETag; WebDAV has no
 /// content hash to compare without downloading, which SyncEngine handles.

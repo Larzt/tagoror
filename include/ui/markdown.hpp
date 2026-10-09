@@ -25,7 +25,7 @@ void render(QTextEdit *e, const QString &source);
 
 /// The raw editor's colouring: the syntax is dimmed so the text leads
 /// (markers in grey, inline code and fences in the warm "code" colour,
-/// headings bold), as in the 5.0 design. Line by line, plus fences.
+/// headings bold), as in the 1.0 design. Line by line, plus fences.
 class Highlighter : public QSyntaxHighlighter {
 public:
     Highlighter(QTextDocument *doc, const QColor &accent);

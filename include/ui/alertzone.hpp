@@ -9,7 +9,7 @@
 
 class QVBoxLayout;
 
-/// The one place notices appear (5.0). It replaced three strips that came and
+/// The one place notices appear (1.0). It replaced three strips that came and
 /// went under the header — the alarm of a timer or event, the update, the
 /// missing data folder — and made the list jump every time one did.
 ///

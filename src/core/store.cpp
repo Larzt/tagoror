@@ -806,7 +806,7 @@ bool Store::readObject(const QJsonObject &root) {
 
     for (const QJsonValue v : root["notes"].toArray())
         m_notes.append(Note::fromJson(v.toObject()));
-    // 5.0: text notes stopped rendering Markdown. A file from before says so by
+    // 1.0: text notes stopped rendering Markdown. A file from before says so by
     // not having the mark, and its text notes written in Markdown become Markdown
     // notes, once, so no formatting turns into a row of symbols. Not a user change
     // (load() snapshots after this), and every machine converts the same way.

@@ -25,7 +25,7 @@ struct Link {
 };
 
 struct Note {
-    /// Text is plain text since 5.0; Markdown is the note that renders (raw
+    /// Text is plain text since 1.0; Markdown is the note that renders (raw
     /// editor with highlighting ⇄ preview). Appended last: the order is not
     /// stored, but nothing gains from moving the existing ones.
     enum Type { Text, Check, Reminder, Voice, Markdown };
@@ -43,7 +43,7 @@ struct Note {
     QList<QString> images;    ///< File names inside imageDir().
     /// Whether the image strip is folded. Per note, not per panel.
     bool imagesHidden = false;
-    /// Folded to its title row in the list (5.0). Per note, so it syncs.
+    /// Folded to its title row in the list (1.0). Per note, so it syncs.
     bool collapsed = false;
     /// Area the note belongs to (see area.hpp). Empty means Area::kDefaultId, so
     /// notes from before areas keep their bytes and sync does not see them as
@@ -187,7 +187,7 @@ struct Note {
         o["updated"] = double(updatedMs);
         if (!area.isEmpty()) o["area"] = area;
         // Only when set: an untouched note keeps its bytes, and sync does not see
-        // every note as edited the first time 5.0 saves.
+        // every note as edited the first time 1.0 saves.
         if (collapsed) o["folded"] = true;
 
         QJsonArray imgArr;
@@ -246,7 +246,7 @@ struct Note {
 
     /// Whether a text body was written as Markdown: headings, lists, quotes,
     /// fences, emphasis, inline code or links. Used once, when text notes
-    /// stopped rendering (5.0), so nobody's formatting turned into symbols.
+    /// stopped rendering (1.0), so nobody's formatting turned into symbols.
     static bool looksLikeMarkdown(const QString &body) {
         static const QRegularExpression block(
             R"((^|\n)\s*(#{1,6}\s|[-*+]\s+\S|\d+[.)]\s+\S|>\s|```|~~~))");

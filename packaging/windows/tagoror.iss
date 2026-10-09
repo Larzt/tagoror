@@ -1,6 +1,6 @@
 ; Instalador de Windows (Inno Setup 6). Lo compila la CI, pero a mano es:
 ;
-;   iscc /DMyAppVersion=1.2.0 /DStagingDir=..\..\dist packaging\windows\tagoror.iss
+;   iscc /DMyAppVersion=0.3.0 /DStagingDir=..\..\dist packaging\windows\tagoror.iss
 ;
 ; StagingDir es la carpeta que deja `cmake --install` y rellena windeployqt:
 ; tagoror.exe con sus DLL de Qt y sus plugins al lado.
@@ -11,7 +11,7 @@
 #define MyAppExeName "tagoror.exe"
 
 #ifndef MyAppVersion
-  #define MyAppVersion "1.2.0"
+  #define MyAppVersion "0.3.0"
 #endif
 #ifndef StagingDir
   #define StagingDir "..\..\dist"

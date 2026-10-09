@@ -18,7 +18,7 @@ class QToolButton;
 class QVBoxLayout;
 
 /// The settings page. It used to be a Popup and outgrew it: a menu row has no
-/// room for a switch, a slider and a folder path. Since 5.0 it has tabs —
+/// room for a switch, a slider and a folder path. Since 1.0 it has tabs —
 /// General, Apariencia, Sincronización, Atajos, Acerca de — and only the open
 /// one is built.
 ///

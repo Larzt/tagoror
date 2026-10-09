@@ -71,7 +71,7 @@ struct Timer {
         state = Running;
     }
 
-    /// "+1 min" on the timers page (5.0): more time on whatever it is doing.
+    /// "+1 min" on the timers page (1.0): more time on whatever it is doing.
     /// A ringing one starts counting again from now; the length grows too, so
     /// the ring keeps meaning "how much is left of it".
     void addTime(qint64 ms, qint64 now = QDateTime::currentMSecsSinceEpoch()) {

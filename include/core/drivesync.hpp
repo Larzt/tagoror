@@ -22,7 +22,7 @@ class QTcpSocket;
 
 /// The Google account, and Google Drive as a sync backend.
 ///
-/// Since 5.0 the pass itself is SyncEngine's; this keeps what is Google's:
+/// Since 1.0 the pass itself is SyncEngine's; this keeps what is Google's:
 /// the authorisation (Google's desktop flow: loopback redirect plus PKCE,
 /// with the narrow `drive.file` scope), the token, and the Drive calls that
 /// list, download and upload in a "Tagoror" folder of the user's Drive.

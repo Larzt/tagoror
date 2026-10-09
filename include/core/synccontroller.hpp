@@ -12,7 +12,7 @@ class SyncBackend;
 class SyncEngine;
 class WebDavBackend;
 
-/// Which backend syncs the notes, and when (5.0). The pass is SyncEngine's;
+/// Which backend syncs the notes, and when (1.0). The pass is SyncEngine's;
 /// the backends are Google Drive, WebDAV and a synced folder; this picks one,
 /// runs passes on the chosen rhythm and keeps Google Calendar going.
 ///

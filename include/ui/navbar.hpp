@@ -10,7 +10,7 @@
 
 class QBoxLayout;
 
-/// The fixed page navigation of 5.0: Notas · Planner · Timers · Cumpleaños,
+/// The fixed page navigation of 1.0: Notas · Planner · Timers · Cumpleaños,
 /// always visible, with the open one marked. Before it every page was a
 /// header button that toggled back to the notes, so nothing said "you are
 /// here".

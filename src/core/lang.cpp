@@ -130,7 +130,7 @@ const QHash<QString, QString> &table() {
         {"Cambiar…", "Change…"},
         {"La del sistema", "System default"},
         {"Incluida con Tagoror", "Comes with Tagoror"},
-        // 5.0 chrome: navigation, tools row, "⋯" menu and the alert zone.
+        // 1.0 chrome: navigation, tools row, "⋯" menu and the alert zone.
         {"Planner", "Planner"},
         {"Timers", "Timers"},
         {"Volver", "Back"},
@@ -162,7 +162,7 @@ const QHash<QString, QString> &table() {
         {"Revisar", "Check"},
         {"Tagoror %1 disponible", "Tagoror %1 available"},
         {"Novedades en GitHub", "Release notes on GitHub"},
-        // 5.0 sync: backends, engine, settings tabs.
+        // 1.0 sync: backends, engine, settings tabs.
         {"Google Calendar: %1", "Google Calendar: %1"},
         {"La cuenta de Google no está conectada.", "The Google account is not connected."},
         {"Sin conexión con Google.", "No connection to Google."},
@@ -233,7 +233,7 @@ const QHash<QString, QString> &table() {
          "(SIL Open Font License 1.1) y usa Qt 6 bajo LGPL-3.0.",
          "Tagoror is released under the MIT licence. It bundles IBM Plex Sans and IBM Plex "
          "Mono (SIL Open Font License 1.1) and uses Qt 6 under the LGPL-3.0."},
-        // 5.0 pages: timers, birthdays, splash and dock.
+        // 1.0 pages: timers, birthdays, splash and dock.
         {"HOY", "TODAY"},
         {"PRÓXIMO", "NEXT"},
         {"Cumple %1 años", "Turns %1"},

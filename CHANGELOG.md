@@ -4,7 +4,7 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [5.0.0] — sin publicar
+## [1.0.0] — 2026-10-09
 
 A simpler interface: one fixed place for everything.
 
@@ -41,7 +41,7 @@ A simpler interface: one fixed place for everything.
 ### Changed
 
 - **Text notes are plain text.** What you type is what you see. Text notes you
-  had already written in Markdown were turned into Markdown notes when 5.0
+  had already written in Markdown were turned into Markdown notes when 1.0
   first opened them, so none of your formatting was lost.
 - **Navigation that stays put.** Notes, Planner, Timers and Birthdays live in a
   bar along the bottom, with the open page marked; widen the panel past 480 px
@@ -83,7 +83,7 @@ A simpler interface: one fixed place for everything.
 - The footer with its counters and hints, and the resize corner — the panel
   resizes from any edge since 4.3.
 
-## [4.3.0] — 2026-10-09
+## [0.17.0] — 2026-10-09
 
 A date picker, Enter to finish, resizing from any edge, and a new typeface and icon.
 
@@ -121,7 +121,7 @@ A date picker, Enter to finish, resizing from any edge, and a new typeface and i
 - The *New timer* card no longer runs off the right edge of the panel at its
   minimum width.
 
-## [4.2.0] — 2026-10-06
+## [0.16.0] — 2026-10-06
 
 Search and new note next to the notes, a typeface of its own, and copying a note as text.
 
@@ -147,7 +147,7 @@ Search and new note next to the notes, a typeface of its own, and copying a note
   beside it. **Ctrl+F** jumps to the search and **Ctrl+N** opens the new-note
   menu.
 
-## [4.1.0] — 2026-10-03
+## [0.15.0] — 2026-10-03
 
 A fuller tray menu, and app mode behaving like an ordinary window.
 
@@ -165,7 +165,7 @@ A fuller tray menu, and app mode behaving like an ordinary window.
   size and place you give it whichever page is open, and the switch no longer
   shows in settings. Your choice is kept for when you go back to the widget.
 
-## [4.0.0] — 2026-09-29
+## [0.14.0] — 2026-09-29
 
 Workspaces, the planner in step with Google Calendar, an ordinary-window mode,
 and events you move by dragging them.
@@ -202,7 +202,7 @@ and events you move by dragging them.
 - New screenshots in the README and on the website, all in English.
 - Code comments are now in English and in Doxygen format.
 
-## [3.2.0] — 2026-09-27
+## [0.13.0] — 2026-09-27
 
 Checklist items you can reorder, and a website.
 
@@ -221,7 +221,7 @@ Checklist items you can reorder, and a website.
   now follows `CMakeLists.txt` unless it is overridden on purpose, and the
   AppImage script passes it explicitly.
 
-## [3.1.1] — 2026-09-27
+## [0.12.0] — 2026-09-27
 
 A tidier settings page, and pages that no longer push each other around.
 
@@ -241,7 +241,7 @@ A tidier settings page, and pages that no longer push each other around.
   placed from the note list's position, so each one always opens in the same
   place, and folding to the dock and back no longer shifts anything.
 
-## [3.1.0] — 2026-09-27
+## [0.11.0] — 2026-09-27
 
 Categories of your own in the planner, a choice of how early an event alerts,
 an alarm that no longer rings forever, and a window size for each page.
@@ -272,7 +272,7 @@ an alarm that no longer rings forever, and a window size for each page.
 - **Closing a page selected the first note's title**, as if to edit it: the
   focus now stays on the page's header button.
 
-## [3.0.0] — 2026-09-22
+## [0.10.0] — 2026-09-22
 
 A planner in place of the calendar, timers, Markdown in text notes, a text-size
 setting and a panel that can be used without the mouse.
@@ -323,10 +323,10 @@ setting and a panel that can be used without the mouse.
 - The day list under the month grid is gone with the old calendar: picking a
   day opens it in the day view instead.
 
-## [2.0.0] — 2026-09-18
+## [0.9.0] — 2026-09-18
 
 Two new pages and a settings screen that is no longer a dropdown. The version
-jumps to 2.0.0 because the panel stopped being "a list of notes with a calendar
+jumps to 0.9.0 because the panel stopped being "a list of notes with a calendar
 attached": it now has four pages, and birthdays are kept in a file of their own.
 
 ### Added
@@ -377,7 +377,7 @@ attached": it now has four pages, and birthdays are kept in a file of their own.
   335px against the 284 the list has — and one card over the edge clips all of
   them. The card's minimum no longer depends on what anybody types.
 
-## [1.5.0] — 2026-09-07
+## [0.8.0] — 2026-09-07
 
 This release exists because Tagoror lost someone's notes. A storage folder on a
 USB stick that was not mounted yet made the app believe it was a fresh install,
@@ -453,19 +453,19 @@ story.
 
 ### Notes on versioning
 
-The last released tag was `v1.3.1`; the version in `CMakeLists.txt`, the
-`PKGBUILD` and the Flatpak manifest had been left behind at `1.2.0`, and one
-commit since is titled `1.4.1` without ever having been tagged or bumped. This
-release moves every one of those to **1.5.0** at once — a number ahead of both
+The last released tag was `v0.5.0`; the version in `CMakeLists.txt`, the
+`PKGBUILD` and the Flatpak manifest had been left behind at `0.3.0`, and one
+commit since is titled `0.7.0` without ever having been tagged or bumped. This
+release moves every one of those to **0.8.0** at once — a number ahead of both
 readings, so no packaging channel sees a version go backwards.
 
-## [1.3.1] — 2026-08-23
+## [0.5.0] — 2026-08-23
 
 Tagged; the version files were not bumped at the time.
 
 - MIT `LICENSE` added at the root and installed with every package.
 
-## [1.3.0] — 2026-08-21
+## [0.4.0] — 2026-08-21
 
 Tagged; the version files were not bumped at the time.
 
@@ -473,15 +473,15 @@ Tagged; the version files were not bumped at the time.
   folder and settings scope.
 - Card reordering by drag, more foldable sections, images attached to notes.
 
-## [1.2] — 2026-08-21
+## [0.3.0] — 2026-08-21
 
 - Language selector (Spanish/English), a system tray icon, and a panel that
   folds and unfolds without wandering off its corner.
 
-## [1.1] — 2026-08-21
+## [0.2.0] — 2026-08-21
 
-## [1.0] — 2026-08-21
+## [0.1.0] — 2026-08-21
 
-[1.5.0]: https://github.com/Larzt/tagoror/releases/tag/v1.5.0
-[1.3.1]: https://github.com/Larzt/tagoror/releases/tag/v1.3.1
-[1.3.0]: https://github.com/Larzt/tagoror/releases/tag/v1.3.0
+[0.8.0]: https://github.com/Larzt/tagoror/releases/tag/v0.8.0
+[0.5.0]: https://github.com/Larzt/tagoror/releases/tag/v0.5.0
+[0.4.0]: https://github.com/Larzt/tagoror/releases/tag/v0.4.0

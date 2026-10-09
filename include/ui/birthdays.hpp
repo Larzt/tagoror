@@ -8,7 +8,7 @@
 
 class QVBoxLayout;
 
-/// The birthdays page (5.0 layout).
+/// The birthdays page (1.0 layout).
 ///
 /// On top, the next birthday due on a card with a blurred colour backdrop —
 /// the one blur in the app — and what can be done about it (greet, only on the

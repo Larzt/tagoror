@@ -4,7 +4,7 @@
 
 /// A folder that something else keeps in step between machines — Syncthing,
 /// the Dropbox, OneDrive or Nextcloud desktop clients — as a sync backend
-/// (5.0). Almost free, and unlike pointing the data folder itself there, two
+/// (1.0). Almost free, and unlike pointing the data folder itself there, two
 /// machines editing at once still merge element by element instead of the
 /// last copy of notes.json overwriting the other. Tagoror only writes inside
 /// the folder chosen.

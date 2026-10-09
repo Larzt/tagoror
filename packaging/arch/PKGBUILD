@@ -12,7 +12,7 @@
 # local, pero en el AUR no se admite en una fuente que no sea un repositorio.
 
 pkgname=tagoror
-pkgver=1.5.0
+pkgver=0.8.0
 pkgrel=1
 pkgdesc='Sticky-notes panel for the desktop: checklists, reminders with a calendar, and voice notes'
 arch=('x86_64')
@@ -29,7 +29,7 @@ conflicts=('codex')
 depends=('qt6-base' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'libxcb' 'hicolor-icon-theme')
 makedepends=('cmake' 'ninja')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-# OJO: v1.2.0 es anterior al renombrado, así que ese tarball todavía trae
+# OJO: v0.3.0 es anterior al renombrado, así que ese tarball todavía trae
 # la aplicación llamada codex. Antes de empaquetar hay que etiquetar una
 # versión que ya sea Tagoror, subir pkgver y correr updpkgsums: la suma
 # cambia también porque la carpeta de dentro del tarball pasa a llamarse

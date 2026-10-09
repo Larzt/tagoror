@@ -77,7 +77,7 @@ void autoGrow(QTextEdit *e, const QString &placeholder) {
 /// A note body. Three uses of one editor, so height, focus and tab order are
 /// the same everywhere:
 ///  - Rendered (reminder details): Markdown at rest, source while focused.
-///  - Plain (text notes since 5.0): the source, always.
+///  - Plain (text notes since 1.0): the source, always.
 ///  - Preview (a Markdown note's card): rendered and read-only; a click or
 ///    Enter calls @c activated, which opens the note's own page.
 /// @c m_source is the truth: the rendered document is never written to the note.
@@ -507,7 +507,7 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(4);
 
-    // Fold: the chevron, then the type's icon, as in the 5.0 design.
+    // Fold: the chevron, then the type's icon, as in the 1.0 design.
     m_foldBtn = new QToolButton;
     m_foldBtn->setObjectName("foldBtn");
     m_foldBtn->setIconSize(QSize(12, 12));
@@ -571,7 +571,7 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
 }
 
 void NoteCard::buildText(QVBoxLayout *l) {
-    // Plain text since 5.0; formatting is the Markdown note's job.
+    // Plain text since 1.0; formatting is the Markdown note's job.
     auto *body = new MarkdownEdit(m_note->body, m_theme.accent, MarkdownEdit::Plain);
     autoGrow(body, L("Escribe…"));
     body->edited = [this](const QString &text) {

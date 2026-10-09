@@ -61,7 +61,7 @@ public:
         int textScale = 100;
 
         /// Interface typeface: empty for IBM Plex Sans (bundled; Libron until
-        /// 4.3), "system" for the system's default, otherwise the family name of
+        /// 0.17), "system" for the system's default, otherwise the family name of
         /// an installed font.
         QString font;
 

@@ -15,7 +15,7 @@ namespace md {
 class Highlighter;
 }
 
-/// A Markdown note's own page (5.0): the raw text with its syntax dimmed and
+/// A Markdown note's own page (1.0): the raw text with its syntax dimmed and
 /// line numbers, or the rendered preview (Ctrl+E), and a formatting bar that
 /// only shows while editing. The card in the list is the preview; this is
 /// where it is written — a 300px card has no room for both.

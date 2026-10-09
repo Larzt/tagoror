@@ -13,7 +13,7 @@
 
 namespace {
 
-constexpr int kHeight = 36;   // the whole tools row (5.0)
+constexpr int kHeight = 36;   // the whole tools row (1.0)
 constexpr int kLeft = 8;           // left margin of the strip
 constexpr int kRight = 6;
 constexpr int kPad = 7;            // on each side of a tab's text
@@ -75,7 +75,7 @@ void AreaTabs::relayout() {
     m_hiddenRinging = false;
     m_overflowRect = QRect();
 
-    // Since 5.0 the "+" at the end of the row makes notes, not areas: new areas
+    // Since 1.0 the "+" at the end of the row makes notes, not areas: new areas
     // come from Ctrl+T, the "+N" menu and the palette. The rect stays, empty, as
     // the right limit.
     m_addRect = QRect(width() - kRight, (kHeight - kAddSize) / 2, 0, kAddSize);
@@ -181,7 +181,7 @@ void AreaTabs::paintEvent(QPaintEvent *) {
             p.setBrush(fill);
             p.drawRoundedRect(QRectF(r).adjusted(1, 5, -1, -5), 7, 7);
         } else if (isActive) {
-            // The open area is a raised pill, not an underline (5.0).
+            // The open area is a raised pill, not an underline (1.0).
             p.setPen(QPen(QColor(255, 255, 255, 20), 1));
             p.setBrush(QColor(255, 255, 255, 19));
             p.drawRoundedRect(QRectF(r).adjusted(1.5, 5.5, -1.5, -5.5), 7, 7);

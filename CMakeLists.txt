@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 4.3.0 LANGUAGES CXX)
+project(tagoror VERSION 1.0.0 LANGUAGES CXX)
 
 # La versión que llega al binario (la que compara el aviso de actualizaciones)
 # y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de
@@ -7,7 +7,7 @@ project(tagoror VERSION 4.3.0 LANGUAGES CXX)
 #
 # Es una variable de caché para que ese -DTAGOROR_VERSION= gane, pero una caché
 # sin más se quedaba con la versión del día en que se configuró el árbol: un
-# árbol de hace meses seguía compilando 1.2.0 y la app veía como nueva la
+# árbol de hace meses seguía compilando 0.3.0 y la app veía como nueva la
 # versión que ya tenía. Así que sigue a project() mientras nadie la haya
 # pisado: si vale lo mismo que project() la última vez, se actualiza.
 if (NOT DEFINED TAGOROR_VERSION OR
@@ -162,7 +162,7 @@ qt_add_resources(tagoror "appicon"
 
 # Tipografías empotradas (OFL-1.1): no hay que instalarlas en el sistema
 # y se ven igual en Linux y en Windows. IBM Plex Sans es la de la interfaz
-# desde la 4.3; IBM Plex Mono la de horas, fechas y contadores, que la hoja de
+# desde la 0.17; IBM Plex Mono la de horas, fechas y contadores, que la hoja de
 # estilo ya pedía por nombre y que, sin empotrar, solo existía donde alguien la
 # hubiera instalado. Sustituyen a Libron, la de la 4.2.
 qt_add_resources(tagoror "fonts"

@@ -1,6 +1,6 @@
 pkgbase = tagoror
 	pkgdesc = Sticky-notes panel for the desktop: checklists, reminders with a calendar, and voice notes
-	pkgver = 1.2.0
+	pkgver = 0.3.0
 	pkgrel = 1
 	url = https://github.com/Larzt/tagoror
 	arch = x86_64

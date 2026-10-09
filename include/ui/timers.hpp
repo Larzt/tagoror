@@ -10,7 +10,7 @@ class QLabel;
 class QLineEdit;
 class QVBoxLayout;
 
-/// The timers page (5.0 layout): the timer that matters on top with its
+/// The timers page (1.0 layout): the timer that matters on top with its
 /// ring — the one picked, else the one running or ringing, else a paused one —
 /// then every other timer as a row under *Guardados*, then *Rápido* chips that
 /// start one at once. The creation form opens from the header's "+".

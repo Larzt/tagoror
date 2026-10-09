@@ -6,7 +6,7 @@
 #include "ui/keynav.hpp"
 #include "ui/theme.hpp"
 
-/// The folded panel (5.0): a 56px tile with the tagoror's ring of stones,
+/// The folded panel (1.0): a 56px tile with the tagoror's ring of stones,
 /// in the accent. While something rings the stones turn red, a halo beats
 /// around the tile (opacity and scale) and a badge counts the alarms — folded,
 /// this is the only thing on screen, so it has to say it on its own. Click or

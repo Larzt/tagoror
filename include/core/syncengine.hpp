@@ -13,7 +13,7 @@
 
 class Store;
 
-/// A sync pass, whatever the backend (5.0). It used to be DriveSync's own
+/// A sync pass, whatever the backend (1.0). It used to be DriveSync's own
 /// code; it moved here as it was, with the Drive calls behind SyncBackend.
 ///
 /// A pass downloads the JSON files that changed since the last merge, merges

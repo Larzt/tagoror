@@ -10,7 +10,7 @@
 class QLabel;
 class QVariantAnimation;
 
-/// The start screen (5.0): the twelve stones of the tagoror light up in a
+/// The start screen (1.0): the twelve stones of the tagoror light up in a
 /// ring while a line says what is really happening — loading, syncing,
 /// looking for updates. It is shown only when there is something to wait for;
 /// a start where everything is local and instant goes straight to the notes,

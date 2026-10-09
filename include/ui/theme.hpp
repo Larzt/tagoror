@@ -384,10 +384,10 @@ QFrame#shell {
 /* App mode: the frame is the system's, which has its own corners. */
 QFrame#shell[app="true"] { border: none; border-radius: 0; }
 QFrame#header { border: none; }
-/* 5.0 chrome: a 36px tools row over the list, and the navigation as a bar
+/* 1.0 chrome: a 36px tools row over the list, and the navigation as a bar
    along the bottom or a rail down the left. */
 QFrame#toolsRow { border: none; border-bottom: 1px solid %2; }
-/* 5.0 pages: section labels, the timers' hero card, rows and chips. */
+/* 1.0 pages: section labels, the timers' hero card, rows and chips. */
 QLabel#pageSection {
     color: #636872; font-size: 10px; letter-spacing: 0.8px; padding: 8px 4px 0 4px;
     font-family: "IBM Plex Mono", monospace;
@@ -408,7 +408,7 @@ QToolButton#heroGhost, QToolButton#quickChip {
 QToolButton#heroGhost:hover, QToolButton#quickChip:hover { background: %7; color: %3; }
 QToolButton#heroIcon { background: transparent; border: 1px solid %2; border-radius: 8px; }
 QToolButton#heroIcon:hover { background: %7; }
-/* Birthdays (5.0): the next one on a blurred card, everyone else in a grid. */
+/* Birthdays (1.0): the next one on a blurred card, everyone else in a grid. */
 QLabel#heroKicker {
     color: #e3e6ec; font-size: 10px; letter-spacing: 1px; font-family: "IBM Plex Mono", monospace;
 }
@@ -426,7 +426,7 @@ QToolButton#heroStop { color: #2b0e0a; background: #ff7a6b; border: none; font-w
 QWidget#bdayCard { background: rgba(255,255,255,0.045); border: 1px solid %2; border-radius: 10px; }
 QWidget#bdayCard:hover { background: rgba(255,255,255,0.065); }
 QWidget#bdayCard[kbfocus="true"]:focus { border: 1px solid %5; }
-/* Settings (5.0): tabs, provider cards and their fields. */
+/* Settings (1.0): tabs, provider cards and their fields. */
 QScrollArea#setTabs, QWidget#setTabsHost { background: transparent; border: none; }
 QToolButton#setTab {
     color: %4; background: transparent; border: 1px solid transparent; border-radius: 7px;
@@ -444,7 +444,7 @@ QLineEdit#setField {
 }
 QLineEdit#setField:focus { border: 1px solid %5; }
 QLabel#syncStatus { font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
-/* Folding a card (5.0): the chevron and what stands in for the body. */
+/* Folding a card (1.0): the chevron and what stands in for the body. */
 QToolButton#foldBtn { background: transparent; border: none; border-radius: 5px; }
 QToolButton#foldBtn:hover { background: %7; }
 /* A Markdown note's page: raw editor in mono, preview in the body font. */
