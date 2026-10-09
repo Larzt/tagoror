@@ -42,9 +42,11 @@ add_executable(tagoror
     src/core/lang.cpp
     src/core/updater.cpp
     src/core/drivesync.cpp
+    src/core/synccontroller.cpp
     src/core/calendarsync.cpp
     include/core/birthday.hpp
     include/core/drivesync.hpp
+    include/core/synccontroller.hpp
     include/core/calendarsync.hpp
     include/core/area.hpp
     include/core/event.hpp
@@ -64,6 +66,8 @@ add_executable(tagoror
     src/ui/areatabs.cpp
     src/ui/popup.cpp
     src/ui/datetimepicker.cpp
+    src/ui/navigator.cpp
+    src/ui/alertcenter.cpp
     src/ui/waveform.cpp
     src/ui/workarea.cpp
     include/ui/panel.hpp
@@ -76,6 +80,8 @@ add_executable(tagoror
     include/ui/areatabs.hpp
     include/ui/popup.hpp
     include/ui/datetimepicker.hpp
+    include/ui/navigator.hpp
+    include/ui/alertcenter.hpp
     include/ui/theme.hpp
     include/ui/waveform.hpp
     include/ui/workarea.hpp

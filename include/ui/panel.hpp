@@ -24,11 +24,13 @@ class QSystemTrayIcon;
 class QTimer;
 class QToolButton;
 class QVBoxLayout;
-class Alarm;
+class AlertCenter;
 class AreaTabs;
 class DriveSync;
+class SyncController;
 class Updater;
 class BirthdayView;
+class Navigator;
 class NoteCard;
 class PlannerView;
 class SettingsView;
@@ -129,14 +131,8 @@ private:
     void commitOrder();
     /// @}
 
-    /// A body page with its header button and its name. Opening, closing,
-    /// lighting the button and setting the title all walk pages().
-    struct Page {
-        QWidget *page;
-        QToolButton *button;
-        const char *name;    ///< Spanish; translated when used.
-    };
-    QList<Page> pages() const;
+    /// Opens a page, or returns to the notes if it was already open. The pages,
+    /// their buttons and the window sizes live in Navigator.
     void togglePage(QWidget *page);
     /// Lights a page's button on or off. The icon says where it leads; the
     /// highlight says where you are.
@@ -155,26 +151,6 @@ private:
     /// Which Google calendar new Tagoror events go to.
     void openCalendarTarget(QWidget *anchor);
 
-    /// The planner needs width: the window widens on entering and returns to its
-    /// previous size on leaving, unless the user resized it meanwhile (the same
-    /// rule as m_grownFrom for the height).
-    void enterWide();
-    void leaveWide();
-
-    /// Size per page (Prefs::sizePerPage): leaving a page records the window
-    /// size, entering one applies its own; the list keeps m_listSize. With this
-    /// on, the m_grownFrom and m_narrowGeom notes are dropped.
-    bool sizePerPage() const;
-    QString pageKey(const QWidget *page) const;   ///< Empty for the list.
-    void rememberPageSize(QWidget *page);
-    /// @return false if the page has no stored size yet.
-    bool applyPageSize(QWidget *page);
-    /// Updates m_pageHome when leaving a page: if the user moved it, the list
-    /// moves with it; otherwise it stays.
-    void syncPageHome(QWidget *from);
-    /// The whole page switch, with or without size per page.
-    void switchBodyPage(QWidget *page);
-
     /// @name Timers
     /// @{
     void createTimer(const QString &name, qint64 ms);
@@ -188,7 +164,6 @@ private:
     /// with a stop button, so their alarm lives here. Stop silences all of it.
     void refreshAlarmBar();
     void stopBarAlarms();
-    void silenceEvent(Event *e);
     /// @}
 
     /// @name Birthdays
@@ -200,9 +175,6 @@ private:
     void removeBirthday(Birthday *b);
     void toggleGreeted(Birthday *b);
     void dismissBirthday(Birthday *b);
-    /// Silences a birthday alarm; the year is recorded so it does not ring again
-    /// until the next.
-    void silenceBirthday(Birthday *b);
     /// @}
 
     /// @name Reminders
@@ -210,12 +182,8 @@ private:
     void checkReminders();          ///< Anything due? Then ring and show it.
     void dismissNote(Note *n);      ///< The user stops the alarm.
     void rescheduleNote(Note *n);   ///< Its date changed while it was ringing.
-    /// Silences a reminder: repeating ones are not marked as fired, they move to
-    /// their next turn. Shared by the stop button and opening the panel.
-    void silence(Note *n);
     void refreshDueCards();         ///< Repaints the state without rebuilding the list.
     void applyBadgeAlert();         ///< The dock shows the alert even when folded.
-    bool anyRinging() const;
     /// @}
 
     /// @name Menus and settings
@@ -294,16 +262,6 @@ private:
     int shadowMargin() const;
     /// From the tray or a second instance: also when minimised.
     void showRestored();
-    void keepOnScreen();            ///< Keeps folding/unfolding from pushing it off screen.
-    /// Puts the window back where it was saved. Without this it reappears
-    /// wherever the window manager puts it.
-    void restoreWindowPos();
-    /// Where the window manager lets the window be, which is not the whole screen
-    /// (see the definition). Without @p sc the window's own screen is used.
-    QRect placementArea(const QScreen *sc = nullptr) const;
-    /// The corner the window grows or shrinks from: it keeps the top-left unless
-    /// growing from there would leave the placement area.
-    QPoint anchoredTopLeft(const QRect &before, const QSize &after) const;
     /// @}
 
     /// @name Search and folding
@@ -311,24 +269,15 @@ private:
     void focusSearch();
     void applyFilter(const QString &q);
     void collapse();
+    /// Unfolding acknowledges whatever rings, then Navigator opens the panel.
     void expand();
-    void showPage(QWidget *page);   ///< Sizes the window to the visible page.
-    /// Same for the body pages: the hidden one must not impose its minimum on
-    /// the visible one.
-    void showBodyPage(QWidget *page);
-    /// The minimum height the visible page's layout needs, and applying it. Not a
-    /// constant: the planner needs more than the list.
-    int shellMinimumHeight() const;
-    void syncShellMinimum();
     /// @}
 
-    /// Copies what only the panel knows (the window geometry) into the
-    /// preferences; runs right before every save.
-    void syncPrefs();
     void scheduleSave();
     void save();
 
     Store m_store;
+    Navigator *m_nav = nullptr;   ///< Pages and window geometry.
 
     QStackedWidget *m_stack = nullptr;   ///< Expanded panel / folded dock.
     QFrame *m_shell = nullptr;
@@ -387,36 +336,13 @@ private:
     AreaTabs *m_areaTabs = nullptr;
     QTimer *m_dueTimer = nullptr;          ///< Reminder heartbeat.
     QTimer *m_tick = nullptr;              ///< Running timers.
-    Alarm *m_alarm = nullptr;
+    AlertCenter *m_alerts = nullptr;       ///< What rings, and the tone.
     Updater *m_updater = nullptr;
-    /// Google Drive sync. Runs a while after each save, so a burst of typing is
-    /// one upload and not fifty.
-    DriveSync *m_drive = nullptr;
-    QTimer *m_driveTimer = nullptr;
-    /// How often to check whether another machine changed something. Checking
-    /// lists a folder; only what changed is downloaded.
-    QTimer *m_drivePoll = nullptr;
+    SyncController *m_sync = nullptr;   ///< When to sync.
+    DriveSync *m_drive = nullptr;       ///< m_sync's, for the settings and the calendar.
     QString m_latestUrl;              ///< Page of the latest release.
     Theme m_theme;
-    QSize m_expandedSize;                  ///< Restored when unfolding (and saved).
-    QSize m_listSize;                      ///< The list's, with size per page.
-    QPoint m_dockOffset;                   ///< The point of the panel the dock goes in and out through.
-    bool m_posRestored = false;            ///< The saved position is restored only on map.
     /// Brought to front from the tray: the widget is out of the desktop layer
     /// until sent back. Not saved, it does not survive a restart.
     bool m_lifted = false;
-    /// The geometry before the window was stretched to fit a page's minimum, and
-    /// the one it was left at. Leaving restores the first, but only if the second
-    /// is still the current geometry: once the user resizes, the size is theirs.
-    QRect m_grownFrom;
-    QRect m_grownTo;
-    /// The same for the planner's width (see enterWide()).
-    QRect m_narrowGeom;
-    QRect m_wideGeom;
-    /// With size per page, every page is placed from the list's geometry
-    /// (m_pageHome), never from the page being left: otherwise a large page that
-    /// opened leftwards or upwards dragged the corner along. m_pagePlaced is
-    /// where the open page was placed, to tell whether the user moved it.
-    QRect m_pageHome;
-    QRect m_pagePlaced;
 };
