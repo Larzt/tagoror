@@ -4,6 +4,44 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [4.3.0] — 2026-10-09
+
+A date picker, Enter to finish, resizing from any edge, and a new typeface and icon.
+
+### Added
+
+- **Date picker for reminders.** The date menu now has a small month to pick
+  the day, a column of times in steps of **5 or 15 minutes** (the choice is
+  remembered) and quick picks — in an hour, today or tomorrow at 18:00,
+  tomorrow at 09:00, next Monday at 09:00. Days already gone can't be chosen;
+  the arrows, Page Up/Down and Enter work inside the grid, and *Save* confirms.
+  It replaces the field where the date had to be typed as `dd/MM HH:mm`.
+  A birthday's alert time is picked from the same column of times.
+- **Resize from any edge.** The panel can be grabbed by any of its four edges
+  or corners, not only the bottom-right one. In app mode the system frame
+  already did this.
+
+### Changed
+
+- **Enter finishes, Shift+Enter breaks the line.** In a text note or a
+  reminder's details, Enter now finishes writing (Ctrl+Enter too) and
+  Shift+Enter starts a new line; the footer says so while you write. Enter in
+  a note's title finishes it as well. An input method composing a word keeps
+  its Enter.
+- **IBM Plex Sans is the default typeface**, bundled together with IBM Plex
+  Mono, which times, dates and counters already asked for but which was only
+  there if it happened to be installed. They replace Libron, which is no
+  longer bundled; the system's font or any installed one can still be chosen
+  in *Settings → Appearance → Typeface*. Both are under the SIL Open Font
+  License 1.1, installed alongside Tagoror's.
+- **New icon**: seven stones in a ring around the sun, with a simplified
+  version for small sizes.
+
+### Fixed
+
+- The *New timer* card no longer runs off the right edge of the panel at its
+  minimum width.
+
 ## [4.2.0] — 2026-10-06
 
 Search and new note next to the notes, a typeface of its own, and copying a note as text.

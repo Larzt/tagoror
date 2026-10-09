@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 4.2.0 LANGUAGES CXX)
+project(tagoror VERSION 4.3.0 LANGUAGES CXX)
 
 # La versión que llega al binario (la que compara el aviso de actualizaciones)
 # y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de
@@ -63,6 +63,7 @@ add_executable(tagoror
     src/ui/settings.cpp
     src/ui/areatabs.cpp
     src/ui/popup.cpp
+    src/ui/datetimepicker.cpp
     src/ui/waveform.cpp
     src/ui/workarea.cpp
     include/ui/panel.hpp
@@ -74,6 +75,7 @@ add_executable(tagoror
     include/ui/settings.hpp
     include/ui/areatabs.hpp
     include/ui/popup.hpp
+    include/ui/datetimepicker.hpp
     include/ui/theme.hpp
     include/ui/waveform.hpp
     include/ui/workarea.hpp
@@ -133,16 +135,25 @@ qt_add_resources(tagoror "appicon"
         packaging/icons/128x128/tagoror.png
         packaging/icons/256x256/tagoror.png)
 
-# Libron (OFL-1.1) es la tipografía de la interfaz. Va empotrada: no hay que
-# instalarla en el sistema y se ve igual en Linux y en Windows.
+# Tipografías empotradas (OFL-1.1): no hay que instalarlas en el sistema
+# y se ven igual en Linux y en Windows. IBM Plex Sans es la de la interfaz
+# desde la 4.3; IBM Plex Mono la de horas, fechas y contadores, que la hoja de
+# estilo ya pedía por nombre y que, sin empotrar, solo existía donde alguien la
+# hubiera instalado. Sustituyen a Libron, la de la 4.2.
 qt_add_resources(tagoror "fonts"
     PREFIX "/fonts"
-    BASE "fonts/libron"
+    BASE "fonts/plex"
     FILES
-        fonts/libron/Libron-Regular.ttf
-        fonts/libron/Libron-Italic.ttf
-        fonts/libron/Libron-Bold.ttf
-        fonts/libron/Libron-BoldItalic.ttf)
+        fonts/plex/IBMPlexSans-Regular.ttf
+        fonts/plex/IBMPlexSans-Italic.ttf
+        fonts/plex/IBMPlexSans-Medium.ttf
+        fonts/plex/IBMPlexSans-SemiBold.ttf
+        fonts/plex/IBMPlexSans-Bold.ttf
+        fonts/plex/IBMPlexSans-BoldItalic.ttf
+        fonts/plex/IBMPlexMono-Regular.ttf
+        fonts/plex/IBMPlexMono-Medium.ttf
+        fonts/plex/IBMPlexMono-SemiBold.ttf
+        fonts/plex/IBMPlexMono-Bold.ttf)
 
 target_include_directories(tagoror PRIVATE include)
 target_compile_definitions(tagoror PRIVATE TAGOROR_APP_ID="${TAGOROR_APP_ID}")
@@ -195,7 +206,7 @@ if (WIN32)
     # las dos formas de repartirlo llevan el texto dentro.
     install(FILES LICENSE DESTINATION .)
     # La OFL pide que la licencia acompañe a la tipografía empotrada.
-    install(FILES fonts/libron/OFL.txt DESTINATION . RENAME LICENSE-Libron.txt)
+    install(FILES fonts/plex/OFL.txt DESTINATION . RENAME LICENSE-IBM-Plex.txt)
     return()
 endif()
 
@@ -222,10 +233,10 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${TAGOROR_APP_ID}.metainfo.xml
 # ID solo manda en el .desktop, los iconos y la ficha de AppStream.
 install(FILES LICENSE
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/tagoror)
-# La de Libron, que va empotrada en el binario: la OFL pide que viaje con ella.
-install(FILES fonts/libron/OFL.txt
+# La de las tipografías empotradas en el binario: la OFL pide que viaje con ellas.
+install(FILES fonts/plex/OFL.txt
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/licenses/tagoror
-        RENAME LICENSE-Libron)
+        RENAME LICENSE-IBM-Plex)
 
 # El SVG detallado como icono escalable, y PNG ya rasterizados por tamaño:
 # los cargadores de iconos prefieren el bitmap exacto antes que el escalable

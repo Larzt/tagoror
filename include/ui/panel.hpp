@@ -61,11 +61,21 @@ protected:
     void moveEvent(QMoveEvent *e) override;
     /// Escape goes back to the notes from any other page.
     void keyPressEvent(QKeyEvent *e) override;
+    /// Resizing from any edge: the cursor changes over the band around the
+    /// visible frame, and a press there hands the gesture to the compositor.
+    void mouseMoveEvent(QMouseEvent *e) override;
+    void leaveEvent(QEvent *e) override;
+    /// Catches presses on the band's inner side, which children cover.
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     /// @name Building the interface
     /// @{
     void buildShell();
+    /// Which edges of the visible frame @p pos (in panel coordinates) is close
+    /// enough to grab; none when folded, in app mode (the system frame does it)
+    /// or maximised.
+    Qt::Edges resizeEdgesAt(const QPoint &pos) const;
     QFrame *buildHeader();
     QWidget *buildBody();
     QFrame *buildFooter();
@@ -213,7 +223,7 @@ private:
     void openNewNoteMenu(QWidget *anchor);
     void refreshSettings();
     void openAccentEditor(QWidget *anchor);
-    /// Libron, the system's or an installed one typed by name. @p notFound is
+    /// IBM Plex Sans, the system's or an installed one typed by name. @p notFound is
     /// the name just typed that matched nothing, to say so.
     void openFontEditor(QWidget *anchor, const QString &notFound = QString());
     /// Sets the chosen typeface on the whole application.

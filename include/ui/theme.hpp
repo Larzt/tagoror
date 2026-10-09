@@ -730,6 +730,23 @@ QLabel#popupHeader {
     padding: 2px 8px;
 }
 QLabel#popupText { color: %4; font-size: 11px; }
+/* Date and time picker (ui/datetimepicker.cpp). The summary says what Guardar
+   will store; the grid and the time column are painted. */
+QLabel#pickSummary {
+    color: %5; font-size: 12px; font-weight: 600;
+    font-family: "IBM Plex Mono", monospace; padding: 0 1px;
+}
+QScrollArea#pickTimes, QWidget#pickTimesViewport, QWidget#pickTimeList { background: transparent; border: none; }
+QToolButton#pickCancel {
+    color: %4; background: transparent; border: 1px solid transparent;
+    border-radius: 7px; padding: 5px 10px; font-size: 12px;
+}
+QToolButton#pickCancel:hover { color: %3; background: %7; }
+QToolButton#pickSave {
+    color: #0d1014; background: %5; border: 1px solid %5;
+    border-radius: 7px; padding: 5px 12px; font-size: 12px; font-weight: 600;
+}
+QToolButton#pickSave:disabled { color: %4; background: %6; border: 1px solid %2; }
 /* Renaming an area in its own tab, with the tab's font so the name does not
    jump. */
 QLineEdit#areaRename {

@@ -46,31 +46,6 @@
 
 namespace {
 
-/// Text to prefill the date field with, in the format parseDue() reads.
-/// Prefilling it with @c due (the chip label, "Tue 25 Aug 09:00") turned
-/// "open, tweak the time, accept" into unparseable text: the reminder lost its
-/// instant and vanished from the planner while the chip still showed a date.
-QString dueFieldText(const Note *n) {
-    return n->dueAtMs > 0 ? n->dueAt().toString("dd/MM HH:mm") : n->due;
-}
-
-/// Parses dd/MM HH:mm with an optional year after the month. Built piece by
-/// piece rather than with QDateTime::fromString(), which anchors a missing
-/// year at 1900 (not a leap year), so 29 February could never be typed. The
-/// missing year is the current one.
-QDateTime parseDue(const QString &text) {
-    static const QRegularExpression re(
-        R"(^\s*(\d{1,2})\s*/\s*(\d{1,2})(?:\s*/\s*(\d{4}))?[\s,]+(\d{1,2})\s*:\s*(\d{2})\s*$)");
-    const QRegularExpressionMatch m = re.match(text);
-    if (!m.hasMatch()) return QDateTime();
-
-    const int year = m.captured(3).isEmpty() ? QDate::currentDate().year()
-                                             : m.captured(3).toInt();
-    const QDate date(year, m.captured(2).toInt(), m.captured(1).toInt());
-    const QTime time(m.captured(4).toInt(), m.captured(5).toInt());
-    return date.isValid() && time.isValid() ? QDateTime(date, time) : QDateTime();
-}
-
 /// A body editor that grows with its content: no scrollbars of its own, the
 /// height follows the document between a minimum and a maximum.
 void autoGrow(QTextEdit *e, const QString &placeholder) {
@@ -188,13 +163,32 @@ protected:
         endEdit();
     }
 
+    /// Enter finishes the note and Shift+Enter breaks the line, like a chat
+    /// box; Ctrl+Enter finishes too. Never while an input method is composing:
+    /// there Enter picks the candidate, and stealing it would cut the word.
     void keyPressEvent(QKeyEvent *e) override {
         if (e->key() == Qt::Key_Escape && m_editing) {
             clearFocus();   // focusOut renders
             return;
         }
         if (!m_editing) beginEdit();   // focus arrived neither by mouse nor by Tab
+        if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && !m_composing) {
+            if (e->modifiers() & Qt::ShiftModifier) {
+                // A real paragraph, not the U+2028 QTextEdit inserts for Shift+Enter:
+                // the source is Markdown and a list item needs its own line.
+                textCursor().insertBlock();
+                ensureCursorVisible();
+            } else {
+                clearFocus();   // focusOut renders; the edit is already in the note
+            }
+            return;
+        }
         QTextEdit::keyPressEvent(e);
+    }
+
+    void inputMethodEvent(QInputMethodEvent *e) override {
+        m_composing = !e->preeditString().isEmpty();
+        QTextEdit::inputMethodEvent(e);
     }
 
     void mouseMoveEvent(QMouseEvent *e) override {
@@ -303,6 +297,7 @@ private:
     bool m_editing = false;
     bool m_internal = false;       ///< The editor's own changes, not the user's.
     bool m_clickPending = false;
+    bool m_composing = false;      ///< An input method has a word half-built.
 };
 
 /// The date chip is clickable: changing a reminder should not require the
@@ -520,6 +515,10 @@ void NoteCard::buildTitleRow(QVBoxLayout *l) {
         m_note->title = t;
         emit dirty();
     });
+    // Enter is "done", as in the note's body; the title already went into the note
+    // with each keystroke. While an input method composes, it takes the Enter
+    // itself and this does not fire.
+    connect(m_title, &QLineEdit::returnPressed, m_title, [this] { m_title->clearFocus(); });
     row->addWidget(m_title, 1);
 
     auto *handle = new DragHandle;
@@ -1042,34 +1041,33 @@ void NoteCard::openDuePopup(const QPoint &globalPos) {
     menu->addHeader(L("Recordar"));
 
     const QDateTime now = QDateTime::currentDateTime();
-    QDateTime todaySix = QDateTime(now.date(), QTime(18, 0));
-    if (todaySix <= now) todaySix = todaySix.addDays(1);
+    const auto at = [](const QDate &d, int h) { return QDateTime(d, QTime(h, 0)); };
+    const QDate today = now.date();
+    const QDateTime evening = at(today, 18) > now ? at(today, 18) : at(today.addDays(1), 18);
+    const QDate monday = today.addDays(8 - today.dayOfWeek());   // next week's, never today
+    QString mondayLabel = Lang::locale().toString(monday, "ddd") + " 09:00";
+    mondayLabel[0] = mondayLabel[0].toUpper();
 
-    const QList<QPair<QString, QDateTime>> presets = {
-        {L("En 5 minutos"), now.addSecs(300)},
+    // Quick picks store the real instant: that is what makes it ring.
+    const QList<QPair<QString, QDateTime>> quick = {
         {L("En 1 hora"), now.addSecs(3600)},
-        {L("A las 18:00"), todaySix},
-        {L("Mañana 09:00"), QDateTime(now.date().addDays(1), QTime(9, 0))},
+        {evening.date() == today ? L("Hoy 18:00") : L("Mañana 18:00"), evening},
+        {L("Mañana 09:00"), at(today.addDays(1), 9)},
+        {mondayLabel, at(monday, 9)},
     };
 
-    // Presets store the real instant: that is what makes it ring.
-    for (const auto &[label, when] : presets) {
-        menu->addItem("clock", label, Lang::locale().toString(when, "ddd d MMM HH:mm"),
-                      [this, when] {
-            applyDue(when.toMSecsSinceEpoch(),
-                     Lang::locale().toString(when, "ddd d MMM HH:mm"));
-        });
+    // The grid opens on the reminder's own date while it is still ahead; otherwise
+    // on the next quarter hour from an hour from now, which is the usual intent.
+    QDateTime initial = m_note->dueAtMs > 0 ? m_note->dueAt() : QDateTime();
+    if (!initial.isValid() || initial <= now) {
+        const QDateTime base = now.addSecs(3600);
+        const int m = base.time().hour() * 60 + base.time().minute();
+        const int up = ((m + 14) / 15) * 15;
+        initial = QDateTime(base.date(), QTime(0, 0)).addSecs(up * 60);
     }
 
-    menu->addSeparator();
-    menu->addHeader(L("A mano · dd/MM HH:mm"));
-    menu->addEditor(L("p. ej. 24/12 20:30"), dueFieldText(m_note), [this](const QString &value) {
-        // Text that parses as a date also rings; otherwise it stays a free label.
-        // When it parses, the standard label is stored rather than what was typed, so
-        // the chip reads as usual and the field reopens in its format.
-        const QDateTime parsed = parseDue(value);
-        applyDue(parsed.isValid() ? parsed.toMSecsSinceEpoch() : 0,
-                 parsed.isValid() ? Lang::locale().toString(parsed, "ddd d MMM HH:mm") : value);
+    menu->addDateTime(initial, quick, [this](const QDateTime &when) {
+        applyDue(when.toMSecsSinceEpoch(), Lang::locale().toString(when, "ddd d MMM HH:mm"));
     });
 
     // The repetition lives here: it is part of "when does this ring", and means

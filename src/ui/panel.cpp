@@ -244,6 +244,11 @@ Panel::Panel() {
     checkReminders();   // something may have come due while the app was closed
     tickTimers();       // and a timer may have reached zero
 
+    // Edge resizing: the margin around the frame gets move events for the cursor,
+    // and presses on the frame's own edge are caught before the child under them.
+    setMouseTracking(true);
+    qApp->installEventFilter(this);
+
     if (!m_expandedSize.isValid())
         m_expandedSize = QSize(352 + shadowMargin() * 2, 560);
     m_listSize = m_expandedSize;
@@ -924,7 +929,13 @@ void Panel::rebuildList() {
 void Panel::refreshFooterHint() {
     if (!m_footerHint) return;
     const bool onList = !m_body || m_body->currentWidget() == m_scroll;
-    m_footerHint->setText(onList ? L("clic dcho · opciones") : L("esc · cerrar"));
+    // Writing in a note, the hint is how to break a line: Enter alone finishes.
+    QWidget *focus = QApplication::focusWidget();
+    const bool writing = onList && focus && qobject_cast<QTextEdit *>(focus) &&
+                         m_scroll && m_scroll->isAncestorOf(focus);
+    m_footerHint->setText(writing  ? L("⇧↵ salto de línea")
+                          : onList ? L("clic dcho · opciones")
+                                   : L("esc · cerrar"));
 }
 
 void Panel::refreshFooter() {
@@ -1819,29 +1830,12 @@ void Panel::askBirthdayReminder(Birthday *b, QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(b->name.isEmpty() ? L("Sin nombre") : b->name);
 
-    QStringList labels;
-    QList<QTime> times;
-    for (int h = 8; h <= 21; h += 2) {
-        times << QTime(h, 0);
-        labels << times.last().toString("HH:mm");
-    }
-    // addChoice() and not addChips(): the alarm time is a setting with state, and
-    // the menu must show which one is set.
-    menu->addChoice(labels, int(times.indexOf(b->remindAt)), [this, b, times](int i) {
-        b->remindAt = times.at(i);
+    // The same time column as a reminder's date, without the month: the day is
+    // the birthday.
+    menu->addTime(b->remindAt.isValid() ? b->remindAt : QTime(9, 0), [this, b](const QTime &t) {
+        b->remindAt = t;
         // A new time re-arms this year's alarm: changing it right after silencing it
         // must do something.
-        b->firedYear = 0;
-        m_birthdays->refresh();
-        save();
-    });
-
-    menu->addSeparator();
-    menu->addHeader(L("A mano · HH:mm"));
-    menu->addEditor(L("p. ej. 20:30"), QString(), [this, b](const QString &value) {
-        const QTime t = QTime::fromString(value.trimmed(), "HH:mm");
-        if (!t.isValid()) return;
-        b->remindAt = t;
         b->firedYear = 0;
         m_birthdays->refresh();
         save();
@@ -2039,7 +2033,7 @@ void Panel::openAccentEditor(QWidget *anchor) {
 
 /// Only the family changes: sizes come from the stylesheet, and times and dates
 /// keep IBM Plex Mono whatever is chosen. A family no longer installed falls
-/// back to Libron rather than to whatever Qt would substitute.
+/// back to IBM Plex Sans rather than to whatever Qt would substitute.
 void Panel::applyFont() {
     const QString pref = m_store.prefs().font;
     const QString bundled = qApp->property("bundledFont").toString();
@@ -2072,7 +2066,7 @@ void Panel::openFontEditor(QWidget *anchor, const QString &notFound) {
     const QString current = m_store.prefs().font;
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(L("Tipografía"));
-    menu->addItem(current.isEmpty() ? "check" : "text", QStringLiteral("Libron"),
+    menu->addItem(current.isEmpty() ? "check" : "text", QStringLiteral("IBM Plex Sans"),
                   L("Incluida con Tagoror"), [this] { pickFont(QString()); });
     menu->addItem(current == "system" ? "check" : "text", L("La del sistema"),
                   m_systemFont.family(), [this] { pickFont("system"); });
@@ -2102,6 +2096,7 @@ void Panel::openFontEditor(QWidget *anchor, const QString &notFound) {
             });
             return;
         }
+        // The bundled one by name lands on its own entry, not on "installed".
         pickFont(found == qApp->property("bundledFont").toString() ? QString() : found);
     });
     menu->showUnder(anchor);
@@ -2871,6 +2866,65 @@ void Panel::keyPressEvent(QKeyEvent *e) {
         return;
     }
     QWidget::keyPressEvent(e);
+}
+
+namespace {
+constexpr int kResizeOut = 8;   ///< Grab band outside the visible frame (in the shadow).
+constexpr int kResizeIn = 3;    ///< And inside it, over the frame's own edge.
+}
+
+Qt::Edges Panel::resizeEdgesAt(const QPoint &pos) const {
+    if (appMode() || isMaximized() || !m_stack || m_stack->currentWidget() != m_shell)
+        return {};
+    // The shadow margin is not frame: the edges are those of the shell.
+    const int m = shadowMargin();
+    const QRect frame = rect().adjusted(m, m, -m, -m);
+    if (!frame.adjusted(-kResizeOut, -kResizeOut, kResizeOut, kResizeOut).contains(pos))
+        return {};
+    Qt::Edges edges;
+    if (pos.x() < frame.left() + kResizeIn) edges |= Qt::LeftEdge;
+    if (pos.x() > frame.right() - kResizeIn) edges |= Qt::RightEdge;
+    if (pos.y() < frame.top() + kResizeIn) edges |= Qt::TopEdge;
+    if (pos.y() > frame.bottom() - kResizeIn) edges |= Qt::BottomEdge;
+    return edges;
+}
+
+void Panel::mouseMoveEvent(QMouseEvent *e) {
+    const Qt::Edges edges = resizeEdgesAt(e->position().toPoint());
+    if (edges == (Qt::TopEdge | Qt::LeftEdge) || edges == (Qt::BottomEdge | Qt::RightEdge))
+        setCursor(Qt::SizeFDiagCursor);
+    else if (edges == (Qt::TopEdge | Qt::RightEdge) || edges == (Qt::BottomEdge | Qt::LeftEdge))
+        setCursor(Qt::SizeBDiagCursor);
+    else if (edges & (Qt::LeftEdge | Qt::RightEdge))
+        setCursor(Qt::SizeHorCursor);
+    else if (edges)
+        setCursor(Qt::SizeVerCursor);
+    else
+        unsetCursor();
+    QWidget::mouseMoveEvent(e);
+}
+
+void Panel::leaveEvent(QEvent *e) {
+    unsetCursor();
+    QWidget::leaveEvent(e);
+}
+
+/// The press is taken here rather than in mousePressEvent because the inner
+/// side of the band lies over the header, the tabs and the footer, which would
+/// otherwise get it first (the header would start a move instead).
+bool Panel::eventFilter(QObject *watched, QEvent *event) {
+    if (event->type() == QEvent::MouseButtonPress && watched->isWidgetType() &&
+        static_cast<QWidget *>(watched)->window() == this) {
+        auto *me = static_cast<QMouseEvent *>(event);
+        if (me->button() == Qt::LeftButton) {
+            const Qt::Edges edges = resizeEdgesAt(mapFromGlobal(me->globalPosition().toPoint()));
+            if (edges && windowHandle() && windowHandle()->startSystemResize(edges)) {
+                unsetCursor();
+                return true;
+            }
+        }
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void Panel::moveEvent(QMoveEvent *e) {

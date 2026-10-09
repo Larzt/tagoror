@@ -19,9 +19,9 @@
 </p>
 
 > A *tagoror* is the circle of stones where the Guanche council met — which is
-> what the ring icon is. The app was called **Codex** (*Códice*) until the
-> rename; notes from that version are picked up on first run, folder and all,
-> so there is nothing to move by hand.
+> what the icon is: seven stones in a ring around the sun. The app was called
+> **Codex** (*Códice*) until the rename; notes from that version are picked up
+> on first run, folder and all, so there is nothing to move by hand.
 
 ## Features
 
@@ -44,8 +44,11 @@
 
 ### Reminders that actually go off
 
-- Presets (in 5 minutes, in an hour, 18:00, tomorrow at 9:00), a date typed by
-  hand, or a day and hour picked in the planner.
+- A date picker with quick picks (in an hour, today or tomorrow at 18:00,
+  tomorrow at 9:00, next Monday), a small month to choose the day and a column
+  of times in steps of 5 or 15 minutes. Days already gone can't be picked, and
+  the arrows and Enter work inside the grid. Or pick a day and hour in the
+  planner.
 - Click the date chip **or** right-click the note to change it.
 - **They can come back every week or every year** — the bin on Thursdays, a
   birthday — from the *Repeat* section of the same date menu. A repeating
@@ -218,7 +221,7 @@
 
 - **Lives on the desktop** by default, below other windows. "Always on top" is
   an option, not the default.
-- Drag it by its header, resize it from the bottom-right corner, or fold it into
+- Drag it by its header, resize it from **any edge or corner**, or fold it into
   a dock you can also drag around.
 - **Each page keeps its own size**: make the planner or the settings bigger and
   the note list stays as it was. *Size per page* in settings turns it off, back
@@ -248,7 +251,7 @@
 - Everything in one place, from the gear in the header: the accent colour, the
   opacity, **the typeface and text size**, the language, whether the window stays on top,
   where your notes are kept, the backups and which microphone to record from.
-- **Typeface**: Libron, which comes with the app and is the default, the
+- **Typeface**: IBM Plex Sans, which comes with the app and is the default, the
   system's own font, or any installed one — type its name or the start of it
   ("fira" finds Fira Sans). Times, dates and counters stay monospaced.
 - **Text size** comes in four steps, from small to extra large, with a live
@@ -362,6 +365,9 @@ Drive row in settings is simply disabled.
 - **Enter** or **Space** activates what has the focus; arrows move through the
   items of any menu and through the days of the planner's month; **Escape**
   closes a form, then the page.
+- In a note, **Enter** finishes writing and **Shift+Enter** starts a new line
+  (Ctrl+Enter finishes too); an input method composing a word keeps its Enter.
+  Enter in a title finishes it as well.
 - The focus is marked with a ring in the accent colour — only when it got there
   from the keyboard, so clicking with the mouse leaves no ring behind.
 
@@ -699,12 +705,12 @@ installer and the ZIP — therefore ship Qt's own libraries next to the binary,
 where they can be replaced with a compatible build; Qt's licence texts travel
 inside those Qt files.
 
-The default typeface is **[Libron](https://github.com/nicoverbruggen/libron)**
-by Nico Verbruggen, under the **SIL Open Font License 1.1**. It is embedded in
-the binary, and its licence ([`fonts/libron/OFL.txt`](fonts/libron/OFL.txt))
-travels with every package: `share/licenses/tagoror/LICENSE-Libron` on Linux,
-`LICENSE-Libron.txt` next to `tagoror.exe` on Windows. Nothing else is
-vendored: the icons are drawn with `QPainter` and the alarm tone is
+The default typeface is **[IBM Plex Sans](https://github.com/IBM/plex)**, with
+**IBM Plex Mono** for times, dates and counters, both © IBM Corp. under the
+**SIL Open Font License 1.1**. They are embedded in the binary, and their
+licence ([`fonts/plex/OFL.txt`](fonts/plex/OFL.txt)) travels with every
+package: `share/licenses/tagoror/LICENSE-IBM-Plex` on Linux,
+`LICENSE-IBM-Plex.txt` next to `tagoror.exe` on Windows. Nothing else is vendored: the icons are drawn with `QPainter` and the alarm tone is
 synthesised at runtime.
 
 ## Known limitations

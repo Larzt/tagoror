@@ -92,6 +92,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="4.3.0" date="2026-10-09">
+      <description>
+        <p>Reminders get a date picker with a small month, a column of times
+           in 5 or 15 minute steps and quick picks; birthday alerts use the
+           same time column. In a note Enter finishes and Shift+Enter starts a
+           new line. The panel can be resized from any edge. IBM Plex Sans is
+           the new default typeface, bundled with IBM Plex Mono, and the icon
+           is now seven stones around the sun.</p>
+      </description>
+    </release>
     <release version="4.2.0" date="2026-10-06">
       <description>
         <p>The search box and the new-note button now sit together below the

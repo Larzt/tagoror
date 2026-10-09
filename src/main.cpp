@@ -48,16 +48,24 @@ int main(int argc, char *argv[]) {
     // The update check compares against this.
     QCoreApplication::setApplicationVersion(TAGOROR_VERSION);
 
-    // Libron comes embedded and is the default typeface. It is only registered
-    // here: the Panel applies the one chosen in settings once it has read them,
-    // and the system default must stay untouched for whoever picks it.
-    for (const char *style : {"Regular", "Italic", "Bold", "BoldItalic"}) {
-        const int id = QFontDatabase::addApplicationFont(QString(":/fonts/Libron-%1.ttf").arg(style));
-        if (app.property("bundledFont").toString().isEmpty() && id >= 0) {
-            const QStringList families = QFontDatabase::applicationFontFamilies(id);
-            if (!families.isEmpty()) app.setProperty("bundledFont", families.first());
+    // The typefaces come embedded: IBM Plex Sans for the interface and IBM Plex
+    // Mono, the face the stylesheet asks for by name for times and counters. They are only
+    // registered here: the Panel applies the one chosen in settings once it has
+    // read them, and the system default must stay untouched for whoever picks it.
+    const auto registerFamily = [&app](const char *property, const QStringList &files) {
+        for (const QString &file : files) {
+            const int id = QFontDatabase::addApplicationFont(":/fonts/" + file + ".ttf");
+            if (app.property(property).toString().isEmpty() && id >= 0) {
+                const QStringList families = QFontDatabase::applicationFontFamilies(id);
+                if (!families.isEmpty()) app.setProperty(property, families.first());
+            }
         }
-    }
+    };
+    registerFamily("bundledFont", {"IBMPlexSans-Regular", "IBMPlexSans-Italic",
+                                   "IBMPlexSans-Medium", "IBMPlexSans-SemiBold",
+                                   "IBMPlexSans-Bold", "IBMPlexSans-BoldItalic"});
+    registerFamily("monoFont", {"IBMPlexMono-Regular", "IBMPlexMono-Medium",
+                                "IBMPlexMono-SemiBold", "IBMPlexMono-Bold"});
 
     // Links the window with its .desktop entry, where launchers and the window
     // switcher take its name and icon (essential on Wayland).

@@ -17,6 +17,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include "ui/datetimepicker.hpp"
 #include "ui/keynav.hpp"
 
 namespace {
@@ -327,6 +328,29 @@ void Popup::addChips(const QStringList &labels, const QList<bool> &muted,
     // stretching the chips.
     grid->setColumnStretch(kPerRow, 1);
     m_col->addWidget(host);
+}
+
+void Popup::addDateTime(const QDateTime &initial, const QList<QPair<QString, QDateTime>> &quick,
+                        std::function<void(const QDateTime &)> commit) {
+    auto *picker = new DateTimePicker(m_theme, DateTimePicker::DateAndTime, initial, quick);
+    picker->onCommit = [this, commit](const QDateTime &when) {
+        run([when, commit] { if (commit) commit(when); });
+    };
+    picker->onCancel = [this] { close(); };
+    m_col->addWidget(picker);
+    QTimer::singleShot(0, picker->initialFocus(), qOverload<>(&QWidget::setFocus));
+}
+
+void Popup::addTime(const QTime &initial, std::function<void(const QTime &)> commit) {
+    auto *picker = new DateTimePicker(m_theme, DateTimePicker::TimeOnly,
+                                      QDateTime(QDate::currentDate(), initial));
+    picker->onCommit = [this, commit](const QDateTime &when) {
+        const QTime t = when.time();
+        run([t, commit] { if (commit) commit(t); });
+    };
+    picker->onCancel = [this] { close(); };
+    m_col->addWidget(picker);
+    QTimer::singleShot(0, picker->initialFocus(), qOverload<>(&QWidget::setFocus));
 }
 
 void Popup::addSeparator() {

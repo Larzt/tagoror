@@ -433,7 +433,7 @@ void SettingsView::addAppearance() {
 }
 
 QString fontDisplayName(const QString &pref) {
-    if (pref.isEmpty()) return QStringLiteral("Libron");
+    if (pref.isEmpty()) return QStringLiteral("IBM Plex Sans");
     if (pref == "system") return L("La del sistema");
     return pref;
 }

@@ -424,6 +424,11 @@ void TimerView::addCreator() {
         chip->setObjectName("segButton");
         chip->setText(L("%1 min").arg(minutes));
         chip->setCursor(Qt::PointingHandCursor);
+        // Four padded chips asked for their whole text and widened the page past
+        // the panel's minimum (measured 302px with the 4.2 typeface against ~284), clipping
+        // the card. They share the row and may lose some of their padding.
+        chip->setMinimumWidth(36);
+        chip->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         connect(chip, &QToolButton::clicked, this, [this, minutes] {
             m_h->clear();
             m_m->setText(QString::number(minutes));

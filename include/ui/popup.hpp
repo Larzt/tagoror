@@ -3,7 +3,9 @@
 #include <climits>
 
 #include <QColor>
+#include <QDateTime>
 #include <QList>
+#include <QPair>
 #include <QStringList>
 #include <QWidget>
 #include <functional>
@@ -56,6 +58,12 @@ public:
     void addNameColor(const QString &placeholder, const QString &name,
                       const QList<QColor> &colors, int chosen,
                       std::function<void(const QString &, int)> commit);
+    /// Mini month, time column and quick picks; *Guardar* or Enter commits.
+    /// @p quick commit at once, like the preset rows they replaced.
+    void addDateTime(const QDateTime &initial, const QList<QPair<QString, QDateTime>> &quick,
+                     std::function<void(const QDateTime &)> commit);
+    /// The time column alone, for an alert that has no date to choose.
+    void addTime(const QTime &initial, std::function<void(const QTime &)> commit);
     void addSeparator();
 
     /// Places the popup under @p anchor, clamped to the screen.
