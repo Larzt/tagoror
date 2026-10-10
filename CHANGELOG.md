@@ -4,6 +4,31 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [5.0.1] — 2026-10-10
+
+Folding in one click, resizing that works on Windows, and no more flashing window.
+
+### Changed
+
+- **Folding to the dock is back in the header**, a button next to ⋯ on every
+  page, so the panel gets out of the way in one click instead of two. In app
+  mode the same button minimises. Ctrl+M and the entry in ⋯ still work.
+- New screenshots of the 5.0 interface and the new icon in the README, on the
+  website and in the AppStream data.
+
+### Fixed
+
+- **A tiny window flashed in the middle of the desktop** when switching area
+  (or anything else that rebuilds the list) with a checklist or a repeating
+  reminder in it. The pencil of each checklist item and the repeat icon were
+  shown before being placed in their card, and a widget shown with no parent
+  opens as a window of its own until it is placed.
+- **Resizing from the edges on Windows.** The grab band outside the frame let
+  clicks through to the window behind wherever the shadow faded out — along
+  the whole top edge, among others — and the band over the frame itself was
+  3 px wide with no resize cursor. Each edge and corner now has a grip of its
+  own that always takes the mouse and shows the cursor, with larger corners.
+
 ## [5.0.0] — 2026-10-09
 
 A simpler interface: one fixed place for everything.

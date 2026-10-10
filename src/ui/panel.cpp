@@ -52,6 +52,7 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QMoveEvent>
+#include <QResizeEvent>
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollBar>
@@ -190,10 +191,8 @@ Panel::Panel() {
     checkReminders();   // something may have come due while the app was closed
     tickTimers();       // and a timer may have reached zero
 
-    // Edge resizing: the margin around the frame gets move events for the cursor,
-    // and presses on the frame's own edge are caught before the child under them.
-    setMouseTracking(true);
     qApp->installEventFilter(this);
+    buildResizeGrips();   // resizing from any edge
 
     m_nav->start(m_store.prefs().windowSize);
     applyWindowFlags();
@@ -389,6 +388,16 @@ QFrame *Panel::buildHeader() {
     connect(m_bdayAddBtn, &QToolButton::clicked, this,
             [this] { openBirthdayEditor(nullptr, m_bdayAddBtn); });
     l->addWidget(m_bdayAddBtn);
+
+    // Folding is one click away on every page, next to "⋯"; in app mode it
+    // minimises instead (applyAppModeChrome() swaps the icon and the tip).
+    m_foldBtn = iconButton(appMode() ? "minus" : "dock", appMode() ? "Minimizar" : "Plegar a icono");
+    m_foldBtn->setFixedSize(28, 28);
+    connect(m_foldBtn, &QToolButton::clicked, this, [this] {
+        if (appMode()) showMinimized();
+        else collapse();
+    });
+    l->addWidget(m_foldBtn);
 
     m_moreBtn = iconButton("more", "Más opciones");
     m_moreBtn->setFixedSize(28, 28);
@@ -791,7 +800,7 @@ QWidget *Panel::buildBadge() {
 void Panel::applyTheme() {
     setStyleSheet(m_theme.sheet());
 
-    for (QToolButton *b : {m_backBtn, m_moreBtn, m_searchBtn, m_timerAddBtn, m_bdayAddBtn})
+    for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_searchBtn, m_timerAddBtn, m_bdayAddBtn})
         b->setIcon(paintIcon(b->property("iconKind").toString(), QColor(Theme::muted())));
     // The new-note button is filled with the accent, so its icon is dark.
     m_addBtn->setIcon(paintIcon("plus", QColor("#0c1222")));
@@ -823,7 +832,7 @@ void Panel::retranslate() {
     m_emptyBtn->setText(L("Crear la primera"));
     m_search->setPlaceholderText(L("Buscar en %1…").arg(QString()));
 
-    for (QToolButton *b : {m_backBtn, m_moreBtn, m_searchBtn, m_addBtn, m_timerAddBtn, m_bdayAddBtn})
+    for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_searchBtn, m_addBtn, m_timerAddBtn, m_bdayAddBtn})
         b->setToolTip(L(b->property("tip").toString()));
     m_navBar->retranslate();
 
@@ -1352,7 +1361,16 @@ void Panel::applyAppModeChrome() {
     m_shell->setProperty("app", appMode());
     m_shell->style()->unpolish(m_shell);
     m_shell->style()->polish(m_shell);
+    placeResizeGrips();
 
+    if (m_foldBtn) {
+        const QString kind = appMode() ? "minus" : "dock";
+        const QString tip = appMode() ? "Minimizar" : "Plegar a icono";
+        m_foldBtn->setProperty("iconKind", kind);
+        m_foldBtn->setProperty("tip", tip);
+        m_foldBtn->setIcon(paintIcon(kind, QColor(Theme::muted())));
+        m_foldBtn->setToolTip(L(tip));
+    }
 }
 
 /// Opens a page. The bar marks where you are; leaving is another item, Escape,
@@ -2512,48 +2530,64 @@ void Panel::keyPressEvent(QKeyEvent *e) {
 
 namespace {
 constexpr int kResizeOut = 8;   ///< Grab band outside the visible frame (in the shadow).
-constexpr int kResizeIn = 3;    ///< And inside it, over the frame's own edge.
+constexpr int kResizeIn = 4;    ///< And inside it, over the frame's own edge.
+constexpr int kResizeCorner = 16;   ///< How far along each edge a corner grip reaches.
 }
 
-Qt::Edges Panel::resizeEdgesAt(const QPoint &pos) const {
-    if (appMode() || isMaximized() || !m_nav || m_nav->folded())
-        return {};
+void Panel::buildResizeGrips() {
+    for (Qt::Edges e : {Qt::Edges(Qt::TopEdge), Qt::Edges(Qt::BottomEdge), Qt::Edges(Qt::LeftEdge),
+                        Qt::Edges(Qt::RightEdge), Qt::TopEdge | Qt::LeftEdge, Qt::TopEdge | Qt::RightEdge,
+                        Qt::BottomEdge | Qt::LeftEdge, Qt::BottomEdge | Qt::RightEdge})
+        m_grips << new EdgeGrip(e, this);
+}
+
+/// Over the band around the visible frame; hidden when folded, in app mode (the
+/// system frame does it) or maximised.
+void Panel::placeResizeGrips() {
+    if (m_grips.isEmpty() || !m_nav) return;   // still being built
+    const bool on = !appMode() && !isMaximized() && !m_nav->folded();
     // The shadow margin is not frame: the edges are those of the shell.
     const int m = shadowMargin();
-    const QRect frame = rect().adjusted(m, m, -m, -m);
-    if (!frame.adjusted(-kResizeOut, -kResizeOut, kResizeOut, kResizeOut).contains(pos))
-        return {};
-    Qt::Edges edges;
-    if (pos.x() < frame.left() + kResizeIn) edges |= Qt::LeftEdge;
-    if (pos.x() > frame.right() - kResizeIn) edges |= Qt::RightEdge;
-    if (pos.y() < frame.top() + kResizeIn) edges |= Qt::TopEdge;
-    if (pos.y() > frame.bottom() - kResizeIn) edges |= Qt::BottomEdge;
-    return edges;
+    const QRect f = rect().adjusted(m, m, -m, -m);
+    const QRect band = f.adjusted(-kResizeOut, -kResizeOut, kResizeOut, kResizeOut);
+    const int thick = kResizeOut + kResizeIn;
+    const int corner = kResizeOut + kResizeCorner;
+    for (EdgeGrip *g : std::as_const(m_grips)) {
+        g->setVisible(on);
+        if (!on) continue;
+        const Qt::Edges e = g->edges();
+        const bool horizontal = e & (Qt::LeftEdge | Qt::RightEdge);
+        const bool vertical = e & (Qt::TopEdge | Qt::BottomEdge);
+        QRect r;
+        if (horizontal && vertical) {
+            r = QRect(0, 0, corner, corner);
+            r.moveLeft(e & Qt::LeftEdge ? band.left() : band.right() - corner + 1);
+            r.moveTop(e & Qt::TopEdge ? band.top() : band.bottom() - corner + 1);
+            // An L along both edges: the square's inner part would cover the
+            // header's buttons in the corner.
+            QRect inner(0, 0, corner - thick, corner - thick);
+            inner.moveLeft(e & Qt::LeftEdge ? thick : 0);
+            inner.moveTop(e & Qt::TopEdge ? thick : 0);
+            g->setMask(QRegion(0, 0, corner, corner).subtracted(QRegion(inner)));
+        } else if (vertical) {
+            r = QRect(band.left() + corner, 0, band.width() - 2 * corner, thick);
+            r.moveTop(e & Qt::TopEdge ? band.top() : band.bottom() - thick + 1);
+        } else {
+            r = QRect(0, band.top() + corner, thick, band.height() - 2 * corner);
+            r.moveLeft(e & Qt::LeftEdge ? band.left() : band.right() - thick + 1);
+        }
+        g->setGeometry(r);
+        g->raise();   // above the shell, and anything laid over it since
+    }
 }
 
-void Panel::mouseMoveEvent(QMouseEvent *e) {
-    const Qt::Edges edges = resizeEdgesAt(e->position().toPoint());
-    if (edges == (Qt::TopEdge | Qt::LeftEdge) || edges == (Qt::BottomEdge | Qt::RightEdge))
-        setCursor(Qt::SizeFDiagCursor);
-    else if (edges == (Qt::TopEdge | Qt::RightEdge) || edges == (Qt::BottomEdge | Qt::LeftEdge))
-        setCursor(Qt::SizeBDiagCursor);
-    else if (edges & (Qt::LeftEdge | Qt::RightEdge))
-        setCursor(Qt::SizeHorCursor);
-    else if (edges)
-        setCursor(Qt::SizeVerCursor);
-    else
-        unsetCursor();
-    QWidget::mouseMoveEvent(e);
+void Panel::resizeEvent(QResizeEvent *e) {
+    QWidget::resizeEvent(e);
+    placeResizeGrips();
+    // Folding and unfolding resize the window before or after the flag changes.
+    QTimer::singleShot(0, this, &Panel::placeResizeGrips);
 }
 
-void Panel::leaveEvent(QEvent *e) {
-    unsetCursor();
-    QWidget::leaveEvent(e);
-}
-
-/// The press is taken here rather than in mousePressEvent because the inner
-/// side of the band lies over the header, the tabs and the footer, which would
-/// otherwise get it first (the header would start a move instead).
 bool Panel::eventFilter(QObject *watched, QEvent *event) {
     if (event->type() == QEvent::Resize) {
         if (watched == m_bodyHost) placeAlertZone();
@@ -2566,17 +2600,6 @@ bool Panel::eventFilter(QObject *watched, QEvent *event) {
         closeSearch();
         m_searchBtn->setFocus(Qt::OtherFocusReason);
         return true;
-    }
-    if (event->type() == QEvent::MouseButtonPress && watched->isWidgetType() &&
-        static_cast<QWidget *>(watched)->window() == this) {
-        auto *me = static_cast<QMouseEvent *>(event);
-        if (me->button() == Qt::LeftButton) {
-            const Qt::Edges edges = resizeEdgesAt(mapFromGlobal(me->globalPosition().toPoint()));
-            if (edges && windowHandle() && windowHandle()->startSystemResize(edges)) {
-                unsetCursor();
-                return true;
-            }
-        }
     }
     return QWidget::eventFilter(watched, event);
 }

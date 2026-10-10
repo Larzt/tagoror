@@ -53,20 +53,24 @@
 
   <screenshots>
     <screenshot type="default">
-      <caption>The panel with a checklist, a reminder, a voice note and a text note</caption>
-      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/panel.png</image>
+      <caption>The panel with a checklist, a reminder and a Markdown note</caption>
+      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/v5-notas.png</image>
     </screenshot>
     <screenshot>
-      <caption>The month view</caption>
-      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/calendar.png</image>
+      <caption>The planner's week view</caption>
+      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/v5-planner.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Timers</caption>
+      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/v5-timers.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Birthdays</caption>
+      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/v5-cumples.png</image>
     </screenshot>
     <screenshot>
       <caption>Settings</caption>
-      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/settings.png</image>
-    </screenshot>
-    <screenshot>
-      <caption>Backups: on demand, on a schedule, and a list to go back to</caption>
-      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/backups.png</image>
+      <image>https://raw.githubusercontent.com/Larzt/tagoror/main/docs/v5-ajustes.png</image>
     </screenshot>
   </screenshots>
 
@@ -92,6 +96,16 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="5.0.1" date="2026-10-10">
+      <description>
+        <p>Folding to the dock is a button next to ⋯ in the header again, so the
+           panel gets out of the way in one click (in app mode it minimises).
+           Resizing from the edges works on Windows, where most of the grab band
+           let clicks through to the window behind. A tiny window no longer
+           flashes on the desktop when switching area with a checklist or a
+           repeating reminder in the list.</p>
+      </description>
+    </release>
     <release version="5.0.0" date="2026-10-09">
       <description>
         <p>A simpler interface. The pages live in a fixed navigation bar (a rail

@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/brand.png" alt="Tagoror: the app icon next to the notes panel" width="720">
+  <img src="docs/brand.png" alt="Tagoror: the app icon, seven stones in a ring around the sun, next to the notes panel" width="720">
 </p>
 
 > A *tagoror* is the circle of stones where the Guanche council met — which is
@@ -27,7 +27,7 @@
 ## Features
 
 <p align="center">
-  <img src="docs/panel.png" alt="The panel with its area tabs, a checklist, a reminder, a voice note and a text note" width="380">
+  <img src="docs/v5-notas.png" alt="The notes panel: area tabs, a checklist, a reminder and a Markdown note, with the navigation along the bottom" width="400">
 </p>
 
 ### Five kinds of note
@@ -41,7 +41,7 @@
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
 
 <p align="center">
-  <img src="docs/new-note.png" alt="The new-note selector" width="260">
+  <img src="docs/v5-nueva-nota.png" alt="The new-note menu under +, with the shortcut of each type" width="270">
 </p>
 
 ### Reminders that actually go off
@@ -70,7 +70,7 @@
 ### A planner for your week
 
 <p align="center">
-  <img src="docs/planner.png" alt="The planner in week view: a mini month, today's tasks and the categories on the left, the week's events laid out by hour" width="640">
+  <img src="docs/v5-planner.png" alt="The planner in week view: the navigation as a rail, a mini month, today's tasks and the categories on the left, the week's events laid out by hour" width="720">
 </p>
 
 - *Planner* in the navigation (or **Ctrl+2**) opens it. The
@@ -100,7 +100,7 @@
 ### Timers
 
 <p align="center">
-  <img src="docs/timers.png" alt="The timers page: a running Pomodoro on the big dial, a paused one and a saved one below" width="380">
+  <img src="docs/v5-timers.png" alt="The timers page: a running Pomodoro on the big ring, a saved and a paused one below, and the quick chips" width="400">
 </p>
 
 - *Timers* in the navigation (**Ctrl+3**). The *Quick* chips — 1′ to 45′ —
@@ -118,7 +118,7 @@
 ### Birthdays
 
 <p align="center">
-  <img src="docs/birthdays.png" alt="The birthdays page: the next one highlighted, the rest grouped by month" width="380">
+  <img src="docs/v5-cumples.png" alt="The birthdays page: the next one on a card with the days left, the rest in cards grouped by month" width="400">
 </p>
 
 - A page of their own (**Ctrl+4**). **The next birthday due sits on a card**
@@ -187,7 +187,7 @@
 ### Backups you can set to your own rhythm
 
 <p align="center">
-  <img src="docs/backups.png" alt="The backups menu: make a copy now, how often, at what time, and the list to go back to" width="260">
+  <img src="docs/v5-copias.png" alt="The backups menu: make a copy now, how often, at what time, and the list to go back to" width="290">
 </p>
 
 - From *Settings → Backups*. A copy of your notes and your birthdays is **set
@@ -209,13 +209,13 @@
 ### It tells you when it cannot save
 
 <p align="center">
-  <img src="docs/no-folder.png" alt="The panel warning that the notes folder is not available" width="330">
+  <img src="docs/v5-sin-carpeta.png" alt="The notice above the navigation: the data folder is unavailable and nothing is being saved" width="400">
 </p>
 
 - If your storage folder lives on a USB stick, a network share, or anything else
   that may not be there — Tagoror **does not create it and does not seed a fresh
-  set of notes**. It says so, in red, under the header, and writes nothing at
-  all while the folder is missing.
+  set of notes**. It says so in the notice card above the navigation, and
+  writes nothing at all while the folder is missing.
 - When the folder appears it is **picked up on its own** within a few seconds,
   and anything you typed while it was gone is kept, not thrown away.
 - Choosing a folder that **already holds notes** asks which you meant: open the
@@ -228,7 +228,8 @@
 - **Lives on the desktop** by default, below other windows. "Always on top" is
   an option, not the default.
 - Drag it by its header, resize it from **any edge or corner**, or fold it into
-  a dock — the tagoror's ring of stones — you can also drag around. While
+  a dock — the tagoror's ring of stones — you can also drag around: the button
+  next to **⋯** does it in one click from any page, and so does **Ctrl+M**. While
   something rings, the stones turn red, a halo beats around it and a badge counts
   the alarms.
 - **The navigation stays put**: Notes, Planner, Timers and Birthdays along the
@@ -238,6 +239,11 @@
 - **One place for notices**: what rings, a missing data folder, a failed sync
   and a new version share a single card above the navigation, most urgent first,
   with *1 of N* for the rest. Nothing slides in pushing your notes down.
+
+<p align="center">
+  <img src="docs/v5-avisos.png" alt="The notice card: a ringing reminder with Snooze and Stop, and above it a sync error and a new version" width="400">
+</p>
+
 - A start screen says what it is waiting for — loading, syncing, looking for
   updates — while the stones of the tagoror light up in a ring. It only shows
   when there is something to wait for; `--tray` skips it and starts straight
@@ -257,7 +263,8 @@
 - Frameless and translucent, with adjustable opacity.
 
 <p align="center">
-  <img src="docs/dock.png" alt="The collapsed dock" width="100">
+  <img src="docs/v5-dock.png" alt="The collapsed dock: the tagoror's ring of stones" width="96">
+  <img src="docs/v5-dock-alarma.png" alt="The dock while three alarms ring: red stones, a halo and a badge" width="96">
 </p>
 
 - The header names the page you are on, and **Escape closes any of them** back
@@ -266,7 +273,7 @@
 ### Settings, on a page of their own
 
 <p align="center">
-  <img src="docs/settings.png" alt="The settings page: accent, opacity, language, window, data and microphone" width="380">
+  <img src="docs/v5-ajustes.png" alt="The settings page on its Appearance tab: accent, opacity, typeface, text size, language and window" width="400">
 </p>
 
 - From **⋯** in the header, or **Ctrl+,**, in five tabs: *General* (language,
@@ -396,6 +403,10 @@ always, and those two rows in settings are simply disabled.
   is synthesised on first use.
 
 ### Keyboard
+
+<p align="center">
+  <img src="docs/v5-paleta.png" alt="The command palette: go to a page, create a note or switch area, each with its shortcut" width="400">
+</p>
 
 - **Ctrl+K** opens the **command palette**: type to go to any page, create any
   kind of note or switch area — accents don't matter, *cumple* finds Birthdays.

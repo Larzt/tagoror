@@ -68,6 +68,47 @@ private:
     bool m_dragging = false;
 };
 
+/// An invisible strip along one edge or corner of a frameless window: its own
+/// cursor, and a press hands the resize to the compositor.
+///
+/// It is a widget rather than a band tested in the window's mouse events
+/// because the children under the band's inner side would take the moves (no
+/// resize cursor) and, on Windows, a translucent window lets clicks through
+/// its fully transparent pixels, so a band out in the shadow was unreachable
+/// wherever the shadow faded to nothing. The strip paints itself at alpha 1:
+/// nothing to see, but enough for the system to give it the mouse.
+class EdgeGrip : public QWidget {
+public:
+    EdgeGrip(Qt::Edges edges, QWidget *parent) : QWidget(parent), m_edges(edges) {
+        const bool diagonal = edges == (Qt::TopEdge | Qt::LeftEdge) ||
+                              edges == (Qt::BottomEdge | Qt::RightEdge);
+        const bool anti = edges == (Qt::TopEdge | Qt::RightEdge) ||
+                          edges == (Qt::BottomEdge | Qt::LeftEdge);
+        setCursor(diagonal ? Qt::SizeFDiagCursor
+                  : anti   ? Qt::SizeBDiagCursor
+                  : (edges & (Qt::LeftEdge | Qt::RightEdge)) ? Qt::SizeHorCursor
+                                                             : Qt::SizeVerCursor);
+    }
+
+    Qt::Edges edges() const { return m_edges; }
+
+protected:
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton) {
+            if (QWindow *w = window()->windowHandle(); w && w->startSystemResize(m_edges))
+                return;
+        }
+        QWidget::mousePressEvent(e);
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter(this).fillRect(rect(), QColor(0, 0, 0, 1));
+    }
+
+private:
+    Qt::Edges m_edges;
+};
+
 /// Resize corner, delegated to the compositor through startSystemResize().
 class GripCorner : public QWidget {
 public:
