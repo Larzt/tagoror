@@ -624,7 +624,6 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     m_repeatChip = new ClickableLabel(QString(), [this](const QPoint &p) { openDuePopup(p); });
     m_repeatChip->setFixedSize(12, 12);
     row->addWidget(m_repeatChip, 0, Qt::AlignVCenter);
-    refreshRepeat();
 
     // Only shown while the alarm rings: it is how to silence it.
     m_dueBtn = roundButton("stop", QColor("#ff7a6b"), L("Detener aviso"));
@@ -640,6 +639,9 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     m_meta->setObjectName("meta");
     row->addWidget(m_meta);
     l->addLayout(row);
+    // After the row is in the card: until then the chip has no parent, and
+    // showing it would open it as a window of its own.
+    refreshRepeat();
 
     // Without details the card is just its date: an empty editor took 46px of
     // nothing on every reminder.
@@ -896,9 +898,11 @@ void NoteCard::addCheckRow(QVBoxLayout *l, int index) {
     rename->setFixedSize(18, 18);
     rename->setCursor(Qt::PointingHandCursor);
     rename->setToolTip(L("Renombrar elemento"));
-    rename->setVisible(index != m_editingItem);
     connect(rename, &QToolButton::clicked, this, [this, index] { beginItemEdit(index); });
     rl->addWidget(rename, 0, Qt::AlignTop);
+    // Only once it has a parent: setVisible(true) on a parentless widget opens it
+    // as a window of its own, which flashed on the desktop on every rebuild.
+    rename->setVisible(index != m_editingItem);
 
     auto *del = new QToolButton;
     del->setIcon(paintIcon("minus", QColor(Theme::muted()), 12));

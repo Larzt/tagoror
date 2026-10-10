@@ -28,6 +28,7 @@ class AlertCenter;
 class AlertZone;
 class CommandPalette;
 class DockButton;
+class EdgeGrip;
 class MarkdownPage;
 class AreaTabs;
 class NavBar;
@@ -72,21 +73,18 @@ protected:
     void moveEvent(QMoveEvent *e) override;
     /// Escape goes back to the notes from any other page.
     void keyPressEvent(QKeyEvent *e) override;
-    /// Resizing from any edge: the cursor changes over the band around the
-    /// visible frame, and a press there hands the gesture to the compositor.
-    void mouseMoveEvent(QMouseEvent *e) override;
-    void leaveEvent(QEvent *e) override;
-    /// Catches presses on the band's inner side, which children cover.
+    /// Keeps the resize grips on the frame's edges.
+    void resizeEvent(QResizeEvent *e) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
     /// @name Building the interface
     /// @{
     void buildShell();
-    /// Which edges of the visible frame @p pos (in panel coordinates) is close
-    /// enough to grab; none when folded, in app mode (the system frame does it)
-    /// or maximised.
-    Qt::Edges resizeEdgesAt(const QPoint &pos) const;
+    /// Resizing from any edge: a grip per edge and corner over the band around
+    /// the visible frame (see EdgeGrip).
+    void buildResizeGrips();
+    void placeResizeGrips();
     QFrame *buildHeader();
     QWidget *buildTools();      ///< Area tabs, search and new note.
     QWidget *buildBody();
@@ -312,6 +310,7 @@ private:
     QFrame *m_header = nullptr;
     QLabel *m_titleLabel = nullptr;
     QToolButton *m_backBtn = nullptr;      ///< Only on settings.
+    QToolButton *m_foldBtn = nullptr;      ///< Fold to the dock (minimise in app mode), next to "⋯".
     QToolButton *m_moreBtn = nullptr;      ///< "⋯"
     QToolButton *m_timerAddBtn = nullptr;  ///< Header "+" on the timers page.
     QToolButton *m_bdayAddBtn = nullptr;   ///< Header "+" on the birthdays page.
@@ -325,6 +324,7 @@ private:
     QFont m_systemFont;   ///< The application font before any choice was applied.
     QVBoxLayout *m_outer = nullptr;
     QGraphicsDropShadowEffect *m_shellShadow = nullptr;
+    QList<EdgeGrip *> m_grips;   ///< Edges and corners, for resizing.
 
     QSystemTrayIcon *m_tray = nullptr;
     QMenu *m_trayMenu = nullptr;
