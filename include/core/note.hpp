@@ -37,7 +37,7 @@ struct Note {
     Type type = Text;
     QString title;
     QString body;
-    QString due;              ///< Reminder only.
+    QString due;              ///< Reminder, or a checklist with a date (see hasDate()).
     QList<CheckItem> items;   ///< Check only.
     QList<Link> links;        ///< Any note type.
     QList<QString> images;    ///< File names inside imageDir().
@@ -57,9 +57,10 @@ struct Note {
     int level = -1;
 
     /// Reminder: @ref due is the label shown and dueAtMs the real instant. With
-    /// dueAtMs == 0 the date is free text and never rings.
+    /// dueAtMs == 0 the date is free text and never rings. A checklist can carry
+    /// the same optional date (5.1): it then rings and goes on the planner too.
     qint64 dueAtMs = 0;
-    Repeat repeat = Once;     ///< Reminder only, and only with dueAtMs.
+    Repeat repeat = Once;     ///< Only with dueAtMs.
     bool fired = false;       ///< Already rang and was dismissed: it does not ring again.
     bool ringing = false;     ///< Runtime only: ringing right now.
     /// Last change, for the Drive sync (newest version of each element wins).
@@ -70,13 +71,21 @@ struct Note {
     /// microphone or the wrong input.
     bool isSilentTake() const { return type == Voice && level >= 0 && level < 2; }
 
+    /// Types that can carry a date: a reminder always shows one, a checklist only
+    /// once the user gives it one.
+    bool canHaveDate() const { return type == Reminder || type == Check; }
+
+    /// Whether a date was given, real instant or free text. A checklist shows its
+    /// date row only then.
+    bool hasDate() const { return canHaveDate() && (dueAtMs > 0 || !due.isEmpty()); }
+
     bool isDue(qint64 nowMs) const {
-        return type == Reminder && dueAtMs > 0 && !fired && nowMs >= dueAtMs;
+        return canHaveDate() && dueAtMs > 0 && !fired && nowMs >= dueAtMs;
     }
 
-    /// Only a reminder with a real instant is placed on the planner; free-text
-    /// dates are just labels.
-    bool isScheduled() const { return type == Reminder && dueAtMs > 0; }
+    /// Only a note with a real instant is placed on the planner; free-text dates
+    /// are just labels.
+    bool isScheduled() const { return canHaveDate() && dueAtMs > 0; }
 
     bool repeats() const { return isScheduled() && repeat != Once; }
 
@@ -268,7 +277,7 @@ struct Note {
     QString plainText() const {
         QStringList parts;
         if (!title.trimmed().isEmpty()) parts << title.trimmed();
-        if (type == Reminder && !dueLabel().isEmpty()) parts << dueLabel();
+        if (canHaveDate() && !dueLabel().isEmpty()) parts << dueLabel();
         if (!body.trimmed().isEmpty()) parts << body.trimmed();
         if (!items.isEmpty()) {
             QStringList lines;

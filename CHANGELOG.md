@@ -4,6 +4,23 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [5.0.3] — 2026-10-13
+
+Checklists that ring, and the minimise button where you expect it.
+
+### Added
+
+- **Checklists can have a reminder.** Optional: *Añadir recordatorio* in the
+  list's menu gives it a date, with the same quick picks and repetition as a
+  reminder. A dated list shows its date above the items, rings, appears on the
+  planner and can be silenced or postponed like any reminder. *Quitar fecha*
+  takes it back to a plain list.
+
+### Changed
+
+- **In app mode the minimise button comes after ⋯**, on the right edge where
+  window buttons usually sit. As a panel, folding to the dock stays before ⋯.
+
 ## [5.0.1] — 2026-10-10
 
 Folding in one click, resizing that works on Windows, and no more flashing window.

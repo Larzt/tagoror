@@ -96,6 +96,14 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="5.0.3" date="2026-10-13">
+      <description>
+        <p>Checklists can have a reminder: optional, from the list's menu, with
+           the same quick picks and repetition as a reminder. A dated list rings,
+           appears on the planner and can be silenced or postponed. In app mode
+           the minimise button sits after ⋯, where window buttons usually are.</p>
+      </description>
+    </release>
     <release version="5.0.1" date="2026-10-10">
       <description>
         <p>Folding to the dock is a button next to ⋯ in the header again, so the
