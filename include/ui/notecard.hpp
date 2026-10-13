@@ -62,6 +62,7 @@ private:
     void buildTitleRow(QVBoxLayout *l);
     void buildCheck(QVBoxLayout *l);
     void buildReminder(QVBoxLayout *l);
+    void buildDueRow(QVBoxLayout *l);   ///< Date chip of a reminder or a dated checklist.
     void buildText(QVBoxLayout *l);
     void buildMarkdown(QVBoxLayout *l);
     /// Folded: only the title row, with the indicator standing in for the body.
@@ -145,6 +146,7 @@ private:
     QTextEdit *m_detailBody = nullptr;   ///< Alive only while the editor is shown.
     QLabel *m_repeatChip = nullptr;
 
+    QWidget *m_dueRow = nullptr;         ///< Holds the chip; hidden on an undated checklist.
     QLabel *m_chip = nullptr;
     QLabel *m_dueIcon = nullptr;
     QToolButton *m_dueBtn = nullptr;     ///< "Stop" while the reminder rings.

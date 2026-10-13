@@ -440,7 +440,7 @@ void NoteCard::build() {
     outer->addWidget(m_bodyBox);
 
     switch (m_note->type) {
-        case Note::Check:    buildCheck(l);    break;
+        case Note::Check:    buildCheck(l);    refreshDue(); break;
         case Note::Reminder: buildReminder(l); refreshDue(); break;
         case Note::Voice:    buildVoice(l);    break;
         case Note::Markdown: buildMarkdown(l); break;
@@ -600,7 +600,26 @@ void NoteCard::buildMarkdown(QVBoxLayout *l) {
 }
 
 void NoteCard::buildReminder(QVBoxLayout *l) {
-    auto *row = new QHBoxLayout;
+    buildDueRow(l);
+
+    // Without details the card is just its date: an empty editor took 46px of
+    // nothing on every reminder.
+    m_detailSlot = new QWidget;
+    m_detailLayout = new QVBoxLayout(m_detailSlot);
+    m_detailLayout->setContentsMargins(0, 0, 0, 0);
+    m_detailLayout->setSpacing(0);
+    l->addWidget(m_detailSlot);
+
+    if (m_note->body.isEmpty()) showDetailsGhost();
+    else showDetailsEditor(false);
+}
+
+/// The date row: chip, repeat icon and the stop button while it rings. A
+/// reminder always has it; a checklist only while it has a date, and without
+/// the type label, which its progress counter already stands in for.
+void NoteCard::buildDueRow(QVBoxLayout *l) {
+    m_dueRow = new QWidget;
+    auto *row = new QHBoxLayout(m_dueRow);
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(7);
 
@@ -635,24 +654,15 @@ void NoteCard::buildReminder(QVBoxLayout *l) {
     row->addWidget(m_dueBtn);
     row->addStretch();
 
-    m_meta = new QLabel(L("RECORDATORIO"));
-    m_meta->setObjectName("meta");
-    row->addWidget(m_meta);
-    l->addLayout(row);
+    if (m_note->type == Note::Reminder) {
+        m_meta = new QLabel(L("RECORDATORIO"));
+        m_meta->setObjectName("meta");
+        row->addWidget(m_meta);
+    }
+    l->addWidget(m_dueRow);
     // After the row is in the card: until then the chip has no parent, and
     // showing it would open it as a window of its own.
     refreshRepeat();
-
-    // Without details the card is just its date: an empty editor took 46px of
-    // nothing on every reminder.
-    m_detailSlot = new QWidget;
-    m_detailLayout = new QVBoxLayout(m_detailSlot);
-    m_detailLayout->setContentsMargins(0, 0, 0, 0);
-    m_detailLayout->setSpacing(0);
-    l->addWidget(m_detailSlot);
-
-    if (m_note->body.isEmpty()) showDetailsGhost();
-    else showDetailsEditor(false);
 }
 
 /// The single dimmed line shown when there are no details. Emptying the
@@ -744,6 +754,10 @@ bool NoteCard::eventFilter(QObject *watched, QEvent *event) {
 }
 
 void NoteCard::buildCheck(QVBoxLayout *l) {
+    // Above the items, where a reminder has it. Hidden until it has a date;
+    // refreshDue() shows it.
+    buildDueRow(l);
+
     m_itemsLayout = new QVBoxLayout;
     m_itemsLayout->setContentsMargins(0, 0, 0, 0);
     m_itemsLayout->setSpacing(3);
@@ -1444,7 +1458,8 @@ void NoteCard::openLinkMenu(int index, const QPoint &globalPos) {
 }
 
 void NoteCard::refreshDue() {
-    if (m_note->type != Note::Reminder) return;
+    if (!m_note->canHaveDate()) return;
+    if (m_dueRow && m_note->type == Note::Check) m_dueRow->setVisible(m_note->hasDate());
 
     const bool ringing = m_note->ringing;
     const bool overdue = m_note->dueAtMs > 0 &&
@@ -1643,6 +1658,18 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
     if (m_note->type == Note::Check && m_newItem) {
         menu->addItem("plus", L("Añadir elemento"), L("Enter para confirmar"),
                       [this] { m_newItem->setFocus(); });
+        // Optional: a checklist rings only if it is given a date.
+        const QPoint at = e->globalPos();
+        if (m_note->ringing)
+            menu->addItem("stop", L("Detener aviso"), L("Silencia la alarma"),
+                          [this] { emit dismissRequested(m_note); });
+        if (m_note->hasDate())
+            menu->addItem("clock", L("Cambiar fecha"), m_note->dueLabel(),
+                          [this, at] { openDuePopup(at); });
+        else
+            menu->addItem("bell", L("Añadir recordatorio"),
+                          L("Suena en una fecha, como un recordatorio"),
+                          [this, at] { openDuePopup(at); });
         menu->addSeparator();
     }
     if (m_note->type == Note::Reminder) {

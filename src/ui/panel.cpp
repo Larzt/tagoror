@@ -390,7 +390,8 @@ QFrame *Panel::buildHeader() {
     l->addWidget(m_bdayAddBtn);
 
     // Folding is one click away on every page, next to "⋯"; in app mode it
-    // minimises instead (applyAppModeChrome() swaps the icon and the tip).
+    // minimises instead (applyAppModeChrome() swaps the icon and the tip, and
+    // moves it after "⋯").
     m_foldBtn = iconButton(appMode() ? "minus" : "dock", appMode() ? "Minimizar" : "Plegar a icono");
     m_foldBtn->setFixedSize(28, 28);
     connect(m_foldBtn, &QToolButton::clicked, this, [this] {
@@ -1370,6 +1371,15 @@ void Panel::applyAppModeChrome() {
         m_foldBtn->setProperty("tip", tip);
         m_foldBtn->setIcon(paintIcon(kind, QColor(Theme::muted())));
         m_foldBtn->setToolTip(L(tip));
+
+        // As a window, minimise goes last, where window buttons usually sit; as a
+        // panel, folding stays before "⋯".
+        if (auto *row = qobject_cast<QBoxLayout *>(m_foldBtn->parentWidget()->layout());
+            row && m_moreBtn) {
+            row->removeWidget(m_foldBtn);
+            const int more = row->indexOf(m_moreBtn);
+            row->insertWidget(appMode() ? more + 1 : more, m_foldBtn);
+        }
     }
 }
 
@@ -2136,9 +2146,11 @@ void Panel::refreshNotices() {
         if (!n->ringing) continue;
         AlertZone::Notice x;
         x.kind = AlertZone::Notice::Alarm;
-        x.icon = "bell";
+        const bool list = n->type == Note::Check;
+        x.icon = list ? "check" : "bell";
         x.title = n->title.isEmpty() ? L("Sin título") : n->title;
-        x.sub = L("Recordatorio · %1 · %2").arg(n->dueAt().toString("HH:mm"), areaName(n));
+        x.sub = (list ? L("Lista · %1 · %2") : L("Recordatorio · %1 · %2"))
+                    .arg(n->dueAt().toString("HH:mm"), areaName(n));
         x.action = L("Detener");
         x.act = [this, n] { if (m_store.notes().contains(n)) dismissNote(n); };
         // A repeating reminder's date is its next turn: moving it ten minutes would
