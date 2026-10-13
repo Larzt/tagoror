@@ -38,6 +38,7 @@ const QHash<QString, QString> &table() {
         {"Widget sin marco en el escritorio", "Frameless widget on the desktop"},
         {"Como cualquier otra ventana", "Like any other window"},
         {"Minimizar", "Minimize"},
+        {"Maximizar", "Maximize"},
 
         // Workspace areas
         {"Área nueva", "New area"},
