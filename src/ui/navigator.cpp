@@ -169,6 +169,13 @@ void Navigator::syncPageHome(QWidget *from) {
 
 void Navigator::open(QWidget *page) {
     QWidget *from = current();
+    if (m_window->isMaximized()) {
+        // Maximised (app mode), the window's size belongs to the system: no page
+        // resizes it, and none records the maximised size as its own.
+        showBodyPage(page);
+        if (pageChanged) pageChanged();
+        return;
+    }
     const bool perPage = sizePerPage() && !folded();
     if (perPage) {
         // How the page is left is its size; the widen and stretch notes belong to the
@@ -489,6 +496,8 @@ void Navigator::mapped() {
 }
 
 void Navigator::syncPrefs() {
+    // Maximised, what is kept is the size and place it will be restored to.
+    if (m_window->isMaximized()) return;
     // Folded, the size that counts is the expanded one.
     const bool isFolded = folded();
     Store::Prefs &prefs = m_store->prefs();

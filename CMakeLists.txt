@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 5.0.1 LANGUAGES CXX)
+project(tagoror VERSION 5.0.2 LANGUAGES CXX)
 
 # La versión que llega al binario (la que compara el aviso de actualizaciones)
 # y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de

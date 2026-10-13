@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDate>
+#include <QElapsedTimer>
 #include <QFont>
 #include <QList>
 #include <QRect>
@@ -75,6 +76,8 @@ protected:
     void keyPressEvent(QKeyEvent *e) override;
     /// Keeps the resize grips on the frame's edges.
     void resizeEvent(QResizeEvent *e) override;
+    /// Maximised or not: the header's button and the resize grips follow.
+    void changeEvent(QEvent *e) override;
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 private:
@@ -258,7 +261,9 @@ private:
 
     /// @name Window
     /// @{
-    void applyWindowFlags();        ///< Always on top or on the desktop.
+    void applyWindowFlags();
+    void toggleMaximized();         ///< App mode: the header's button and double click.
+    void refreshMaxButton();        ///< Always on top or on the desktop.
     void setOnTop(bool on);         ///< Prefs::onTop, from settings or the tray.
     /// Frameless widget or ordinary desktop window (Prefs::appMode). In app mode
     /// there is no shadow margin and no dock: "–" minimises.
@@ -312,6 +317,10 @@ private:
     QToolButton *m_backBtn = nullptr;      ///< Only on settings.
     QToolButton *m_foldBtn = nullptr;      ///< Fold to the dock (minimise in app mode), next to "⋯".
     QToolButton *m_moreBtn = nullptr;      ///< "⋯"
+    QToolButton *m_maxBtn = nullptr;       ///< Maximise/restore, app mode only.
+    QToolButton *m_closeBtn = nullptr;     ///< Close, app mode only.
+    QElapsedTimer m_headerClick;           ///< Last press on the header, for the double click.
+    QPoint m_headerClickAt;
     QToolButton *m_timerAddBtn = nullptr;  ///< Header "+" on the timers page.
     QToolButton *m_bdayAddBtn = nullptr;   ///< Header "+" on the birthdays page.
     QWidget *m_empty = nullptr;            ///< "No notes" placeholder.

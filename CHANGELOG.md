@@ -4,6 +4,21 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [5.0.2] — 2026-10-13
+
+App mode in Tagoror's own clothes, and the timer on the folded dock.
+
+### Changed
+
+- **App mode no longer has the system's white title bar.** The window keeps
+  Tagoror's look: the header is its title bar (drag to move, double click to
+  maximise), its edges resize it, and minimise, maximise and close sit next
+  to ⋯. Maximised, switching page no longer resizes the window, and the size
+  saved is the one it restores to.
+- **The folded dock shows the running timer.** The countdown of the timer that
+  ends first sits in a pill over the tile's bottom edge, as it does on the
+  Timers item of the navigation.
+
 ## [5.0.1] — 2026-10-10
 
 Folding in one click, resizing that works on Windows, and no more flashing window.

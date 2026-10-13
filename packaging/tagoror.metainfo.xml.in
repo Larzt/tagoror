@@ -96,6 +96,14 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="5.0.2" date="2026-10-13">
+      <description>
+        <p>App mode keeps Tagoror's look instead of the system's title bar: the
+           header moves the window and maximises it with a double click, its
+           edges resize it, and minimise, maximise and close sit next to ⋯. The
+           folded dock shows the countdown of the running timer.</p>
+      </description>
+    </release>
     <release version="5.0.1" date="2026-10-10">
       <description>
         <p>Folding to the dock is a button next to ⋯ in the header again, so the
