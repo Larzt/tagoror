@@ -248,8 +248,10 @@
   updates — while the stones of the tagoror light up in a ring. It only shows
   when there is something to wait for; `--tray` skips it and starts straight
   into the tray, for autostart.
-- **App mode** (*⋯ → App mode*) turns it into an ordinary window with the
-  system's title bar, in the taskbar and Alt+Tab.
+- **App mode** (*⋯ → App mode*) turns it into an ordinary window, in the
+  taskbar and Alt+Tab. It keeps Tagoror's look instead of the system's title
+  bar: the header moves it (double click maximises), its edges resize it, and
+  minimise, maximise and close sit next to *⋯*.
 - **Each page keeps its own size**: make the planner or the settings bigger and
   the note list stays as it was. *Size per page* in settings turns it off, back
   to one size for everything. It is the widget's thing: in app mode the window
