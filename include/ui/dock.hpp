@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QFontMetricsF>
 #include <QVariantAnimation>
 
 #include "ui/dragwidgets.hpp"
@@ -41,6 +42,14 @@ public:
         update();
     }
 
+    /// The countdown of the timer that ends first, in a pill over the tile's
+    /// bottom edge; empty hides it.
+    void setCountdown(const QString &text) {
+        if (text == m_countdown) return;
+        m_countdown = text;
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
@@ -74,6 +83,23 @@ protected:
 
         paintStoneRing(p, tile.center(), 13, 12, 2.3, alarm ? red : m_theme->accent);
 
+        if (!m_countdown.isEmpty()) {
+            // A timer running: its time left, centred on the tile's bottom edge.
+            QFont f = font();
+            f.setFamily("IBM Plex Mono");
+            f.setStyleHint(QFont::Monospace);
+            f.setPixelSize(10);
+            f.setWeight(QFont::DemiBold);
+            p.setFont(f);
+            const qreal w = QFontMetricsF(f).horizontalAdvance(m_countdown) + 10;
+            const QRectF pill(tile.center().x() - w / 2, tile.bottom() - 9, w, 15);
+            p.setPen(QPen(QColor(19, 22, 27), 1.5));
+            p.setBrush(m_theme->accent);
+            p.drawRoundedRect(pill, 7.5, 7.5);
+            p.setPen(QColor(19, 22, 27));
+            p.drawText(pill, Qt::AlignCenter, m_countdown);
+        }
+
         if (alarm) {
             // The count, top-right, over the tile's corner.
             const QRectF badge(tile.right() - 13, tile.top() - 6, 19, 19);
@@ -103,4 +129,5 @@ private:
     const Theme *m_theme;
     QVariantAnimation m_beat;
     int m_alarms = -1;
+    QString m_countdown;
 };

@@ -404,6 +404,18 @@ QFrame *Panel::buildHeader() {
     m_moreBtn->setFixedSize(28, 28);
     connect(m_moreBtn, &QToolButton::clicked, this, [this] { openMoreMenu(m_moreBtn); });
     l->addWidget(m_moreBtn);
+
+    // App mode has no system frame: the window's own controls go here, after
+    // "⋯", in Tagoror's style (applyAppModeChrome() shows them).
+    m_maxBtn = iconButton("maximize", "Maximizar");
+    m_maxBtn->setFixedSize(28, 28);
+    connect(m_maxBtn, &QToolButton::clicked, this, &Panel::toggleMaximized);
+    l->addWidget(m_maxBtn);
+    m_closeBtn = iconButton("close", "Cerrar");
+    m_closeBtn->setObjectName("winClose");
+    m_closeBtn->setFixedSize(28, 28);
+    connect(m_closeBtn, &QToolButton::clicked, this, &Panel::close);
+    l->addWidget(m_closeBtn);
     return header;
 }
 
@@ -801,7 +813,8 @@ QWidget *Panel::buildBadge() {
 void Panel::applyTheme() {
     setStyleSheet(m_theme.sheet());
 
-    for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_searchBtn, m_timerAddBtn, m_bdayAddBtn})
+    for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_maxBtn, m_closeBtn, m_searchBtn,
+                           m_timerAddBtn, m_bdayAddBtn})
         b->setIcon(paintIcon(b->property("iconKind").toString(), QColor(Theme::muted())));
     // The new-note button is filled with the accent, so its icon is dark.
     m_addBtn->setIcon(paintIcon("plus", QColor("#0c1222")));
@@ -833,7 +846,8 @@ void Panel::retranslate() {
     m_emptyBtn->setText(L("Crear la primera"));
     m_search->setPlaceholderText(L("Buscar en %1…").arg(QString()));
 
-    for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_searchBtn, m_addBtn, m_timerAddBtn, m_bdayAddBtn})
+    for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_maxBtn, m_closeBtn, m_searchBtn,
+                           m_addBtn, m_timerAddBtn, m_bdayAddBtn})
         b->setToolTip(L(b->property("tip").toString()));
     m_navBar->retranslate();
 
@@ -929,6 +943,8 @@ void Panel::refreshNav() {
     for (const Timer *t : m_store.timers())
         if (t->state == Timer::Running && (!next || t->endsAtMs < next->endsAtMs)) next = t;
     m_navBar->setCountdown(m_timerView, next ? timerClock(next->remainingMs()) : QString());
+    // Folded, the dock is all there is: it carries the same countdown.
+    if (m_dock) m_dock->setCountdown(next ? timerClock(next->remainingMs()) : QString());
 
     bool reminder = false;
     for (const Note *n : m_store.notes()) reminder |= n->ringing;
@@ -1331,9 +1347,10 @@ void Panel::showRestored() {
 
 void Panel::setAppMode(bool on) {
     if (on == appMode()) return;
-    // The system frame replaces the shadow margin: the window shrinks or grows by
-    // those margins so the panel inside keeps its size.
+    // App mode has no shadow margin: the window shrinks or grows by those margins
+    // so the panel inside keeps its size.
     const int delta = 2 * Navigator::kShadowMargin * (on ? -1 : 1);
+    if (!on && isMaximized()) showNormal();   // the widget is never maximised
     m_store.prefs().appMode = on;
     applyAppModeChrome();
     applyWindowFlags();
@@ -1380,6 +1397,35 @@ void Panel::applyAppModeChrome() {
             const int more = row->indexOf(m_moreBtn);
             row->insertWidget(appMode() ? more + 1 : more, m_foldBtn);
         }
+    }
+    if (m_maxBtn) m_maxBtn->setVisible(appMode());
+    if (m_closeBtn) m_closeBtn->setVisible(appMode());
+    refreshMaxButton();
+}
+
+void Panel::toggleMaximized() {
+    if (!appMode()) return;
+    if (isMaximized()) showNormal();
+    else showMaximized();
+}
+
+/// Maximise or restore, whichever the window is not.
+void Panel::refreshMaxButton() {
+    if (!m_maxBtn) return;
+    const bool max = isMaximized();
+    const QString kind = max ? "restore" : "maximize";
+    const QString tip = max ? "Restaurar" : "Maximizar";
+    m_maxBtn->setProperty("iconKind", kind);
+    m_maxBtn->setProperty("tip", tip);
+    m_maxBtn->setIcon(paintIcon(kind, QColor(Theme::muted())));
+    m_maxBtn->setToolTip(L(tip));
+}
+
+void Panel::changeEvent(QEvent *e) {
+    QWidget::changeEvent(e);
+    if (e->type() == QEvent::WindowStateChange) {
+        refreshMaxButton();
+        placeResizeGrips();   // none while maximised
     }
 }
 
@@ -2504,10 +2550,12 @@ void Panel::applyWindowFlags() {
     Qt::WindowFlags flags = Qt::FramelessWindowHint | Qt::Tool;
     if (m_store.prefs().onTop) flags |= Qt::WindowStaysOnTopHint;
     else if (!m_lifted) flags |= Qt::WindowStaysOnBottomHint;
-    // App mode: an ordinary window with its frame, in the taskbar and Alt+Tab.
-    // Without "always on top" it stacks like any other, not below them.
+    // App mode: an ordinary window, in the taskbar and Alt+Tab, but without the
+    // system frame: the header is its title bar (drag, double click, buttons) and
+    // the grips its edges. The min/max hints keep the taskbar's minimise and
+    // the system's snapping. Without "always on top" it stacks like any other.
     if (appMode()) {
-        flags = Qt::Window;
+        flags = Qt::Window | Qt::FramelessWindowHint | Qt::WindowMinMaxButtonsHint;
         if (m_store.prefs().onTop) flags |= Qt::WindowStaysOnTopHint;
     }
 
@@ -2553,11 +2601,12 @@ void Panel::buildResizeGrips() {
         m_grips << new EdgeGrip(e, this);
 }
 
-/// Over the band around the visible frame; hidden when folded, in app mode (the
-/// system frame does it) or maximised.
+/// Over the band around the visible frame; hidden when folded or maximised. In
+/// app mode there is no shadow margin and only the inner part of the band is
+/// inside the window, but that is enough to grab.
 void Panel::placeResizeGrips() {
     if (m_grips.isEmpty() || !m_nav) return;   // still being built
-    const bool on = !appMode() && !isMaximized() && !m_nav->folded();
+    const bool on = !isMaximized() && !m_nav->folded();
     // The shadow margin is not frame: the edges are those of the shell.
     const int m = shadowMargin();
     const QRect f = rect().adjusted(m, m, -m, -m);
@@ -2601,6 +2650,24 @@ void Panel::resizeEvent(QResizeEvent *e) {
 }
 
 bool Panel::eventFilter(QObject *watched, QEvent *event) {
+    // A double click on the header maximises, as on a title bar. Counted by hand:
+    // the first press starts a system move, which swallows the release and, on
+    // some platforms, turns the second press into a plain one.
+    if (watched == m_header && appMode() &&
+        (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick) &&
+        static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
+        const QPoint at = static_cast<QMouseEvent *>(event)->globalPosition().toPoint();
+        const bool second = m_headerClick.isValid() &&
+                            m_headerClick.elapsed() < QApplication::doubleClickInterval() &&
+                            (at - m_headerClickAt).manhattanLength() < QApplication::startDragDistance() * 2;
+        if (second) {
+            m_headerClick.invalidate();
+            toggleMaximized();
+            return true;
+        }
+        m_headerClick.start();
+        m_headerClickAt = at;
+    }
     if (event->type() == QEvent::Resize) {
         if (watched == m_bodyHost) placeAlertZone();
         // Deferred: moving the bar between layouts inside the shell's own resize

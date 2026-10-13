@@ -18,8 +18,24 @@ Checklists that ring, and the minimise button where you expect it.
 
 ### Changed
 
-- **In app mode the minimise button comes after ⋯**, on the right edge where
-  window buttons usually sit. As a panel, folding to the dock stays before ⋯.
+- **In app mode minimise comes after ⋯**, together with maximise and close
+  (⋯ – □ ✕), where window buttons usually sit. As a panel, folding to the dock
+  stays before ⋯.
+
+## [5.0.2] — 2026-10-13
+
+App mode in Tagoror's own clothes, and the timer on the folded dock.
+
+### Changed
+
+- **App mode no longer has the system's white title bar.** The window keeps
+  Tagoror's look: the header is its title bar (drag to move, double click to
+  maximise), its edges resize it, and minimise, maximise and close sit next
+  to ⋯. Maximised, switching page no longer resizes the window, and the size
+  saved is the one it restores to.
+- **The folded dock shows the running timer.** The countdown of the timer that
+  ends first sits in a pill over the tile's bottom edge, as it does on the
+  Timers item of the navigation.
 
 ## [5.0.1] — 2026-10-10
 

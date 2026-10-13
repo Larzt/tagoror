@@ -92,6 +92,16 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawEllipse(QPointF(c, c), 1.6, 1.6);
     } else if (kind == "minus") {
         p.drawLine(QPointF(c - 4.5, c), QPointF(c + 4.5, c));
+    } else if (kind == "maximize") {
+        p.drawRoundedRect(QRectF(c - 4.5, c - 4.5, 9, 9), 1.8, 1.8);
+    } else if (kind == "restore") {
+        // Two windows, the one behind peeking out top-right.
+        p.drawRoundedRect(QRectF(c - 4.5, c - 2.5, 7, 7), 1.6, 1.6);
+        p.drawPolyline(QPolygonF({QPointF(c - 2.5, c - 4.5), QPointF(c + 4.5, c - 4.5),
+                                  QPointF(c + 4.5, c + 2.5)}));
+    } else if (kind == "close") {
+        p.drawLine(QPointF(c - 4, c - 4), QPointF(c + 4, c + 4));
+        p.drawLine(QPointF(c + 4, c - 4), QPointF(c - 4, c + 4));
     } else if (kind == "notes") {
         pen.setWidthF(1.6);
         p.setPen(pen);
@@ -381,8 +391,10 @@ QFrame#shell {
     border: 1px solid %2;
     border-radius: 14px;
 }
-/* App mode: the frame is the system's, which has its own corners. */
-QFrame#shell[app="true"] { border: none; border-radius: 0; }
+/* App mode: an ordinary window with no system frame: square, and its controls
+   in the header. */
+QFrame#shell[app="true"] { border-radius: 0; }
+QToolButton#winClose:hover { background: #c94f42; }
 QFrame#header { border: none; }
 /* 5.0 chrome: a 36px tools row over the list, and the navigation as a bar
    along the bottom or a rail down the left. */
