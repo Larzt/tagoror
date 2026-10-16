@@ -75,11 +75,10 @@ void AreaTabs::relayout() {
     m_hiddenRinging = false;
     m_overflowRect = QRect();
 
-    // Since 5.0 the "+" at the end of the row makes notes, not areas: new areas
-    // come from Ctrl+T, the "+N" menu and the palette. The rect stays, empty, as
-    // the right limit.
-    m_addRect = QRect(width() - kRight, (kHeight - kAddSize) / 2, 0, kAddSize);
-    const int limit = m_addRect.left() - 4;
+    // The "+" for a new area follows the last tab, as in a browser. Its room is
+    // kept at the right edge so a full strip never pushes it out; the filled "+"
+    // at the end of the tools row is the new note's, not this one.
+    const int limit = width() - kRight - kAddSize - 4;
 
     QList<int> widths;
     QStringList texts;
@@ -143,8 +142,10 @@ void AreaTabs::relayout() {
             if (!shown.contains(i) && m_tabs.at(i).ringing) m_hiddenRinging = true;
         const QFontMetrics fm(tabFont(font(), false));
         const int chipW = fm.horizontalAdvance(QString("+%1").arg(m_hidden)) + 26;
-        m_overflowRect = QRect(m_addRect.left() - 4 - chipW, (kHeight - 24) / 2, chipW, 24);
+        m_overflowRect = QRect(limit - chipW, (kHeight - 24) / 2, chipW, 24);
+        x = m_overflowRect.right() + 1 + kGap;
     }
+    m_addRect = QRect(x + 2, (kHeight - kAddSize) / 2, kAddSize, kAddSize);
 }
 
 void AreaTabs::resizeEvent(QResizeEvent *) {
@@ -245,10 +246,23 @@ void AreaTabs::paintEvent(QPaintEvent *) {
         }
     }
 
+    // New area: a bare "+" in the tabs' grey, so it does not compete with the
+    // new note's filled one at the end of the row.
+    if (!m_editor) {
+        if (m_hover == -2) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(255, 255, 255, 14));
+            p.drawRoundedRect(QRectF(m_addRect).adjusted(1, 1, -1, -1), 7, 7);
+        }
+        constexpr int kPlus = 13;
+        p.drawPixmap(m_addRect.center().x() - kPlus / 2 + 1, m_addRect.center().y() - kPlus / 2 + 1,
+                     paintIcon("plus", m_hover == -2 ? fg : muted, kPlus).pixmap(kPlus, kPlus));
+    }
 }
 
 int AreaTabs::hitTest(const QPoint &pos) const {
     if (m_hidden > 0 && m_overflowRect.contains(pos)) return -3;
+    if (!m_editor && m_addRect.contains(pos)) return -2;
     for (const Slot &s : m_slots)
         if (s.rect.contains(pos)) return s.index;
     return -1;
@@ -299,8 +313,14 @@ void AreaTabs::mousePressEvent(QMouseEvent *e) {
 }
 
 void AreaTabs::mouseDoubleClickEvent(QMouseEvent *e) {
-    const int h = hitTest(e->position().toPoint());
-    if (h >= 0) beginRename(m_tabs.at(h).id);
+    const QPoint pos = e->position().toPoint();
+    const int h = hitTest(pos);
+    if (h >= 0) {
+        beginRename(m_tabs.at(h).id);
+    } else if (h == -1 && !m_editor && pos.x() > m_addRect.right() && addRequested) {
+        // The empty strip past the "+", as in a browser's tab bar.
+        addRequested();
+    }
 }
 
 void AreaTabs::contextMenuEvent(QContextMenuEvent *e) {
@@ -405,8 +425,9 @@ void AreaTabs::beginRename(const QString &id) {
             // A bit wider than the name, so there is room to type.
             QRect r = s.rect.adjusted(2, 6, -2, -6);
             r.setWidth(qMax(r.width(), 120));
+            // It may cover the "+", which hides while renaming.
             r.setRight(qMin(r.right(), (m_hidden > 0 ? m_overflowRect.left()
-                                                     : m_addRect.left()) - 4));
+                                                     : width() - kRight) - 4));
             m_editor->setGeometry(r);
         }
     m_editor->show();

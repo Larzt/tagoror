@@ -425,9 +425,13 @@ NoteCard::NoteCard(Note *note, const Theme &theme, QWidget *parent)
 }
 
 void NoteCard::build() {
+    // Compact trims the frame and the gaps, never the controls themselves.
+    const bool compact = m_theme.compact;
+    const int gap = compact ? 4 : 7;
     auto *outer = new QVBoxLayout(this);
-    outer->setContentsMargins(11, 9, 11, 10);
-    outer->setSpacing(7);
+    if (compact) outer->setContentsMargins(9, 5, 9, 6);
+    else outer->setContentsMargins(11, 9, 11, 10);
+    outer->setSpacing(gap);
 
     buildTitleRow(outer);
 
@@ -436,7 +440,7 @@ void NoteCard::build() {
     m_bodyBox = new QWidget;
     auto *l = new QVBoxLayout(m_bodyBox);
     l->setContentsMargins(0, 0, 0, 0);
-    l->setSpacing(7);
+    l->setSpacing(gap);
     outer->addWidget(m_bodyBox);
 
     switch (m_note->type) {
@@ -474,6 +478,8 @@ void NoteCard::applyCollapsed() {
     m_indicator->setVisible(!ind.isEmpty());
     // A ringing reminder folded away is still the alarm: its time in red.
     m_indicator->setProperty("alarm", folded && m_note->ringing);
+    // A finished checklist says so without unfolding it: the count in the accent.
+    m_indicator->setProperty("done", folded && !m_note->ringing && checklistDone());
     m_indicator->style()->unpolish(m_indicator);
     m_indicator->style()->polish(m_indicator);
 }
@@ -481,7 +487,8 @@ void NoteCard::applyCollapsed() {
 QString NoteCard::indicatorText() const {
     switch (m_note->type) {
         case Note::Check:
-            return QString("%1/%2").arg(m_note->doneCount()).arg(m_note->items.size());
+            return QString("%1%2/%3").arg(checklistDone() ? QStringLiteral("✓ ") : QString())
+                .arg(m_note->doneCount()).arg(m_note->items.size());
         case Note::Reminder: {
             if (!m_note->isScheduled()) return m_note->due;
             const QDateTime at = m_note->dueAt();
@@ -498,6 +505,12 @@ QString NoteCard::indicatorText() const {
         default:
             return QString();
     }
+}
+
+/// Every item ticked. An empty list is not finished: there was nothing to do.
+bool NoteCard::checklistDone() const {
+    return m_note->type == Note::Check && !m_note->items.isEmpty() &&
+           m_note->doneCount() == m_note->items.size();
 }
 
 /// Editable title with the reorder grip on its right. The grip is dimmed and

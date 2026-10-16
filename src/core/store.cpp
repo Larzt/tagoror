@@ -373,6 +373,9 @@ void Store::save() {
     root["birthdaysByMonth"] = m_prefs.birthdaysByMonth;
     root["textScale"] = m_prefs.textScale;
     root["font"] = m_prefs.font;
+    root["compact"] = m_prefs.compact;
+    root["alarmTone"] = m_prefs.alarmTone;
+    root["alarmVolume"] = m_prefs.alarmVolume;
     root["plainText"] = true;   // text notes are plain text (see readObject())
     root["plannerView"] = m_prefs.plannerView;
     root["plannerHidden"] = QJsonArray::fromStringList(m_prefs.plannerHidden);
@@ -783,6 +786,10 @@ bool Store::readObject(const QJsonObject &root) {
     m_prefs.birthdaysByMonth = root["birthdaysByMonth"].toBool();
     if (root.contains("textScale")) m_prefs.textScale = qBound(80, root["textScale"].toInt(100), 150);
     m_prefs.font = root["font"].toString();
+    m_prefs.compact = root["compact"].toBool();
+    if (root.contains("alarmTone")) m_prefs.alarmTone = root["alarmTone"].toString();
+    if (root.contains("alarmVolume"))
+        m_prefs.alarmVolume = qBound(0, root["alarmVolume"].toInt(60), 100);
     if (root.contains("plannerView")) m_prefs.plannerView = qBound(0, root["plannerView"].toInt(2), 2);
     for (const QJsonValue v : root["plannerHidden"].toArray())
         m_prefs.plannerHidden << v.toString();

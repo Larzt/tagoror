@@ -280,8 +280,8 @@
 
 - From **⋯** in the header, or **Ctrl+,**, in five tabs: *General* (language,
   window, data folder, backups, microphone, updates), *Appearance* (accent,
-  opacity, **typeface and text size**), *Sync*, *Shortcuts* (every one of them in
-  one list) and *About*.
+  opacity, **typeface, text size, density** and the **alarm**), *Sync*,
+  *Shortcuts* (every one of them in one list) and *About*.
 - **Typeface**: IBM Plex Sans, which comes with the app and is the default, the
   system's own font, or any installed one — type its name or the start of it
   ("fira" finds Fira Sans). Times, dates and counters stay monospaced.
@@ -289,6 +289,11 @@
   sample underneath. It scales what you write — titles, note bodies, checklist
   items, the planner — and leaves the chrome around it alone, so a larger size
   never pushes the panel wider than it is.
+- **Density**: *Compact* tightens the cards' margins and the gaps between them,
+  so more notes fit on screen.
+- **Alarm**: four built-in tones — two beeps, bell, digital, rising — or a WAV
+  of your own (16-bit PCM, up to 8 MB), and a volume slider. Picking a tone,
+  letting go of the slider or *Test* plays it once.
 - It used to be a dropdown, and a menu row had nowhere to put a switch, a
   slider and a folder path without becoming a column taller than the panel it
   was covering.
@@ -401,8 +406,8 @@ always, and those two rows in settings are simply disabled.
 - **Copy contents** in the right-click menu puts a text, checklist or reminder
   note on the clipboard as text — title, date, body, checklist items as
   `- [ ]` / `- [x]` tasks and links. Voice notes don't have it.
-- No image assets at all: the icons are drawn with `QPainter` and the alarm tone
-  is synthesised on first use.
+- No image assets at all: the icons are drawn with `QPainter` and the alarm
+  tones are synthesised on first use.
 
 ### Keyboard
 
@@ -674,7 +679,7 @@ published elsewhere and on their own schedule:
 ├── notes.json     # notes, timers, accent, opacity, window size, preferences
 ├── birthdays.json # the birthdays
 ├── events.json    # the planner's events and tasks
-├── alarm.wav      # the generated alarm tone
+├── alarm*.wav     # the generated alarm tones, and alarm-custom.wav if you picked one
 ├── audio/         # one WAV per voice note
 ├── images/        # the images attached to notes
 └── backups/       # notes-, birthdays- and events-<timestamp>.json

@@ -96,6 +96,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="5.0.4" date="2026-10-16">
+      <description>
+        <p>A "+" after the last area tab creates a new area. The alarm tone can be
+           chosen from four built-in ones or a WAV of your own, with its volume,
+           and a compact density fits more notes. A folded checklist with every
+           item ticked shows a ✓ next to its count, and leaving a Markdown note no
+           longer selects its title on the list.</p>
+      </description>
+    </release>
     <release version="5.0.3" date="2026-10-13">
       <description>
         <p>Checklists can have a reminder: optional, from the list's menu, with

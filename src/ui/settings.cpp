@@ -333,6 +333,7 @@ void SettingsView::refresh() {
             break;
         case Appearance:
             addAppearance();
+            addAlarm();
             break;
         case Sync:
             // Recorded before building: refreshSync() compares against it and would
@@ -498,6 +499,56 @@ void SettingsView::addAppearance() {
         cl->addWidget(body);
         b->addWidget(card);
     }
+
+    // Density: how much room the cards take. Two words fit side by side.
+    {
+        QVBoxLayout *b = addBlock();
+        b->addLayout(textColumn(L("Densidad"), L("Compacta deja ver más notas a la vez")));
+        b->addWidget(segments({L("Normal"), L("Compacta")}, m_store->prefs().compact ? 1 : 0,
+                              [this](int i) { emit compactPicked(i == 1); }));
+    }
+}
+
+QString alarmToneName(const QString &id) {
+    if (id == "bell") return L("Campana");
+    if (id == "digital") return L("Digital");
+    if (id == "rise") return L("Ascendente");
+    if (id == "custom") return L("Archivo propio");
+    return L("Dos pitidos");
+}
+
+/// The tone and its volume. A menu rather than segments: five names do not fit
+/// side by side (see *Card widths*).
+void SettingsView::addAlarm() {
+    beginGroup(L("ALARMA"), "bell");
+    addAction(L("Tono"), alarmToneName(m_store->prefs().alarmTone), L("Cambiar…"), true,
+              [this](QWidget *anchor) { emit alarmToneRequested(anchor); });
+
+    QVBoxLayout *b = addBlock();
+    auto *hl = new QHBoxLayout;
+    hl->setContentsMargins(0, 0, 0, 0);
+    hl->setSpacing(6);
+    hl->addLayout(textColumn(L("Volumen"), QString()), 1);
+    auto *readout = new QLabel(QString("%1%").arg(m_store->prefs().alarmVolume));
+    readout->setObjectName("setValue");
+    readout->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    hl->addWidget(readout);
+    auto *test = actionButton(L("Probar"));
+    test->setToolTip(L("Escuchar el tono"));
+    connect(test, &QToolButton::clicked, this, [this] { emit alarmPreviewRequested(); });
+    hl->addWidget(test, 0, Qt::AlignVCenter);
+    b->addLayout(hl);
+
+    auto *slider = new QSlider(Qt::Horizontal);
+    slider->setRange(0, 100);
+    slider->setValue(m_store->prefs().alarmVolume);
+    connect(slider, &QSlider::valueChanged, this, [this, readout](int v) {
+        readout->setText(QString("%1%").arg(v));
+        emit alarmVolumeChanged(v);
+    });
+    // Letting go plays it, so the level is heard and not guessed.
+    connect(slider, &QSlider::sliderReleased, this, [this] { emit alarmPreviewRequested(); });
+    b->addWidget(slider);
 }
 
 QString fontDisplayName(const QString &pref) {

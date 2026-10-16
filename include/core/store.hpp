@@ -65,6 +65,14 @@ public:
         /// an installed font.
         QString font;
 
+        /// Compact cards: tighter margins and gaps, so more notes fit.
+        bool compact = false;
+
+        /// Alarm tone (an Alarm::tones() id; "custom" is the WAV copied into
+        /// the data folder) and its volume in percent.
+        QString alarmTone = QStringLiteral("beeps");
+        int alarmVolume = 60;
+
         /// Planner view (0 day, 1 week, 2 month) and hidden categories.
         int plannerView = 2;
         QStringList plannerHidden;

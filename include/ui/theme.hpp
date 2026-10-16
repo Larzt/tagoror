@@ -18,6 +18,8 @@ struct Theme {
     /// writes scales: the sheet marks those sizes as {fs:12} and sheet() converts
     /// them; the rest of the interface stays fixed.
     int textScale = 100;
+    /// Settings → Density. Cards read it when built, so changing it rebuilds them.
+    bool compact = false;
 
     /// A content size already scaled, for what is painted by hand.
     qreal fs(qreal px) const { return px * textScale / 100.0; }
@@ -473,6 +475,9 @@ QToolButton#mdFormat {
 QToolButton#mdFormat:hover { color: %3; background: %7; }
 QLabel#mdStatus { color: #636872; font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
 QLabel#foldIndicator { color: %4; font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
+QLabel#foldIndicator[done="true"] {
+    color: %5; background: %8; border-radius: 4px; padding: 1px 5px;
+}
 QLabel#foldIndicator[alarm="true"] {
     color: #ff7a6b; background: rgba(255,122,107,0.14); border-radius: 4px; padding: 1px 5px;
 }

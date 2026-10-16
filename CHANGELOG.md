@@ -4,6 +4,38 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [5.0.4] — 2026-10-16
+
+A "+" for new areas, alarm tones to choose from, a compact layout, finished
+lists that say so and a title that stays put.
+
+### Added
+
+- **A "+" after the last area tab creates an area**, as in a browser's tab
+  bar. It is a bare grey "+", so it does not compete with the filled new-note
+  one at the end of the row. Double-clicking the empty strip after it does the
+  same, and Ctrl+T still works.
+- **Alarm tone and volume.** *Appearance → Alarm* offers four built-in tones —
+  two beeps (the one so far), bell, digital and rising — or a WAV of your own
+  (16-bit PCM, up to 8 MB, copied into the data folder), plus a volume slider;
+  it was fixed at 60 %. Picking a tone, letting go of the slider or *Test*
+  plays it once. If the custom file goes missing, the two beeps ring instead
+  of silence.
+- **Density.** *Appearance → Density → Compact* tightens the cards' margins
+  and the gaps between them, so more notes fit.
+
+### Changed
+
+- **A folded checklist shows when it is finished.** With every item ticked,
+  its count turns into a ✓ in the accent (✓ 4/4), so a done list can be told
+  apart without unfolding it.
+
+### Fixed
+
+- **Leaving a Markdown note no longer selects its title.** Back on the list
+  the card is scrolled into view but the focus stays on the list, so the next
+  key pressed does not overwrite the note's name.
+
 ## [5.0.3] — 2026-10-13
 
 Checklists that ring, and the minimise button where you expect it.

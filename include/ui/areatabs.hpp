@@ -13,8 +13,8 @@ class QLineEdit;
 /// The strip of workspace-area tabs between the header and the list.
 ///
 /// Painted by hand rather than a QTabBar: it draws each area's glyph, the red
-/// dot of areas with something ringing and a "+N" for the ones that do not
-/// fit, and never scrolls sideways. The active tab is always shown; hidden
+/// dot of areas with something ringing, a "+N" for the ones that do not
+/// fit and a "+" after them for a new area, and never scrolls sideways. The active tab is always shown; hidden
 /// ones go behind "+N", which inherits their red dot. Talks through
 /// std::function rather than signals, so no moc.
 class AreaTabs : public QWidget {

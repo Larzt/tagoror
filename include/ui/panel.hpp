@@ -154,6 +154,8 @@ private:
     void showNotes();
     void createReminder(const QString &title, const QDateTime &when);
     void revealNote(Note *n);       ///< From the planner to its card in the list.
+    /// Brings @p n's card into view (switching area if needed) without focusing it.
+    NoteCard *scrollToNote(Note *n);
     void refreshPlanner();
     /// Deletes a planner category. For a Google calendar this is unfollowing it,
     /// which removes its events (and stops whatever of them was ringing).
@@ -206,6 +208,12 @@ private:
     /// Sets the chosen typeface on the whole application.
     void applyFont();
     void pickFont(const QString &pref);
+    /// The built-in tones and a WAV of one's own. @p error says why the last
+    /// file picked was refused.
+    void openAlarmToneMenu(QWidget *anchor, const QString &error = QString());
+    void pickAlarmTone(const QString &id);   ///< Sets, saves and plays it once.
+    void applyAlarmPrefs();                  ///< Tone and volume from the prefs.
+    void chooseAlarmFile(QWidget *anchor);
     void chooseDataFolder();
     /// Picking a folder that already holds notes is ambiguous ("take mine there"
     /// or "open those"), so it asks: assuming the first overwrites the

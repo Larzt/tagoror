@@ -1,4 +1,5 @@
 #include "ui/panel.hpp"
+#include "audio/alarm.hpp"
 #include "ui/alertcenter.hpp"
 #include "ui/areatabs.hpp"
 #include "audio/recorder.hpp"
@@ -131,6 +132,7 @@ Panel::Panel() {
     m_theme.accent = m_store.prefs().accent;
     m_theme.opacity = m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
+    m_theme.compact = m_store.prefs().compact;
     m_systemFont = QApplication::font();
     applyFont();
     m_nav = new Navigator(this, &m_store, this);
@@ -139,6 +141,7 @@ Panel::Panel() {
     connect(&m_store, &Store::reloaded, this, &Panel::onStoreReloaded);
 
     m_alerts = new AlertCenter(&m_store, this);
+    applyAlarmPrefs();
     m_dueTimer = new QTimer(this);
     m_dueTimer->setInterval(5000);
     connect(m_dueTimer, &QTimer::timeout, this, &Panel::checkReminders);
@@ -647,6 +650,24 @@ QWidget *Panel::buildBody() {
         refreshSettings();   // the chosen button and the sample
         save();
     });
+    connect(m_settings, &SettingsView::compactPicked, this, [this](bool compact) {
+        if (compact == m_theme.compact) return;
+        m_theme.compact = compact;
+        m_store.prefs().compact = compact;
+        applyTheme();
+        rebuildList();   // the cards take their margins when built
+        refreshSettings();
+        save();
+    });
+    connect(m_settings, &SettingsView::alarmToneRequested, this,
+            [this](QWidget *anchor) { openAlarmToneMenu(anchor); });
+    connect(m_settings, &SettingsView::alarmVolumeChanged, this, [this](int v) {
+        m_store.prefs().alarmVolume = v;
+        m_alerts->alarm()->setVolume(v);
+        scheduleSave();
+    });
+    connect(m_settings, &SettingsView::alarmPreviewRequested, this,
+            [this] { m_alerts->alarm()->preview(); });
     connect(m_settings, &SettingsView::appModeToggled, this, &Panel::setAppMode);
     connect(m_settings, &SettingsView::onTopToggled, this, &Panel::setOnTop);
     connect(m_settings, &SettingsView::sizePerPageToggled, this, [this](bool on) {
@@ -893,6 +914,7 @@ void Panel::rebuildList() {
         w->deleteLater();
     }
 
+    m_listLayout->setSpacing(m_theme.compact ? 4 : 7);
     const QList<Note *> shown = m_store.notesIn(currentArea());
     for (Note *n : shown) {
         auto *card = new NoteCard(n, m_theme);
@@ -1472,7 +1494,11 @@ void Panel::showNotes() {
     m_nav->open(m_scroll);
     if (fromMarkdown) {
         rebuildList();
-        if (Note *n = m_mdPage->note()) revealNote(n);
+        // Back at its card, but not in its title: revealNote() selects it, and a
+        // key pressed next would overwrite the name. The list keeps the focus so
+        // it does not drift to some other card's title either.
+        if (Note *n = m_mdPage->note()) scrollToNote(n);
+        m_scroll->setFocus(Qt::OtherFocusReason);
     }
     refreshNav();
     refreshTitle();
@@ -1622,14 +1648,18 @@ void Panel::tickTimers() {
 
 void Panel::revealNote(Note *n) {
     showNotes();
+    if (NoteCard *card = scrollToNote(n)) card->focusTitle();
+}
+
+NoteCard *Panel::scrollToNote(Note *n) {
     if (m_store.areaOf(n) != currentArea()) switchArea(m_store.areaOf(n));
     for (NoteCard *card : cards()) {
         if (card->note() != n) continue;
         card->show();                       // a filter may have hidden it
         m_scroll->ensureWidgetVisible(card);
-        card->focusTitle();
-        return;
+        return card;
     }
+    return nullptr;
 }
 
 /// The settings page shows things that change outside it (data folder,
@@ -1916,6 +1946,55 @@ void Panel::openFontEditor(QWidget *anchor, const QString &notFound) {
     menu->showUnder(anchor);
 }
 
+void Panel::openAlarmToneMenu(QWidget *anchor, const QString &error) {
+    const QString current = m_store.prefs().alarmTone;
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Tono de alarma"));
+    for (const QString &id : Alarm::tones()) {
+        // The file's entry only while there is a file to play.
+        if (id == "custom" && !QFile::exists(Alarm::customPath())) continue;
+        menu->addItem(id == current ? "check" : "bell", alarmToneName(id),
+                      id == "custom" ? L("WAV elegido") : QString(),
+                      [this, id] { pickAlarmTone(id); });
+    }
+    menu->addSeparator();
+    if (!error.isEmpty()) menu->addText(error);
+    QPointer<QWidget> at(anchor);
+    menu->addItem("folder", L("Elegir archivo WAV…"), QString(), [this, at] {
+        // After the menu has closed: a modal dialog from inside its click would
+        // open on top of a popup that is going away.
+        QTimer::singleShot(0, this, [this, at] { chooseAlarmFile(at); });
+    });
+    menu->showUnder(anchor);
+}
+
+void Panel::applyAlarmPrefs() {
+    m_alerts->alarm()->setTone(m_store.prefs().alarmTone);
+    m_alerts->alarm()->setVolume(m_store.prefs().alarmVolume);
+}
+
+void Panel::pickAlarmTone(const QString &id) {
+    m_store.prefs().alarmTone = id;
+    m_alerts->alarm()->setTone(id);
+    m_alerts->alarm()->preview();
+    refreshSettings();   // the row names the tone
+    save();
+}
+
+void Panel::chooseAlarmFile(QWidget *anchor) {
+    // Settings may rebuild while the dialog is open, taking the button with it.
+    QPointer<QWidget> at(anchor);
+    const QString file = QFileDialog::getOpenFileName(this, L("Tono de alarma"), QDir::homePath(),
+                                                      L("Sonido WAV (*.wav)"));
+    if (file.isEmpty()) return;
+    const QString error = Alarm::importCustom(file);
+    if (!error.isEmpty()) {
+        if (at) openAlarmToneMenu(at, error);
+        return;
+    }
+    pickAlarmTone("custom");
+}
+
 void Panel::chooseDataFolder() {
     // The dialog opens where the data is, unless that place does not exist right
     // now: pointing at a missing folder leaves the picker blank.
@@ -2137,7 +2216,9 @@ void Panel::onStoreReloaded() {
     m_theme.accent = m_store.prefs().accent;
     m_theme.opacity = m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
+    m_theme.compact = m_store.prefs().compact;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
+    applyAlarmPrefs();
     applyFont();
     applyTheme();
     // Store::load() already set the language; retranslate() rewrites the window
