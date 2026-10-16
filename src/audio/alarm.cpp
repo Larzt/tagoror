@@ -10,6 +10,8 @@
 #include <QUrl>
 #include <QtMath>
 
+#include <cmath>
+
 namespace {
 
 constexpr int kRate = 44100;
@@ -67,7 +69,7 @@ void synthesise(const QString &id, Synth &s) {
     } else if (id == "digital") {
         // Four quick beeps, a softened square: the bedside clock.
         for (int i = 0; i < 4; ++i) {
-            s.tone(70, [](qreal t) { return qTanh(3 * qSin(2 * M_PI * 1200 * t)) * 0.22; });
+            s.tone(70, [](qreal t) { return std::tanh(3 * qSin(2 * M_PI * 1200 * t)) * 0.22; });
             s.silence(70);
         }
         s.silence(600);
