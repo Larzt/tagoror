@@ -13,6 +13,8 @@ class ElidedLabel;
 
 /// How a typeface preference (Store::Prefs::font) reads to the user.
 QString fontDisplayName(const QString &pref);
+/// How an alarm tone id (Store::Prefs::alarmTone) reads to the user.
+QString alarmToneName(const QString &id);
 class QFrame;
 class QToolButton;
 class QVBoxLayout;
@@ -62,6 +64,10 @@ signals:
     void languagePicked(Lang::Code code);
     void textScalePicked(int percent);
     void fontEditorRequested(QWidget *anchor);
+    void compactPicked(bool compact);
+    void alarmToneRequested(QWidget *anchor);   ///< The menu of tones.
+    void alarmVolumeChanged(int percent);       ///< Live, while dragging.
+    void alarmPreviewRequested();
     void onTopToggled(bool on);
     void appModeToggled(bool on);
     void sizePerPageToggled(bool on);
@@ -95,6 +101,7 @@ private:
     /// A vertically stacked group row, for settings with their own controls.
     QVBoxLayout *addBlock();
     void addAppearance();
+    void addAlarm();
     void addLanguage();
     void addWindow();
     void addData();

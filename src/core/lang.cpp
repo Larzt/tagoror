@@ -587,6 +587,28 @@ const QHash<QString, QString> &table() {
         {"Muy grande", "Extra large"},
         {"Comprar pan y café", "Buy bread and coffee"},
         {"Así se verán las notas, las listas y el planificador.", "This is how notes, lists and the planner will look."},
+        {"Densidad", "Density"},
+        {"Compacta", "Compact"},
+        {"Compacta deja ver más notas a la vez", "Compact shows more notes at once"},
+
+        // Settings: alarm
+        {"ALARMA", "ALARM"},
+        {"Tono", "Tone"},
+        {"Tono de alarma", "Alarm tone"},
+        {"Dos pitidos", "Two beeps"},
+        {"Campana", "Bell"},
+        {"Digital", "Digital"},
+        {"Ascendente", "Rising"},
+        {"Archivo propio", "Your own file"},
+        {"WAV elegido", "Chosen WAV"},
+        {"Elegir archivo WAV…", "Choose a WAV file…"},
+        {"Sonido WAV (*.wav)", "WAV sound (*.wav)"},
+        {"Volumen", "Volume"},
+        {"Probar", "Test"},
+        {"Escuchar el tono", "Play the tone"},
+        {"El archivo es demasiado grande (máximo 8 MB).", "The file is too large (8 MB at most)."},
+        {"Solo se admiten archivos WAV PCM de 16 bits.", "Only 16-bit PCM WAV files are supported."},
+        {"No se pudo copiar el archivo.", "The file could not be copied."},
 
         // Markdown
 

@@ -70,6 +70,7 @@ private:
     /// What a folded card says about its content: 2/4, the reminder's time, the
     /// take's length, MD.
     QString indicatorText() const;
+    bool checklistDone() const;   ///< A checklist with every item ticked.
     void buildVoice(QVBoxLayout *l);
     void addCheckRow(QVBoxLayout *l, int index);
     void rebuildItems();          ///< Renumbers the rows after a structural change.
