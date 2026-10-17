@@ -4,10 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tagoror — notas en tu escritorio</title>
-<meta name="description" content="Notas, recordatorios y planificación en un panel translúcido para Linux y Windows. Sin cuenta, sin nube obligatoria. Open source, MIT.">
+<meta name="description" content="Tus notas, tu tiempo y tu agenda, en un solo widget para Linux y Windows. Sin cuenta, sin nube obligatoria. Open source, MIT.">
 <meta property="og:title" content="Tagoror">
-<meta property="og:description" content="Notas, recordatorios y planificación en un panel translúcido para Linux y Windows. Sin cuenta, sin nube obligatoria.">
+<meta property="og:description" content="Tus notas, tu tiempo y tu agenda, en un solo widget para Linux y Windows. Sin cuenta, sin nube obligatoria.">
 <meta property="og:image" content="https://larzt.github.io/tagoror/brand.png">
+<meta property="og:video" content="https://larzt.github.io/tagoror/trailer.mp4">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#0d0f13">
 <link rel="icon" type="image/svg+xml" href="tagoror.svg">
@@ -22,17 +23,19 @@
     if (lang !== 'es' && lang !== 'en') lang = /^es\b/i.test(navigator.language || '') ? 'es' : 'en';
     if (theme !== 'dark' && theme !== 'light') theme = 'dark';
     d.setAttribute('data-lang', lang); d.setAttribute('data-theme', theme); d.lang = lang;
+    d.className += ' js';
   })();
 </script>
 <style>
-:root{--accent:#7c9cff;--accent-soft:color-mix(in srgb,var(--accent) 16%,transparent);--accent-line:color-mix(in srgb,var(--accent) 45%,transparent);--noise:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .6 0 0 0 0 .62 0 0 0 0 .66 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");--demo-op:.9;--demo-card-op:.95;--demo-fs:13.5px}
-:root[data-theme="dark"]{--bg:#0d0f13;--bg2:#111419;--card:#161a20;--card2:#1c2027;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--text:#e8eaef;--muted:#9aa1ae;--faint:#737a87;--ink:var(--accent);color-scheme:dark}
-:root[data-theme="light"]{--bg:#ebe9e5;--bg2:#e2dfd9;--card:#f6f5f2;--card2:#ffffff;--line:rgba(20,22,28,.10);--line2:rgba(20,22,28,.18);--text:#15171c;--muted:#525865;--faint:#6d7280;--ink:color-mix(in oklch,var(--accent) 55%,#000);color-scheme:light}
+:root{--accent:#7c9cff;--accent-soft:color-mix(in srgb,var(--accent) 16%,transparent);--accent-line:color-mix(in srgb,var(--accent) 45%,transparent);--noise:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .6 0 0 0 0 .62 0 0 0 0 .66 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");--demo-op:.9;--demo-card-op:.95;--demo-fs:13.5px;--ease:cubic-bezier(.2,.7,.2,1)}
+:root[data-theme="dark"]{--bg:#0d0f13;--bg2:#111419;--card:#161a20;--card2:#1c2027;--line:rgba(255,255,255,.08);--line2:rgba(255,255,255,.14);--text:#e8eaef;--muted:#9aa1ae;--faint:#737a87;--ink:var(--accent);--glow-base:radial-gradient(90% 80% at 50% 40%,#1b2330 0%,#0d0f13 100%);color-scheme:dark}
+:root[data-theme="light"]{--bg:#ebe9e5;--bg2:#e2dfd9;--card:#f6f5f2;--card2:#ffffff;--line:rgba(20,22,28,.10);--line2:rgba(20,22,28,.18);--text:#15171c;--muted:#525865;--faint:#6d7280;--ink:color-mix(in oklch,var(--accent) 55%,#000);--glow-base:radial-gradient(90% 80% at 50% 40%,#f6f5f2 0%,#ebe9e5 100%);color-scheme:light}
 [data-lang="es"] [lang="en"],[data-lang="en"] [lang="es"]{display:none!important}
 @media (max-width:860px){[data-hide-sm]{display:none!important}}
 @media (min-width:861px){[data-show-sm]{display:none!important}}
+@media (max-width:1040px){.nav-x{display:none}}
 html{scroll-behavior:smooth}
-body{margin:0;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.55;min-height:100vh;transition:background .3s,color .3s}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:16px;line-height:1.55;min-height:100vh;transition:background .3s,color .3s;overflow-x:clip}
 a{color:var(--ink);text-decoration:none}
 a:hover{text-decoration:underline}
 img{max-width:100%}
@@ -49,11 +52,30 @@ button{font:inherit}
 .pill{padding:6px 12px;border-radius:8px;border:1px solid var(--line2)}
 kbd{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:2px 6px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px}
 
+/* Aparición al hacer scroll: cada elemento sube y aparece un poco después del anterior, como en el tráiler */
+html.js .rv{opacity:0;transform:translateY(28px);transition:opacity .9s var(--ease),transform .9s var(--ease);transition-delay:calc(var(--d,0) * 90ms)}
+html.js .rv.in{opacity:1;transform:none}
+html.js .rv.zoom{transform:scale(.94)}
+html.js .rv.zoom.in{transform:none}
+/* Efectos ligados al scroll: --p va de 0 a 1 */
+[data-sc]{--p:1}
+
 /* Cabecera */
 .seg{padding:5px 9px;border-radius:7px;border:0;cursor:pointer;background:transparent;color:var(--muted)}
 .seg[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink)}
 .linkbtn{background:none;border:0;padding:0;cursor:pointer;color:var(--muted)}
 .linkbtn[aria-pressed="true"]{color:var(--ink);font-weight:600}
+
+/* Portada */
+.hero{position:relative;overflow:hidden;background:var(--glow-base)}
+.hero::before{content:'';position:absolute;inset:0;background:radial-gradient(40% 40% at 80% 85%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 70%);pointer-events:none}
+.brand{margin:0;font-size:clamp(64px,13vw,168px);font-weight:600;letter-spacing:-.045em;line-height:1}
+.brand .dot{color:var(--accent);display:inline-block;transform:scale(0);transition:transform .8s cubic-bezier(.34,1.9,.5,1) .55s}
+.brand.in .dot,html:not(.js) .brand .dot{transform:scale(1)}
+.badge{display:inline-flex;padding:7px 18px;border-radius:999px;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;letter-spacing:.08em;color:var(--ink);background:var(--accent-soft);border:1px solid var(--accent-line);text-decoration:none!important}
+.tilt{transform-origin:50% 0;transform:perspective(1600px) rotateX(calc((1 - var(--p)) * 24deg)) scale(calc(.9 + .1 * var(--p)))}
+.par1{transform:translateY(calc((1 - var(--p)) * 70px))}
+.par2{transform:translateY(calc((1 - var(--p)) * 150px));opacity:calc(var(--p) * 1.6 - .4)}
 
 /* Botones de descarga */
 .btn{display:inline-flex;align-items:center;gap:12px;padding:12px 18px;border-radius:11px;font-weight:600;font-size:15px;text-decoration:none!important;transition:background .2s,border-color .2s;background:var(--card);color:var(--text);border:1px solid var(--line2)}
@@ -61,10 +83,78 @@ kbd{font-family:'IBM Plex Mono',monospace;font-size:12px;padding:2px 6px;border:
 .os-note{display:none}
 [data-os="linux"] .os-note[data-for="linux"],[data-os="windows"] .os-note[data-for="windows"],[data-os="mobile"] .os-note[data-for="mobile"],[data-os="other"] .os-note[data-for="other"]{display:flex}
 
+/* Tráiler: el vídeo crece hasta ocupar la pantalla */
+.vid{position:relative;height:260vh}
+.vid-sticky{position:sticky;top:0;height:100vh;display:grid;place-items:center;overflow:hidden}
+.vid-head{position:absolute;top:max(84px,11vh);left:0;right:0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:12px;padding:0 16px;opacity:calc(1 - var(--p) * 3.2)}
+.vid-frame{--q:min(1,calc(var(--p) * 1.7));position:relative;width:min(calc(100vw - 32px),calc((100vh - 110px) * 16 / 9));aspect-ratio:16/9;border-radius:calc(30px - 18px * var(--q));overflow:hidden;background:#0b0e13;box-shadow:0 50px 100px -40px rgba(0,0,0,.7),0 0 0 1px rgba(255,255,255,.08);transform:translateY(calc((1 - var(--q)) * 16vh)) scale(calc(.56 + .44 * var(--q)));will-change:transform}
+.vid-frame video{display:block;width:100%;height:100%;object-fit:cover}
+.vid-ctrl{position:absolute;right:14px;bottom:14px;display:flex;gap:8px}
+.vid-ctrl button{width:40px;height:40px;display:grid;place-items:center;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(10,12,16,.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;cursor:pointer}
+.vid-ctrl [data-on="false"] .i-on,.vid-ctrl [data-on="true"] .i-off{display:none}
+
+/* Frase que se va encendiendo palabra a palabra */
+.words{position:relative;height:220vh}
+.words-sticky{position:sticky;top:0;height:100vh;display:grid;place-items:center}
+.words-t{margin:0;max-width:16em;padding:0 16px;text-align:center;font-size:clamp(40px,7vw,96px);line-height:1.04;letter-spacing:-.04em;font-weight:600;text-wrap:balance}
+.words-t .w{opacity:.14;transition:opacity .25s}
+.words-t .w.acc{color:var(--ink)}
+
+/* Pantallas de capítulo, como en el tráiler */
+.chap{position:relative;overflow:hidden;background:var(--glow-base);padding:clamp(110px,18vh,190px) 0;text-align:center}
+.chap::before{content:'';position:absolute;inset:0;pointer-events:none;background:radial-gradient(45% 45% at calc(15% + 70% * var(--p)) 85%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 70%)}
+.chap .wrap{position:relative;display:flex;flex-direction:column;align-items:center;gap:22px}
+.kick{font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--ink)}
+.chap-t{margin:0;font-size:clamp(42px,7.4vw,98px);font-weight:600;letter-spacing:-.035em;line-height:1.04;text-wrap:balance;max-width:14em}
+.chap-s{margin:0;font-size:clamp(18px,2vw,24px);color:var(--muted);max-width:34em;text-wrap:pretty}
+.pills{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-top:6px}
+.pl{padding:9px 20px;border-radius:999px;font-size:15px;font-weight:500;color:var(--muted);background:color-mix(in srgb,var(--text) 5%,transparent);border:1px solid var(--line2)}
+.pl.hi{color:var(--ink);background:var(--accent-soft);border-color:var(--accent-line)}
+
+/* Historia fija: la captura se queda y el texto pasa */
+.story{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(32px,6vw,96px)}
+.story-fig{position:sticky;top:64px;height:calc(100vh - 64px);display:grid;place-items:center}
+.device{position:relative;width:min(400px,calc((100vh - 120px) * .64));aspect-ratio:880/1376;border-radius:28px;background-image:radial-gradient(70% 60% at 50% 60%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 70%)}
+.device img{position:absolute;inset:0;width:100%;height:100%;opacity:0;transform:translateY(18px) scale(.96);transition:opacity .6s var(--ease),transform .6s var(--ease)}
+.device img.on{opacity:1;transform:none}
+.step{min-height:88vh;display:flex;flex-direction:column;justify-content:center;gap:14px;opacity:.22;transition:opacity .5s}
+.step.on{opacity:1}
+.step h3{margin:0;font-size:clamp(28px,3.4vw,42px);line-height:1.1;letter-spacing:-.03em;font-weight:600;text-wrap:balance}
+.step p{margin:0;color:var(--muted);font-size:18px;max-width:30em;text-wrap:pretty}
+.step-img{display:none}
+@media (max-width:860px){
+  .story{grid-template-columns:1fr}
+  .story-fig{display:none}
+  .step{min-height:0;opacity:1;padding:36px 0}
+  .step-img{display:block;width:min(340px,86%);margin:8px auto 0}
+}
+
+/* Lo último */
+.nv{padding:14px;border-radius:18px;display:flex;flex-direction:column;gap:8px}
+.nv .t{display:flex;align-items:center;justify-content:space-between;gap:10px;font-weight:600;font-size:17px;padding:6px 6px 0}
+.nv .d{color:var(--muted);font-size:15px;padding:0 6px 6px;text-wrap:pretty}
+.ver{font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;color:var(--faint);letter-spacing:.04em;flex:none}
+.mock{height:128px;border-radius:12px;display:grid;place-items:center;padding:14px;box-sizing:border-box;color:#e6e8ec;font-size:13px;background-color:#101318;background-image:var(--noise),radial-gradient(80% 90% at 50% 120%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 70%),linear-gradient(160deg,#1b2029,#0b0d11);border:1px solid rgba(255,255,255,.06);overflow:hidden}
+.tab{padding:4px 9px;border-radius:7px;color:#8b909a;white-space:nowrap}
+.tab.on{background:rgba(255,255,255,.075);border:1px solid rgba(255,255,255,.08);color:#e6e8ec;font-weight:600}
+.plus{width:24px;height:24px;display:grid;place-items:center;border-radius:7px;color:#a4aab6;font-size:17px;position:relative}
+.plus::after{content:'';position:absolute;inset:-3px;border-radius:9px;border:1.5px solid var(--accent);opacity:0}
+.in .plus::after{animation:ring 2.4s 1s infinite}
+@keyframes ring{0%{opacity:.9;transform:scale(.8)}70%,100%{opacity:0;transform:scale(1.5)}}
+.tone{padding:4px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.12);color:#a4aab6;font-size:12px;white-space:nowrap}
+.tone.on{border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:color-mix(in srgb,var(--accent) 16%,transparent);color:#e6e8ec}
+.vol{flex:1;height:4px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden}
+.vol i{display:block;height:100%;width:0;background:var(--accent);border-radius:4px;transition:width 1.6s var(--ease) .5s}
+.in .vol i{width:78%}
+.bars{display:flex;flex-direction:column;width:70px}
+.bars i{display:block;height:13px;border-radius:4px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.08)}
+
 /* Selector de nota */
 .nb{display:flex;align-items:center;gap:14px;padding:12px;border-radius:10px;border:1px solid transparent;background:transparent;color:#e6e8ec;cursor:pointer;transition:background .2s}
 .nb[aria-pressed="true"]{border-color:color-mix(in srgb,var(--accent) 50%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
 .preview[hidden]{display:none}
+.preview{animation:pop .45s var(--ease)}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .ck{display:flex;align-items:center;gap:10px;background:none;border:0;padding:3px 0;color:inherit;cursor:pointer;text-align:left}
 .ck .box{width:16px;height:16px;border-radius:4px;flex:none;box-sizing:border-box;border:1.5px solid #8d93a0}
 .ck[aria-checked="true"] .box{background:var(--accent);border:0}
@@ -94,6 +184,23 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
 .faq summary::after{content:'+';font-family:'IBM Plex Mono',monospace;color:var(--muted);flex:none}
 .faq details[open] summary::after{content:'−'}
 .faq p{margin:0 0 20px;color:var(--muted);max-width:60ch;text-wrap:pretty}
+
+@media (max-width:860px){
+  .vid{height:180vh}
+  .words{height:170vh}
+}
+@media (prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  html.js .rv,html.js .rv.zoom{opacity:1;transform:none;transition:none}
+  .brand .dot{transform:none;transition:none}
+  [data-sc]{--p:1!important}
+  .vid,.words{height:auto}
+  .vid-sticky{position:relative;height:auto;padding:110px 0 80px;gap:28px;display:flex;flex-direction:column;align-items:center}
+  .vid-head{position:static;opacity:1}
+  .words-sticky{position:relative;height:auto;padding:120px 0}
+  .words-t .w{opacity:1}
+  .in .plus::after{animation:none}
+}
 </style>
 </head>
 <body>
@@ -105,6 +212,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       <span>Tagoror</span>
     </a>
     <nav data-hide-sm="" style="display: flex; gap: 22px; font-size: 14px; white-space: nowrap; flex: none;">
+      <a href="#trailer" class="nav-x" style="color: var(--muted);"><span lang="es">Tráiler</span><span lang="en">Trailer</span></a>
       <a href="#novedades" style="color: var(--muted);"><span lang="es">Novedades</span><span lang="en">What's new</span></a>
       <a href="#notas" style="color: var(--muted);"><span lang="es">Funciones</span><span lang="en">Features</span></a>
       <a href="#datos" style="color: var(--muted);"><span lang="es">Tus datos</span><span lang="en">Your data</span></a>
@@ -127,60 +235,50 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
 </header>
 
 <main>
-<section id="top" style="position: relative; overflow: hidden;">
-  <div class="wrap" style="padding-top: clamp(40px,7vw,88px); padding-bottom: clamp(48px,7vw,96px); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: clamp(36px,5vw,64px); align-items: center;">
-    <div style="display: flex; flex-direction: column; gap: 24px;">
-      <div class="mono" style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);">
-        <span style="padding: 4px 10px; border: 1px solid var(--line2); border-radius: 999px;">Linux · Windows</span>
-        <span style="padding: 4px 10px; border: 1px solid var(--line2); border-radius: 999px;">C++20 · Qt 6</span>
-        <span style="padding: 4px 10px; border: 1px solid var(--accent-line); color: var(--ink); border-radius: 999px;">Open source · MIT</span>
-        <a href="#novedades" style="padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); text-decoration: none;"><span lang="es">Nuevo · versión 5.0</span><span lang="en">New · version 5.0</span></a>
+<section id="top" class="hero">
+  <div class="wrap" style="position: relative; padding-top: clamp(56px,10vh,110px); padding-bottom: clamp(48px,8vw,96px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 26px;">
+    <a href="#novedades" class="badge rv"><span lang="es">Nuevo · versión 5.0.4</span><span lang="en">New · version 5.0.4</span></a>
+    <h1 class="brand rv" style="--d: 1;">Tagoror<span class="dot">.</span></h1>
+    <p class="rv" style="--d: 2; margin: 0; font-size: clamp(19px,2.4vw,30px); color: var(--muted); max-width: 26em; text-wrap: balance;"><span lang="es">Tus notas, tu tiempo y tu agenda, en un solo widget sobre tu escritorio de Linux o Windows.</span><span lang="en">Your notes, your time and your schedule, in one widget on your Linux or Windows desktop.</span></p>
+    <div class="rv" style="--d: 3; display: flex; flex-direction: column; align-items: center; gap: 14px;">
+      <div id="heroButtons" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;">
+        <a class="btn primary" data-btn="linux" href="https://github.com/Larzt/tagoror/releases/latest">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"></path></svg>
+          <span style="display: flex; flex-direction: column; line-height: 1.2; text-align: left;">
+            <span><span lang="es">Descargar para Linux</span><span lang="en">Download for Linux</span></span>
+            <span class="mono" style="font-size: 11px; font-weight: 400; opacity: .75;">AppImage · .run · PKGBUILD</span>
+          </span>
+        </a>
+        <a class="btn" data-btn="windows" href="https://github.com/Larzt/tagoror/releases/latest">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"></path></svg>
+          <span style="display: flex; flex-direction: column; line-height: 1.2; text-align: left;">
+            <span><span lang="es">Descargar para Windows</span><span lang="en">Download for Windows</span></span>
+            <span class="mono" style="font-size: 11px; font-weight: 400; opacity: .75;">.exe · ZIP portable</span>
+          </span>
+        </a>
       </div>
-      <div style="display: flex; flex-direction: column; gap: 18px;">
-        <h1 style="margin: 0; font-size: clamp(38px,5.6vw,66px); line-height: 1.02; letter-spacing: -.035em; font-weight: 600; text-wrap: balance;"><span lang="es">Siempre a la vista. Guardado donde tú decidas.</span><span lang="en">Always in sight. Saved where you decide.</span></h1>
-        <p style="margin: 0; font-size: clamp(17px,1.6vw,19px); color: var(--muted); max-width: 34em; text-wrap: pretty;"><span lang="es">Notas, recordatorios y planificación en un panel translúcido que vive sobre tu escritorio de Linux o Windows. Sin cuenta y sin nube obligatoria.</span><span lang="en">Notes, reminders and planning in a translucent panel that lives on your Linux or Windows desktop. No account, no mandatory cloud.</span></p>
-      </div>
-      <div style="display: flex; flex-direction: column; gap: 14px;">
-        <div id="heroButtons" style="display: flex; flex-wrap: wrap; gap: 10px;">
-          <a class="btn primary" data-btn="linux" href="https://github.com/Larzt/tagoror/releases/latest">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"></path></svg>
-            <span style="display: flex; flex-direction: column; line-height: 1.2;">
-              <span><span lang="es">Descargar para Linux</span><span lang="en">Download for Linux</span></span>
-              <span class="mono" style="font-size: 11px; font-weight: 400; opacity: .75;">AppImage · .run · PKGBUILD</span>
-            </span>
-          </a>
-          <a class="btn" data-btn="windows" href="https://github.com/Larzt/tagoror/releases/latest">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"></path></svg>
-            <span style="display: flex; flex-direction: column; line-height: 1.2;">
-              <span><span lang="es">Descargar para Windows</span><span lang="en">Download for Windows</span></span>
-              <span class="mono" style="font-size: 11px; font-weight: 400; opacity: .75;">.exe · ZIP portable</span>
-            </span>
-          </a>
-        </div>
-        <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; font-size: 14px; color: var(--muted);">
-          <span class="os-note" data-for="linux" style="align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5fd18a; flex: none;"></span><span lang="es">Detectamos Linux · Arch, KDE, GNOME y más</span><span lang="en">Linux detected · Arch, KDE, GNOME and more</span></span>
-          <span class="os-note" data-for="windows" style="align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5fd18a; flex: none;"></span><span lang="es">Detectamos Windows · sin permisos de administrador</span><span lang="en">Windows detected · no admin rights needed</span></span>
-          <span class="os-note" data-for="mobile" style="align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5fd18a; flex: none;"></span><span lang="es">App de escritorio · ábrela en tu ordenador</span><span lang="en">Desktop app · open this on your computer</span></span>
-          <span class="os-note" data-for="other" style="align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5fd18a; flex: none;"></span><span lang="es">Disponible para Linux y Windows · o compílala tú</span><span lang="en">Available for Linux and Windows · or build it yourself</span></span>
-          <a href="https://github.com/Larzt/tagoror" style="font-weight: 500; white-space: nowrap;"><span lang="es">Ver el código en GitHub →</span><span lang="en">View the source on GitHub →</span></a>
-        </div>
-        <div data-show-sm="" style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 10px; font-size: 13px; color: var(--muted);">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="flex: none;"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>
-          <span><span lang="es">Es una app de escritorio. Descárgala desde tu ordenador con Linux o Windows.</span><span lang="en">It's a desktop app. Download it from your Linux or Windows computer.</span></span>
-        </div>
+      <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 18px; font-size: 14px; color: var(--muted);">
+        <span class="os-note" data-for="linux" style="align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5fd18a; flex: none;"></span><span lang="es">Detectamos Linux · Arch, KDE, GNOME y más</span><span lang="en">Linux detected · Arch, KDE, GNOME and more</span></span>
+        <span class="os-note" data-for="windows" style="align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5fd18a; flex: none;"></span><span lang="es">Detectamos Windows · sin permisos de administrador</span><span lang="en">Windows detected · no admin rights needed</span></span>
+        <span class="os-note" data-for="mobile" style="align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5fd18a; flex: none;"></span><span lang="es">App de escritorio · ábrela en tu ordenador</span><span lang="en">Desktop app · open this on your computer</span></span>
+        <span class="os-note" data-for="other" style="align-items: center; gap: 8px;"><span style="width: 7px; height: 7px; border-radius: 50%; background: #5fd18a; flex: none;"></span><span lang="es">Disponible para Linux y Windows · o compílala tú</span><span lang="en">Available for Linux and Windows · or build it yourself</span></span>
+        <a href="#trailer" style="font-weight: 500; white-space: nowrap;"><span lang="es">Ver el tráiler ↓</span><span lang="en">Watch the trailer ↓</span></a>
       </div>
     </div>
 
-    <div class="stage" style="position: relative; border-radius: 22px; overflow: hidden; min-height: clamp(440px,52vw,600px); background-image: var(--noise), radial-gradient(120% 80% at 70% 100%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%), linear-gradient(160deg, #1d232e 0%, #0f1217 55%, #07090c 100%); box-shadow: 0 40px 80px -30px rgba(0,0,0,.6);">
-      <svg viewBox="0 0 512 512" style="position: absolute; left: -18%; bottom: -30%; width: 110%; opacity: .5;" fill="none" stroke="#e4eaf7" aria-hidden="true"><ellipse cx="256" cy="226" rx="168" ry="160" stroke-opacity=".06" stroke-width="3"></ellipse><ellipse cx="256" cy="260" rx="116" ry="102" stroke-opacity=".08" stroke-width="3"></ellipse><ellipse cx="256" cy="290" rx="74" ry="59" stroke-opacity=".11" stroke-width="2.5"></ellipse><ellipse cx="256" cy="310" rx="44" ry="31" stroke-opacity=".14" stroke-width="2"></ellipse><ellipse cx="256" cy="322" rx="23" ry="15" stroke-opacity=".2" stroke-width="1.5"></ellipse></svg>
-      <div class="mono" style="position: absolute; top: 0; left: 0; right: 0; height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: rgba(0,0,0,.35); font-size: 11px; color: rgba(255,255,255,.6);">
-        <span><span lang="es">Escritorio</span><span lang="en">Desktop</span></span><span id="clock"></span>
+    <div data-sc="enter" style="width: 100%; max-width: 1080px; margin-top: clamp(20px,4vw,48px);">
+      <div class="stage tilt" style="position: relative; border-radius: 22px; overflow: hidden; height: clamp(420px,56vw,640px); text-align: left; background-image: var(--noise), radial-gradient(120% 80% at 70% 100%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 60%), linear-gradient(160deg, #1d232e 0%, #0f1217 55%, #07090c 100%); box-shadow: 0 50px 100px -40px rgba(0,0,0,.65);">
+        <svg viewBox="0 0 512 512" style="position: absolute; left: -12%; bottom: -40%; width: 90%; opacity: .5;" fill="none" stroke="#e4eaf7" aria-hidden="true"><ellipse cx="256" cy="226" rx="168" ry="160" stroke-opacity=".06" stroke-width="3"></ellipse><ellipse cx="256" cy="260" rx="116" ry="102" stroke-opacity=".08" stroke-width="3"></ellipse><ellipse cx="256" cy="290" rx="74" ry="59" stroke-opacity=".11" stroke-width="2.5"></ellipse><ellipse cx="256" cy="310" rx="44" ry="31" stroke-opacity=".14" stroke-width="2"></ellipse><ellipse cx="256" cy="322" rx="23" ry="15" stroke-opacity=".2" stroke-width="1.5"></ellipse></svg>
+        <div class="mono" style="position: absolute; top: 0; left: 0; right: 0; height: 28px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; background: rgba(0,0,0,.35); font-size: 11px; color: rgba(255,255,255,.6);">
+          <span><span lang="es">Escritorio</span><span lang="en">Desktop</span></span><span id="clock"></span>
+        </div>
+        <div style="position: absolute; left: 6%; top: 42%; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+          <img src="v5-dock.png" alt="Dock" style="width: clamp(64px,9vw,96px); display: block;">
+          <span class="mono" style="font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55);"><span lang="es">plegado</span><span lang="en">folded</span></span>
+        </div>
+        <img class="par2" data-hide-sm="" src="v5-nueva-nota.png" alt="" style="position: absolute; left: 22%; top: 30%; width: min(30%, 300px); display: block;">
+        <img class="par1" src="v5-notas.png" alt="Tagoror panel" style="position: absolute; right: 8%; top: 5%; width: clamp(190px,38%,390px); display: block;">
       </div>
-      <div style="position: absolute; left: 5%; top: 44%; display: flex; flex-direction: column; align-items: center; gap: 4px;">
-        <img src="v5-dock.png" alt="Dock" style="width: 96px; display: block;">
-        <span class="mono" style="font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55);"><span lang="es">plegado</span><span lang="en">folded</span></span>
-      </div>
-      <img src="v5-notas.png" alt="Tagoror panel" style="position: absolute; right: 3%; top: 3%; width: min(66%, 380px); display: block;">
     </div>
   </div>
 </section>
@@ -191,68 +289,60 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
   </div>
 </div>
 
-<section id="novedades" class="wrap sec">
-  <div style="display: flex; flex-direction: column; gap: 14px; max-width: 680px; margin-bottom: 40px;">
-    <div class="eyebrow">
-      <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
-      <span lang="es">Nuevo en la 5.0</span><span lang="en">New in 5.0</span>
+<section id="trailer" class="vid" data-sc="pin">
+  <div class="vid-sticky">
+    <div class="vid-head">
+      <div class="kick"><span lang="es">Tráiler · 5.0.4</span><span lang="en">Trailer · 5.0.4</span></div>
+      <h2 class="h2" style="font-size: clamp(32px,5vw,60px);"><span lang="es">Míralo en movimiento.</span><span lang="en">See it in motion.</span></h2>
     </div>
-    <h2 class="h2"><span lang="es">Más simple: un sitio fijo para todo.</span><span lang="en">Simpler: one fixed place for everything.</span></h2>
-    <p class="lead"><span lang="es">Una barra de navegación que no se mueve, una sola fila de herramientas, un menú ⋯ y una tarjeta para todos los avisos. Nada aparece empujando tus notas.</span><span lang="en">A navigation bar that stays put, a single row of tools, a ⋯ menu and one card for every notice. Nothing slides in pushing your notes down.</span></p>
-  </div>
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px;">
-    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
-      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Navegación fija</span><span lang="en">Navigation that stays put</span></div>
-      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Notas, Planner, Timers y Cumpleaños en una barra abajo, con la página abierta marcada. Si ensanchas el panel, pasa a ser un raíl a la izquierda.</span><span lang="en">Notes, Planner, Timers and Birthdays in a bar along the bottom, with the open page marked. Widen the panel and it becomes a rail on the left.</span></div>
-      <div style="display: flex; gap: 4px; margin-top: auto; padding-top: 6px;"><kbd>Ctrl</kbd><kbd>1…4</kbd></div>
-    </div>
-    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
-      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Paleta de comandos</span><span lang="en">Command palette</span></div>
-      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Desde cualquier sitio: escribe para ir a una página, crear cualquier nota o cambiar de área. Los acentos dan igual: «cumple» encuentra Cumpleaños.</span><span lang="en">From anywhere: type to go to any page, create any kind of note or switch area. Accents don't matter: «cumple» finds Birthdays.</span></div>
-      <div style="display: flex; gap: 4px; margin-top: auto; padding-top: 6px;"><kbd>Ctrl</kbd><kbd>K</kbd></div>
-    </div>
-    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
-      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Notas Markdown</span><span lang="en">Markdown notes</span></div>
-      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Un tipo de nota propio: formateada en la tarjeta y, al abrirla, el texto en crudo con números de línea o la vista previa, con barra de formato.</span><span lang="en">A note type of its own: rendered on the card and, once opened, the raw text with line numbers or the preview, with a formatting bar.</span></div>
-      <div style="display: flex; gap: 4px; margin-top: auto; padding-top: 6px;"><kbd>Ctrl</kbd><kbd>⇧</kbd><kbd>M</kbd></div>
-    </div>
-    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
-      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Pliega cualquier nota</span><span lang="en">Fold any note</span></div>
-      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Hasta su título, con la flecha. Plegada sigue diciendo lo que importa: el 2/4 de una lista, la hora de un recordatorio, lo que dura una grabación.</span><span lang="en">Down to its title, with the chevron. Folded, it still says what matters: a checklist's 2/4, a reminder's time, a recording's length.</span></div>
-    </div>
-    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
-      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Un solo sitio para los avisos</span><span lang="en">One place for notices</span></div>
-      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Lo que suena, una carpeta que falta, un error de sincronización o una versión nueva: en una tarjeta sobre la barra, lo más urgente primero.</span><span lang="en">What rings, a missing folder, a failed sync or a new version: in one card above the bar, most urgent first.</span></div>
-    </div>
-    <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 8px;">
-      <div style="font-weight: 600; font-size: 17px;"><span lang="es">Sincroniza donde quieras</span><span lang="en">Sync wherever you like</span></div>
-      <div style="color: var(--muted); font-size: 15px;"><span lang="es">Además de Google Drive, tu servidor WebDAV o Nextcloud, o una carpeta que ya sincronizan Syncthing, Dropbox u OneDrive. Google Calendar va aparte.</span><span lang="en">Besides Google Drive, your own WebDAV or Nextcloud server, or a folder Syncthing, Dropbox or OneDrive already keep in step. Google Calendar is a connection of its own.</span></div>
+    <div class="vid-frame">
+      <video id="trailerVideo" src="trailer.mp4" poster="brand.png" muted loop playsinline preload="none" aria-label="Tráiler de Tagoror"></video>
+      <div class="vid-ctrl">
+        <button id="vidPlay" data-on="false" aria-label="Play / pause">
+          <svg class="i-off" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"></path></svg>
+          <svg class="i-on" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"></rect><rect x="14" y="4" width="4" height="16" rx="1"></rect></svg>
+        </button>
+        <button id="vidSound" data-on="false" aria-label="Sound">
+          <svg class="i-off" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"></path><path d="M17 9l4 6M21 9l-4 6"></path></svg>
+          <svg class="i-on" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"></path><path d="M17 8.5a5 5 0 0 1 0 7M19.5 6a8.5 8.5 0 0 1 0 12"></path></svg>
+        </button>
+      </div>
     </div>
   </div>
-  <div class="stage" style="margin-top: 20px; border-radius: 22px; padding: clamp(16px,3vw,36px) clamp(8px,2vw,24px) 0; background-image: var(--noise), radial-gradient(80% 70% at 50% 110%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), linear-gradient(170deg, #1b2029, #0a0c10); display: flex; flex-wrap: wrap; justify-content: center; gap: 0 clamp(8px,3vw,40px); overflow: hidden;">
-    <figure style="margin: 0; display: flex; flex-direction: column; align-items: center; width: min(100%, 360px);">
-      <img src="v5-paleta.png" alt="" loading="lazy" style="width: 100%; display: block;">
-      <figcaption class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55); padding: 0 0 22px;"><span lang="es">Paleta de comandos</span><span lang="en">Command palette</span></figcaption>
-    </figure>
-    <figure style="margin: 0; display: flex; flex-direction: column; align-items: center; width: min(100%, 360px);">
-      <img src="v5-avisos.png" alt="" loading="lazy" style="width: 100%; display: block;">
-      <figcaption class="mono" style="font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.55); padding: 0 0 22px;"><span lang="es">Avisos</span><span lang="en">Notices</span></figcaption>
-    </figure>
+</section>
+
+<section class="words" data-sc="pin" aria-label="Tagoror">
+  <div class="words-sticky">
+    <p class="words-t" data-words=""><span lang="es">Siempre a la vista. Guardado *donde *tú *decidas.</span><span lang="en">Always in sight. Saved *where *you *decide.</span></p>
   </div>
-  <p style="margin: 22px 0 0; font-size: 15px;"><a href="https://github.com/Larzt/tagoror/blob/main/CHANGELOG.md"><span lang="es">Todos los cambios de la 5.0 →</span><span lang="en">Everything that changed in 5.0 →</span></a></p>
+</section>
+
+<section class="chap" data-sc="enter">
+  <div class="wrap">
+    <div class="kick rv"><span lang="es">Escribir</span><span lang="en">Write</span></div>
+    <h2 class="chap-t rv" style="--d: 1;"><span lang="es">Un tipo de nota nuevo.</span><span lang="en">A new kind of note.</span></h2>
+    <p class="chap-s rv" style="--d: 2;"><span lang="es">Markdown, con su página para escribir y su vista previa. Y cualquier nota se pliega hasta su título.</span><span lang="en">Markdown, with its own page to write in and its preview. And any note folds down to its title.</span></p>
+    <div class="pills">
+      <span class="pl rv" style="--d: 3;"><span lang="es">Texto plano</span><span lang="en">Plain text</span></span>
+      <span class="pl hi rv" style="--d: 4;">Markdown</span>
+      <span class="pl rv" style="--d: 5;">Checklist</span>
+      <span class="pl rv" style="--d: 6;"><span lang="es">Recordatorio</span><span lang="en">Reminder</span></span>
+      <span class="pl rv" style="--d: 7;"><span lang="es">Voz</span><span lang="en">Voice</span></span>
+    </div>
+  </div>
 </section>
 
 <section id="notas" class="wrap sec">
   <div style="display: flex; flex-direction: column; gap: 14px; max-width: 640px; margin-bottom: 44px;">
-    <div class="eyebrow">
+    <div class="eyebrow rv">
       <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
       <span lang="es">Cinco tipos de nota</span><span lang="en">Five kinds of note</span>
     </div>
-    <h2 class="h2"><span lang="es">Escribe, formatea, marca, programa o dicta.</span><span lang="en">Write, format, tick, schedule or speak.</span></h2>
-    <p class="lead"><span lang="es">Pulsa + en el panel o usa su atajo. Cada nota es una tarjeta compacta que puedes plegar, reordenar, buscar y editar sin salir del escritorio.</span><span lang="en">Hit + in the panel or use its shortcut. Every note is a compact card you can fold, reorder, search and edit without leaving the desktop.</span></p>
+    <h2 class="h2 rv" style="--d: 1;"><span lang="es">Escribe, formatea, marca, programa o dicta.</span><span lang="en">Write, format, tick, schedule or speak.</span></h2>
+    <p class="lead rv" style="--d: 2;"><span lang="es">Pulsa + en el panel o usa su atajo. Cada nota es una tarjeta compacta que puedes plegar, reordenar, buscar y editar sin salir del escritorio. Pruébalo aquí:</span><span lang="en">Hit + in the panel or use its shortcut. Every note is a compact card you can fold, reorder, search and edit without leaving the desktop. Try it here:</span></p>
   </div>
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 20px; align-items: stretch;">
-    <div style="background: #15171c; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 4px; color: #e6e8ec;">
+    <div class="rv" style="background: #15171c; border: 1px solid rgba(255,255,255,.08); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 4px; color: #e6e8ec;">
       <div class="mono" style="font-size: 11px; letter-spacing: .1em; color: #8d93a0; padding: 6px 12px 8px;"><span lang="es">NUEVA NOTA</span><span lang="en">NEW NOTE</span></div>
       <button class="nb" data-note="text">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" style="flex: none; color: #a4aab6;"><path d="M5 7h14M5 12h14M5 17h9"></path></svg>
@@ -261,12 +351,12 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       </button>
       <button class="nb" data-note="markdown">
         <svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="flex: none; color: #a4aab6;"><rect x="1.5" y="3.5" width="13" height="9" rx="2"></rect><path d="M3.7 10V6l1.7 2 1.7-2v4M11 6v4M9.5 8.6L11 10l1.5-1.4"></path></svg>
-        <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;">Markdown <span class="mono" style="font-size: 10px; font-weight: 600; letter-spacing: .06em; padding: 1px 6px; border-radius: 5px; color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); vertical-align: 2px;"><span lang="es">NUEVA</span><span lang="en">NEW</span></span></span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Formateada, con su página y vista previa</span><span lang="en">Formatted, with its own page and preview</span></span></span>
+        <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;">Markdown</span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Formateada, con su página y vista previa</span><span lang="en">Formatted, with its own page and preview</span></span></span>
         <span class="mono" style="margin-left: auto; font-size: 11px; color: #737a87;">Ctrl+⇧M</span>
       </button>
       <button class="nb" data-note="checklist" aria-pressed="true">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex: none; color: #a4aab6;"><rect x="4" y="4" width="16" height="16" rx="4"></rect><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>
-        <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;">Checklist</span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Tareas con barra de progreso</span><span lang="en">Tasks with a progress bar</span></span></span>
+        <span style="display: flex; flex-direction: column; text-align: left;"><span style="font-weight: 500;">Checklist</span><span style="font-size: 13px; color: #8d93a0;"><span lang="es">Tareas con progreso y, si quieres, fecha</span><span lang="en">Tasks with progress and, if you like, a date</span></span></span>
         <span class="mono" style="margin-left: auto; font-size: 11px; color: #737a87;">Ctrl+⇧L</span>
       </button>
       <button class="nb" data-note="reminder">
@@ -281,7 +371,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       </button>
     </div>
 
-    <div class="stage" style="position: relative; border-radius: 18px; overflow: hidden; min-height: 340px; padding: clamp(20px,4vw,40px); display: grid; place-items: center; background-image: var(--noise), linear-gradient(160deg, #1b2029, #0b0d11);">
+    <div class="stage rv" style="--d: 2; position: relative; border-radius: 18px; overflow: hidden; min-height: 340px; padding: clamp(20px,4vw,40px); display: grid; place-items: center; background-image: var(--noise), linear-gradient(160deg, #1b2029, #0b0d11);">
       <div style="width: 100%; max-width: 360px; background: rgba(24,27,33,.92); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.09); border-radius: 12px; padding: 14px 16px; color: #e6e8ec; font-size: 14px; box-shadow: 0 24px 40px -18px rgba(0,0,0,.7);">
         <div class="preview" data-preview="text" hidden>
           <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -304,7 +394,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         </div>
         <div class="preview" data-preview="checklist">
           <div style="display: flex; flex-direction: column; gap: 6px;">
-            <div style="font-weight: 500; margin-bottom: 4px;">Release 5.0</div>
+            <div style="font-weight: 500; margin-bottom: 4px;">Release 5.0.4</div>
             <div id="checkItems" style="display: flex; flex-direction: column; gap: 6px;"></div>
             <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
               <div style="flex: 1; height: 4px; border-radius: 4px; background: rgba(255,255,255,.08); overflow: hidden;"><div id="progressBar" style="height: 100%; width: 50%; background: var(--accent); border-radius: 4px; transition: width .3s;"></div></div>
@@ -340,33 +430,218 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
   </div>
 </section>
 
+<section class="chap" data-sc="enter" style="margin-top: clamp(64px,10vw,120px);">
+  <div class="wrap">
+    <div class="kick rv"><span lang="es">Interfaz</span><span lang="en">Interface</span></div>
+    <h2 class="chap-t rv" style="--d: 1;"><span lang="es">Todo en un sitio fijo.</span><span lang="en">Everything in one fixed place.</span></h2>
+    <p class="chap-s rv" style="--d: 2;"><span lang="es">Una barra abajo, una sola fila de herramientas y un menú ⋯. Nada empuja tus notas.</span><span lang="en">A bar along the bottom, a single row of tools and a ⋯ menu. Nothing pushes your notes around.</span></p>
+    <div class="pills">
+      <span class="pl rv" style="--d: 3;"><span lang="es">Notas</span><span lang="en">Notes</span></span>
+      <span class="pl rv" style="--d: 4;">Planner</span>
+      <span class="pl rv" style="--d: 5;">Timers</span>
+      <span class="pl rv" style="--d: 6;"><span lang="es">Cumpleaños</span><span lang="en">Birthdays</span></span>
+      <span class="pl hi rv" style="--d: 7;">Ctrl+K</span>
+    </div>
+  </div>
+</section>
+
+<section class="wrap story" id="interfaz">
+  <div class="story-fig">
+    <div class="device" id="device">
+      <img src="v5-notas.png" alt="" data-k="nav" class="on">
+      <img src="v5-paleta.png" alt="" data-k="palette" loading="lazy">
+      <img src="v5-avisos.png" alt="" data-k="notices" loading="lazy">
+      <img src="v5-ajustes.png" alt="" data-k="settings" loading="lazy">
+    </div>
+  </div>
+  <div>
+    <div class="step on" data-k="nav">
+      <div class="eyebrow">01</div>
+      <h3><span lang="es">Navegación que no se mueve.</span><span lang="en">Navigation that stays put.</span></h3>
+      <p><span lang="es">Notas, Planner, Timers y Cumpleaños en una barra abajo, con la página abierta marcada. Si ensanchas el panel, pasa a ser un raíl a la izquierda.</span><span lang="en">Notes, Planner, Timers and Birthdays in a bar along the bottom, with the open page marked. Widen the panel and it becomes a rail on the left.</span></p>
+      <div style="display: flex; gap: 4px;"><kbd>Ctrl</kbd><kbd>1…4</kbd></div>
+      <img class="step-img" src="v5-notas.png" alt="" loading="lazy">
+    </div>
+    <div class="step" data-k="palette">
+      <div class="eyebrow">02</div>
+      <h3><span lang="es">Una paleta para todo.</span><span lang="en">One palette for everything.</span></h3>
+      <p><span lang="es">Desde cualquier sitio: escribe para ir a una página, crear cualquier nota o cambiar de área. Los acentos dan igual: «cumple» encuentra Cumpleaños.</span><span lang="en">From anywhere: type to go to any page, create any kind of note or switch area. Accents don't matter: «cumple» finds Birthdays.</span></p>
+      <div style="display: flex; gap: 4px;"><kbd>Ctrl</kbd><kbd>K</kbd></div>
+      <img class="step-img" src="v5-paleta.png" alt="" loading="lazy">
+    </div>
+    <div class="step" data-k="notices">
+      <div class="eyebrow">03</div>
+      <h3><span lang="es">Un solo sitio para los avisos.</span><span lang="en">One place for every notice.</span></h3>
+      <p><span lang="es">Lo que suena, una carpeta que falta, un error de sincronización o una versión nueva: en una tarjeta sobre la barra, lo más urgente primero. Las alarmas se paran o se posponen desde ahí.</span><span lang="en">What rings, a missing folder, a failed sync or a new version: in one card above the bar, most urgent first. Alarms are stopped or snoozed right there.</span></p>
+      <img class="step-img" src="v5-avisos.png" alt="" loading="lazy">
+    </div>
+    <div class="step" data-k="settings">
+      <div class="eyebrow">04</div>
+      <h3><span lang="es">Ajustes en pestañas.</span><span lang="en">Settings in tabs.</span></h3>
+      <p><span lang="es">General, Apariencia, Sincronización, Atajos y Acerca de. Cada atajo, en un solo sitio, y una flecha para volver.</span><span lang="en">General, Appearance, Sync, Shortcuts and About. Every shortcut in one place, and a back arrow to return.</span></p>
+      <div style="display: flex; gap: 4px;"><kbd>Ctrl</kbd><kbd>,</kbd></div>
+      <img class="step-img" src="v5-ajustes.png" alt="" loading="lazy">
+    </div>
+  </div>
+</section>
+
+<section id="novedades" class="wrap sec">
+  <div style="display: flex; flex-direction: column; gap: 14px; max-width: 680px; margin-bottom: 40px;">
+    <div class="eyebrow rv">
+      <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
+      <span lang="es">Lo último · 5.0.1 → 5.0.4</span><span lang="en">Latest · 5.0.1 → 5.0.4</span>
+    </div>
+    <h2 class="h2 rv" style="--d: 1;"><span lang="es">Pequeñas cosas que se notan cada día.</span><span lang="en">Small things you notice every day.</span></h2>
+    <p class="lead rv" style="--d: 2;"><span lang="es">Desde la 5.0 han llegado cuatro versiones más: tonos de alarma, listas con fecha, un modo app con su propia ropa y menos clics para todo.</span><span lang="en">Four more releases since 5.0: alarm tones, lists with a date, an app mode in its own clothes and fewer clicks for everything.</span></p>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 255px), 1fr)); gap: 16px;">
+
+    <div class="card nv rv">
+      <div class="mock" style="font-size: 12.5px;">
+        <div style="display: flex; align-items: center; gap: 2px;">
+          <span class="tab on"><span style="color: var(--accent);">•</span> Personal</span>
+          <span class="tab">▲ <span lang="es">Trabajo</span><span lang="en">Work</span></span>
+          <span class="plus">+</span>
+        </div>
+      </div>
+      <div class="t"><span><span lang="es">Un «+» para áreas nuevas</span><span lang="en">A "+" for new areas</span></span><span class="ver">5.0.4</span></div>
+      <div class="d"><span lang="es">Tras la última pestaña, como en un navegador. Doble clic en el hueco o <kbd>Ctrl</kbd> <kbd>T</kbd> también valen.</span><span lang="en">After the last tab, as in a browser. Double-clicking the empty strip or <kbd>Ctrl</kbd> <kbd>T</kbd> work too.</span></div>
+    </div>
+
+    <div class="card nv rv" style="--d: 1;">
+      <div class="mock">
+        <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+          <div style="display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;">
+            <span class="tone"><span lang="es">Dos pitidos</span><span lang="en">Two beeps</span></span>
+            <span class="tone on"><span lang="es">Campana</span><span lang="en">Bell</span></span>
+            <span class="tone"><span lang="es">Digital</span><span lang="en">Digital</span></span>
+            <span class="tone"><span lang="es">Ascendente</span><span lang="en">Rising</span></span>
+            <span class="tone">WAV…</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 0 6px;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#a4aab6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"></path><path d="M17 8.5a5 5 0 0 1 0 7"></path></svg>
+            <div class="vol"><i></i></div>
+          </div>
+        </div>
+      </div>
+      <div class="t"><span><span lang="es">Tono y volumen de alarma</span><span lang="en">Alarm tone and volume</span></span><span class="ver">5.0.4</span></div>
+      <div class="d"><span lang="es">Cuatro tonos o un WAV tuyo, y el volumen a tu gusto. Si el archivo desaparece, suenan los dos pitidos, nunca silencio.</span><span lang="en">Four tones or a WAV of your own, at the volume you like. If the file goes missing, the two beeps ring, never silence.</span></div>
+    </div>
+
+    <div class="card nv rv" style="--d: 2;">
+      <div class="mock">
+        <div style="width: 100%; max-width: 230px; display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; background: rgba(30,33,40,.95); border: 1px solid rgba(255,255,255,.08);">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8b909a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5L10.5 8 6 12.5"></path></svg>
+            <span style="font-weight: 500;"><span lang="es">Maleta</span><span lang="en">Packing</span></span>
+            <span class="mono" style="margin-left: auto; font-size: 11px; color: var(--accent); font-weight: 500;">✓ 4/4</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; background: rgba(30,33,40,.95); border: 1px solid rgba(255,255,255,.08);">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#8b909a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3.5L10.5 8 6 12.5"></path></svg>
+            <span style="font-weight: 500;"><span lang="es">Mudanza</span><span lang="en">Moving</span></span>
+            <span class="mono" style="margin-left: auto; font-size: 11px; color: #8d93a0;">2/7</span>
+          </div>
+        </div>
+      </div>
+      <div class="t"><span><span lang="es">Listas terminadas, a la vista</span><span lang="en">Finished lists, at a glance</span></span><span class="ver">5.0.4</span></div>
+      <div class="d"><span lang="es">Plegada y con todo marcado, su cuenta pasa a ✓ 4/4 en el acento. Sabes que está hecha sin desplegarla.</span><span lang="en">Folded with every item ticked, its count turns into ✓ 4/4 in the accent. You know it's done without unfolding it.</span></div>
+    </div>
+
+    <div class="card nv rv" style="--d: 3;">
+      <div class="mock">
+        <div style="width: 100%; max-width: 230px; display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; border-radius: 10px; background: rgba(30,33,40,.95); border: 1px solid rgba(255,255,255,.08);">
+          <span style="align-self: flex-start; padding: 2px 9px; border-radius: 6px; border: 1px solid rgba(245,185,90,.45); background: rgba(245,185,90,.12); color: #f5c778; font-size: 12px;"><span lang="es">Vie 18 oct 09:00</span><span lang="en">Fri 18 Oct 09:00</span></span>
+          <span style="display: flex; align-items: center; gap: 8px;"><span style="width: 12px; height: 12px; border-radius: 3px; background: var(--accent);"></span><span style="text-decoration: line-through; color: #8d93a0;"><span lang="es">Pasaporte</span><span lang="en">Passport</span></span></span>
+          <span style="display: flex; align-items: center; gap: 8px;"><span style="width: 12px; height: 12px; border-radius: 3px; border: 1.5px solid #8d93a0; box-sizing: border-box;"></span><span lang="es">Cargadores</span><span lang="en">Chargers</span></span>
+        </div>
+      </div>
+      <div class="t"><span><span lang="es">Checklists que suenan</span><span lang="en">Checklists that ring</span></span><span class="ver">5.0.3</span></div>
+      <div class="d"><span lang="es">Si quieres, dale fecha a una lista: suena, sale en el planner y se pospone como cualquier recordatorio.</span><span lang="en">If you like, give a list a date: it rings, shows on the planner and snoozes like any reminder.</span></div>
+    </div>
+
+    <div class="card nv rv">
+      <div class="mock">
+        <div style="width: 100%; max-width: 240px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(21,23,28,.95); border: 1px solid rgba(255,255,255,.09);">
+          <span style="font-weight: 600;"><span lang="es">Notas</span><span lang="en">Notes</span></span>
+          <span style="margin-left: auto; display: flex; align-items: center; gap: 12px; color: #a4aab6;">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.3"></circle><circle cx="8" cy="8" r="1.3"></circle><circle cx="12.5" cy="8" r="1.3"></circle></svg>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 8h10"></path></svg>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="10" height="10" rx="1.5"></rect></svg>
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"></path></svg>
+          </span>
+        </div>
+      </div>
+      <div class="t"><span><span lang="es">Modo app, con su propia ropa</span><span lang="en">App mode, in its own clothes</span></span><span class="ver">5.0.2</span></div>
+      <div class="d"><span lang="es">Sin la barra blanca del sistema: la cabecera es la barra de título y minimizar, maximizar y cerrar van tras ⋯.</span><span lang="en">No more white system title bar: the header is the title bar, and minimise, maximise and close sit after ⋯.</span></div>
+    </div>
+
+    <div class="card nv rv" style="--d: 1;">
+      <div class="mock">
+        <div style="position: relative;">
+          <img src="v5-dock.png" alt="" style="width: 92px; display: block;">
+          <span class="mono" style="position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 2px 8px; border-radius: 999px; background: var(--accent); color: #0b0e16; font-size: 11px; font-weight: 500;">12:04</span>
+        </div>
+      </div>
+      <div class="t"><span><span lang="es">El timer, en el dock plegado</span><span lang="en">The timer, on the folded dock</span></span><span class="ver">5.0.2</span></div>
+      <div class="d"><span lang="es">Con el panel recogido, una píldora muestra la cuenta atrás del temporizador que acaba antes.</span><span lang="en">With the panel tucked away, a pill shows the countdown of the timer that ends first.</span></div>
+    </div>
+
+    <div class="card nv rv" style="--d: 2;">
+      <div class="mock">
+        <div style="display: flex; align-items: flex-end; gap: 28px;">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;"><div class="bars" style="gap: 7px;"><i></i><i></i><i></i></div><span class="mono" style="font-size: 10px; color: #8d93a0;">NORMAL</span></div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;"><div class="bars" style="gap: 2px;"><i style="border-color: color-mix(in srgb, var(--accent) 45%, transparent);"></i><i style="border-color: color-mix(in srgb, var(--accent) 45%, transparent);"></i><i style="border-color: color-mix(in srgb, var(--accent) 45%, transparent);"></i><i style="border-color: color-mix(in srgb, var(--accent) 45%, transparent);"></i></div><span class="mono" style="font-size: 10px; color: var(--accent);"><span lang="es">COMPACTA</span><span lang="en">COMPACT</span></span></div>
+        </div>
+      </div>
+      <div class="t"><span><span lang="es">Densidad compacta</span><span lang="en">Compact density</span></span><span class="ver">5.0.4</span></div>
+      <div class="d"><span lang="es">En Apariencia → Densidad: márgenes y huecos más justos para que quepan más notas.</span><span lang="en">In Appearance → Density: tighter margins and gaps, so more notes fit.</span></div>
+    </div>
+
+    <div class="card nv rv" style="--d: 3;">
+      <div class="mock">
+        <div style="width: 100%; max-width: 240px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: rgba(21,23,28,.95); border: 1px solid rgba(255,255,255,.09);">
+          <span style="font-weight: 600;"><span lang="es">Notas</span><span lang="en">Notes</span></span>
+          <span style="margin-left: auto; width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: color-mix(in srgb, var(--accent) 18%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"></path></svg>
+          </span>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="#a4aab6"><circle cx="3.5" cy="8" r="1.3"></circle><circle cx="8" cy="8" r="1.3"></circle><circle cx="12.5" cy="8" r="1.3"></circle></svg>
+        </div>
+      </div>
+      <div class="t"><span><span lang="es">Al dock en un clic</span><span lang="en">To the dock in one click</span></span><span class="ver">5.0.1</span></div>
+      <div class="d"><span lang="es">Plegar vuelve a la cabecera, junto a ⋯: el panel se aparta al momento. <kbd>Ctrl</kbd> <kbd>M</kbd> sigue funcionando.</span><span lang="en">Folding is back in the header, next to ⋯: the panel gets out of the way at once. <kbd>Ctrl</kbd> <kbd>M</kbd> still works.</span></div>
+    </div>
+
+  </div>
+  <p class="rv" style="margin: 22px 0 0; font-size: 15px;"><a href="https://github.com/Larzt/tagoror/blob/main/CHANGELOG.md"><span lang="es">Todos los cambios →</span><span lang="en">Everything that changed →</span></a></p>
+</section>
+
 <section class="wrap sec">
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: clamp(32px,5vw,64px); align-items: center;">
     <div style="display: flex; flex-direction: column; gap: 16px;">
-      <div class="eyebrow">
+      <div class="eyebrow rv">
         <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
         <span lang="es">Recordatorios</span><span lang="en">Reminders</span>
       </div>
-      <h2 class="h2"><span lang="es">Recordatorios que suenan de verdad.</span><span lang="en">Reminders that actually ring.</span></h2>
-      <p class="lead"><span lang="es">No es una notificación que se pierde en una esquina. Suena con un tono que Tagoror sintetiza al momento, y el aviso se queda en rojo hasta que lo atiendes.</span><span lang="en">Not a notification lost in a corner. It rings with a tone Tagoror synthesises on the spot, and stays red until you deal with it.</span></p>
+      <h2 class="h2 rv" style="--d: 1;"><span lang="es">Recordatorios que suenan de verdad.</span><span lang="en">Reminders that actually ring.</span></h2>
+      <p class="lead rv" style="--d: 2;"><span lang="es">No es una notificación que se pierde en una esquina. Suena con el tono que elijas —o con uno tuyo— y el aviso se queda en rojo hasta que lo atiendes.</span><span lang="en">Not a notification lost in a corner. It rings with the tone you pick —or one of your own— and stays red until you deal with it.</span></p>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 8px;">
-        <div class="card" style="padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Detener o posponer</span><span lang="en">Stop or snooze</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Desde la tarjeta de avisos: para la alarma o la retrasa 10 minutos.</span><span lang="en">From the notice card: stop the alarm or push it back 10 minutes.</span></div></div>
-        <div class="card" style="padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Semanal o anual</span><span lang="en">Weekly or yearly</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Repite lo que se repite.</span><span lang="en">Repeat what repeats.</span></div></div>
-        <div class="card" style="padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Fecha en dos clics</span><span lang="en">A date in two clicks</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Mes pequeño, horas cada 5 o 15 minutos y atajos como «mañana a las 9».</span><span lang="en">A small month, times every 5 or 15 minutes, and picks like "tomorrow at 9".</span></div></div>
+        <div class="card rv" style="--d: 3; padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Detener o posponer</span><span lang="en">Stop or snooze</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Desde la tarjeta de avisos: para la alarma o la retrasa 10 minutos.</span><span lang="en">From the notice card: stop the alarm or push it back 10 minutes.</span></div></div>
+        <div class="card rv" style="--d: 4; padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Semanal o anual</span><span lang="en">Weekly or yearly</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Repite lo que se repite.</span><span lang="en">Repeat what repeats.</span></div></div>
+        <div class="card rv" style="--d: 5; padding: 16px; border-radius: 14px;"><div style="font-weight: 600;"><span lang="es">Fecha en dos clics</span><span lang="en">A date in two clicks</span></div><div style="color: var(--muted); font-size: 14px;"><span lang="es">Mes pequeño, horas cada 5 o 15 minutos y atajos como «mañana a las 9».</span><span lang="en">A small month, times every 5 or 15 minutes, and picks like "tomorrow at 9".</span></div></div>
       </div>
     </div>
     <div style="display: flex; flex-direction: column; gap: 14px;">
-      <div class="card" style="padding: 22px; border-radius: 18px; display: flex; flex-direction: column; gap: 14px;">
+      <div class="card rv" style="padding: 22px; border-radius: 18px; display: flex; flex-direction: column; gap: 14px;">
         <div class="mono" style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint);"><span lang="es">La nota cambia de color</span><span lang="en">The note changes colour</span></div>
         <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
-          <span style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line2); color: var(--muted); font-size: 14px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg><span lang="es">Programado</span><span lang="en">Scheduled</span></span>
-          <span style="color: var(--faint);">→</span>
-          <span style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(245,185,90,.5); background: rgba(245,185,90,.12); color: #d99a2b; font-size: 14px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg><span lang="es">Hoy</span><span lang="en">Today</span></span>
-          <span style="color: var(--faint);">→</span>
-          <span style="display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(244,92,80,.55); background: rgba(244,92,80,.14); color: #ec5b4f; font-size: 14px; font-weight: 500;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15zM10 21h4"></path></svg><span lang="es">Sonando</span><span lang="en">Ringing</span></span>
+          <span class="rv" style="--d: 2; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line2); color: var(--muted); font-size: 14px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg><span lang="es">Programado</span><span lang="en">Scheduled</span></span>
+          <span class="rv" style="--d: 4; color: var(--faint);">→</span>
+          <span class="rv" style="--d: 6; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(245,185,90,.5); background: rgba(245,185,90,.12); color: #d99a2b; font-size: 14px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg><span lang="es">Hoy</span><span lang="en">Today</span></span>
+          <span class="rv" style="--d: 8; color: var(--faint);">→</span>
+          <span class="rv" style="--d: 10; display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; border: 1px solid rgba(244,92,80,.55); background: rgba(244,92,80,.14); color: #ec5b4f; font-size: 14px; font-weight: 500;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15zM10 21h4"></path></svg><span lang="es">Sonando</span><span lang="en">Ringing</span></span>
         </div>
       </div>
-      <div class="card" style="padding: 22px; border-radius: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 22px;">
+      <div class="card rv" style="--d: 2; padding: 22px; border-radius: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 22px;">
         <div style="display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 14px; background-color: #101318; background-image: var(--noise), linear-gradient(160deg, #1b2029, #0b0d11);">
           <img src="v5-dock.png" alt="" style="width: 84px; display: block;">
           <span style="color: rgba(255,255,255,.5);">→</span>
@@ -381,67 +656,84 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
 <section class="wrap sec">
   <div style="display: flex; flex-wrap: wrap; gap: 24px 48px; align-items: end; justify-content: space-between; margin-bottom: 36px;">
     <div style="display: flex; flex-direction: column; gap: 14px; max-width: 560px;">
-      <div class="eyebrow">
+      <div class="eyebrow rv">
         <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
         <span lang="es">Planificador</span><span lang="en">Planner</span>
       </div>
-      <h2 class="h2"><span lang="es">Tu semana, en la misma rejilla.</span><span lang="en">Your week, on one grid.</span></h2>
-      <p class="lead"><span lang="es">Eventos y tareas con categorías, que mueves arrastrándolos. Los recordatorios y cumpleaños aparecen solos, junto a todo lo demás, y Google Calendar se sincroniza en los dos sentidos.</span><span lang="en">Events and tasks with categories, moved by dragging them. Reminders and birthdays show up on their own, next to everything else, and Google Calendar syncs both ways.</span></p>
+      <h2 class="h2 rv" style="--d: 1;"><span lang="es">Tu semana, en la misma rejilla.</span><span lang="en">Your week, on one grid.</span></h2>
+      <p class="lead rv" style="--d: 2;"><span lang="es">Eventos y tareas con categorías, que mueves arrastrándolos. Los recordatorios, checklists con fecha y cumpleaños aparecen solos, y Google Calendar se sincroniza en los dos sentidos.</span><span lang="en">Events and tasks with categories, moved by dragging them. Reminders, dated checklists and birthdays show up on their own, and Google Calendar syncs both ways.</span></p>
     </div>
     <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px;">
-      <span class="pill"><span lang="es">Día · Semana · Mes</span><span lang="en">Day · Week · Month</span></span>
-      <span class="pill"><span lang="es">Aviso de 5 min a 1 día antes</span><span lang="en">Heads-up 5 min to 1 day before</span></span>
-      <span class="pill">Google Calendar ⇄</span>
+      <span class="pill rv" style="--d: 3;"><span lang="es">Día · Semana · Mes</span><span lang="en">Day · Week · Month</span></span>
+      <span class="pill rv" style="--d: 4;"><span lang="es">Aviso de 5 min a 1 día antes</span><span lang="en">Heads-up 5 min to 1 day before</span></span>
+      <span class="pill rv" style="--d: 5;">Google Calendar ⇄</span>
     </div>
   </div>
-  <div class="stage" style="border-radius: 22px; padding: clamp(14px,3vw,40px); background-image: var(--noise), radial-gradient(80% 70% at 50% 110%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), linear-gradient(170deg, #1b2029, #0a0c10); display: grid; place-items: center; overflow: hidden;">
-    <img src="v5-planner.png" alt="Planner" loading="lazy" style="width: 100%; max-width: 988px; display: block;">
+  <div data-sc="enter">
+    <div class="stage" style="border-radius: 22px; padding: clamp(14px,3vw,40px); background-image: var(--noise), radial-gradient(80% 70% at 50% 110%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), linear-gradient(170deg, #1b2029, #0a0c10); display: grid; place-items: center; overflow: hidden; transform: scale(calc(.86 + .14 * var(--p))); opacity: calc(.3 + var(--p));">
+      <img src="v5-planner.png" alt="Planner" loading="lazy" style="width: 100%; max-width: 988px; display: block;">
+    </div>
   </div>
 </section>
 
 <section class="wrap sec">
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 20px;">
-    <div class="card" style="border-radius: 22px; overflow: hidden; display: flex; flex-direction: column;">
+    <div class="card rv" style="border-radius: 22px; overflow: hidden; display: flex; flex-direction: column;">
       <div style="padding: clamp(22px,3vw,32px); display: flex; flex-direction: column; gap: 10px;">
         <div class="eyebrow"><span lang="es">Temporizadores</span><span lang="en">Timers</span></div>
         <h3 style="margin: 0; font-size: clamp(24px,2.6vw,30px); line-height: 1.15; letter-spacing: -.02em; font-weight: 600; text-wrap: balance;"><span lang="es">Siguen corriendo aunque cierres la app.</span><span lang="en">They keep running even if you close the app.</span></h3>
-        <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">El que corre, arriba con su anillo, Pausar y +1 min; su cuenta atrás también sale en la barra. Los rápidos, de 1′ a 45′, arrancan con un clic, y tu Pomodoro queda guardado para mañana.</span><span lang="en">The running one sits on top with its ring, Pause and +1 min; its countdown shows in the bar too. Quick ones, 1′ to 45′, start in one click, and your Pomodoro stays saved for tomorrow.</span></p>
+        <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">El que corre, arriba con su anillo, Pausar y +1 min; su cuenta atrás también sale en la barra y en el dock plegado. Los rápidos, de 1′ a 45′, arrancan con un clic.</span><span lang="en">The running one sits on top with its ring, Pause and +1 min; its countdown shows in the bar and on the folded dock too. Quick ones, 1′ to 45′, start in one click.</span></p>
       </div>
-      <div style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
-        <img src="v5-timers.png" alt="Timers" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
+      <div data-sc="enter" style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
+        <img class="par1" src="v5-timers.png" alt="Timers" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
       </div>
     </div>
-    <div class="card" style="border-radius: 22px; overflow: hidden; display: flex; flex-direction: column;">
+    <div class="card rv" style="--d: 2; border-radius: 22px; overflow: hidden; display: flex; flex-direction: column;">
       <div style="padding: clamp(22px,3vw,32px); display: flex; flex-direction: column; gap: 10px;">
         <div class="eyebrow"><span lang="es">Cumpleaños</span><span lang="en">Birthdays</span></div>
         <h3 style="margin: 0; font-size: clamp(24px,2.6vw,30px); line-height: 1.15; letter-spacing: -.02em; font-weight: 600; text-wrap: balance;"><span lang="es">El próximo, siempre arriba.</span><span lang="en">The next one, always on top.</span></h3>
         <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">En una tarjeta con fondo de color y los días que faltan en grande. Los demás, en tarjetas por meses, con la edad que cumplen y un aviso a la hora que quieras.</span><span lang="en">On a card with a soft colour backdrop and the days left in large figures. Everyone else in cards by month, with the age they turn and a heads-up at the time you choose.</span></p>
       </div>
-      <div style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
-        <img src="v5-cumples.png" alt="Birthdays" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
+      <div data-sc="enter" style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
+        <img class="par1" src="v5-cumples.png" alt="Birthdays" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
       </div>
     </div>
   </div>
 </section>
 
-<section id="datos" style="margin-top: clamp(64px,10vw,120px); background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); position: relative; overflow: hidden;">
+<section class="chap" data-sc="enter" style="margin-top: clamp(64px,10vw,120px);">
+  <div class="wrap">
+    <div class="kick rv"><span lang="es">Sincronización</span><span lang="en">Sync</span></div>
+    <h2 class="chap-t rv" style="--d: 1;"><span lang="es">Tus notas, en tu nube.</span><span lang="en">Your notes, in your cloud.</span></h2>
+    <p class="chap-s rv" style="--d: 2;"><span lang="es">Google Drive, tu servidor WebDAV o una carpeta sincronizada. O ninguna: es opcional.</span><span lang="en">Google Drive, your own WebDAV server or a synced folder. Or none at all: it's optional.</span></p>
+    <div class="pills">
+      <span class="pl rv" style="--d: 3;">Google Drive</span>
+      <span class="pl hi rv" style="--d: 4;">WebDAV · Nextcloud</span>
+      <span class="pl rv" style="--d: 5;">Syncthing</span>
+      <span class="pl rv" style="--d: 6;">Dropbox</span>
+      <span class="pl rv" style="--d: 7;">OneDrive</span>
+    </div>
+  </div>
+</section>
+
+<section id="datos" style="background: var(--bg2); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); position: relative; overflow: hidden;">
   <svg viewBox="0 0 512 512" style="position: absolute; right: -12%; top: -20%; width: min(820px, 90vw); color: var(--text); pointer-events: none;" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="256" cy="226" rx="168" ry="160" stroke-opacity=".05" stroke-width="2"></ellipse><ellipse cx="256" cy="260" rx="116" ry="102" stroke-opacity=".06" stroke-width="2"></ellipse><ellipse cx="256" cy="290" rx="74" ry="59" stroke-opacity=".07" stroke-width="2"></ellipse><ellipse cx="256" cy="310" rx="44" ry="31" stroke-opacity=".08" stroke-width="1.5"></ellipse></svg>
   <div class="wrap" style="position: relative; padding-top: clamp(64px,10vw,120px); padding-bottom: clamp(64px,10vw,120px);">
     <div style="display: flex; flex-direction: column; gap: 16px; max-width: 720px; margin-bottom: 48px;">
-      <div class="eyebrow">
+      <div class="eyebrow rv">
         <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
         <span lang="es">Privacidad y control</span><span lang="en">Privacy and control</span>
       </div>
-      <h2 style="margin: 0; font-size: clamp(34px,5vw,58px); line-height: 1.02; letter-spacing: -.035em; font-weight: 600; text-wrap: balance;"><span lang="es">Tus datos, donde tú quieras.</span><span lang="en">Your data, wherever you want.</span></h2>
-      <p style="margin: 0; color: var(--muted); font-size: 18px; text-wrap: pretty;"><span lang="es">Tagoror guarda las notas como archivos en una carpeta que eliges tú. No hay servidor nuestro ni cuenta, y nada sale de tu equipo si no lo pides.</span><span lang="en">Tagoror stores notes as files in a folder you pick. No server of ours, no account, and nothing leaves your machine unless you ask.</span></p>
+      <h2 class="rv" style="--d: 1; margin: 0; font-size: clamp(34px,5vw,58px); line-height: 1.02; letter-spacing: -.035em; font-weight: 600; text-wrap: balance;"><span lang="es">Tus datos, donde tú quieras.</span><span lang="en">Your data, wherever you want.</span></h2>
+      <p class="rv" style="--d: 2; margin: 0; color: var(--muted); font-size: 18px; text-wrap: pretty;"><span lang="es">Tagoror guarda las notas como archivos en una carpeta que eliges tú. No hay servidor nuestro ni cuenta, y nada sale de tu equipo si no lo pides.</span><span lang="en">Tagoror stores notes as files in a folder you pick. No server of ours, no account, and nothing leaves your machine unless you ask.</span></p>
     </div>
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px;">
-      <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
+      <div class="card rv" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
         <div style="font-weight: 600; font-size: 17px;"><span lang="es">Cualquier carpeta, incluso un USB</span><span lang="en">Any folder, even a USB stick</span></div>
         <div style="color: var(--muted); font-size: 15px;"><span lang="es">Llévate las notas en el bolsillo o déjalas junto a tus documentos.</span><span lang="en">Carry your notes in your pocket or keep them next to your documents.</span></div>
         <div class="mono" style="display: flex; flex-direction: column; gap: 4px; margin-top: 4px; font-size: 13px; color: var(--muted);"><span>~/Notas</span><span>/run/media/usb/Notas</span><span>D:\Notas</span></div>
       </div>
-      <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
+      <div class="card rv" style="--d: 1; padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
         <div style="font-weight: 600; font-size: 17px;"><span lang="es">Si la carpeta no está, no escribe</span><span lang="en">No folder, no writes</span></div>
         <div style="color: var(--muted); font-size: 15px;"><span lang="es">Si desconectas el USB, Tagoror no guarda en otro sitio a escondidas: te avisa y espera.</span><span lang="en">Unplug the USB and Tagoror won't quietly save elsewhere: it warns you and waits.</span></div>
         <div style="margin-top: 4px; display: flex; align-items: center; gap: 10px; padding: 9px 10px 9px 12px; border-radius: 10px; background: #1c1f26; border: 1px solid rgba(255,255,255,.12); color: #e9eaee;">
@@ -453,20 +745,20 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
           <span style="font-size: 13px; font-weight: 500; color: #7c9cff;"><span lang="es">Reintentar</span><span lang="en">Retry</span></span>
         </div>
       </div>
-      <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
+      <div class="card rv" style="--d: 2; padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
         <div style="font-weight: 600; font-size: 17px;"><span lang="es">Guardado atómico</span><span lang="en">Atomic saves</span></div>
         <div style="color: var(--muted); font-size: 15px;"><span lang="es">Cada cambio se escribe entero o no se escribe. Un corte de luz no deja notas a medias.</span><span lang="en">Every change is written whole or not at all. A power cut won't leave half-written notes.</span></div>
       </div>
-      <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
+      <div class="card rv" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
         <div style="font-weight: 600; font-size: 17px;"><span lang="es">Copias con el ritmo que elijas</span><span lang="en">Backups on your schedule</span></div>
         <div style="color: var(--muted); font-size: 15px;"><span lang="es">Cada día, cada semana o nunca, a la hora que digas. Vuelve a cualquier copia con un clic.</span><span lang="en">Daily, weekly or never, at the time you say. Go back to any copy in one click.</span></div>
       </div>
-      <div class="card" style="padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
+      <div class="card rv" style="--d: 1; padding: 22px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px;">
         <div style="font-weight: 600; font-size: 17px;"><span lang="es">Sincronización opcional, donde tú digas</span><span lang="en">Optional sync, wherever you say</span></div>
         <div style="color: var(--muted); font-size: 15px;"><span lang="es">Google Drive, tu servidor WebDAV o Nextcloud, o una carpeta que ya sincronizan Syncthing, Dropbox u OneDrive. Fusiona nota a nota, así que dos equipos a la vez no se pisan. En Drive, con el permiso mínimo: <code class="mono" style="font-size: 13px;">drive.file</code>.</span><span lang="en">Google Drive, your own WebDAV or Nextcloud server, or a folder Syncthing, Dropbox or OneDrive already keep in step. It merges note by note, so two computers at once don't overwrite each other. On Drive, with the minimum scope: <code class="mono" style="font-size: 13px;">drive.file</code>.</span></div>
         <div class="mono" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--muted);"><span class="pill">Google Drive</span><span class="pill">WebDAV · Nextcloud</span><span class="pill"><span lang="es">Carpeta sincronizada</span><span lang="en">Synced folder</span></span></div>
       </div>
-      <div style="padding: 22px; border-radius: 16px; border: 1px solid var(--accent-line); background: var(--card); display: flex; flex-direction: column; gap: 12px;">
+      <div class="rv" style="--d: 2; padding: 22px; border-radius: 16px; border: 1px solid var(--accent-line); background: var(--card); display: flex; flex-direction: column; gap: 12px;">
         <div style="font-weight: 600; font-size: 17px;"><span lang="es">La red, solo si la pides</span><span lang="en">The network, only if you ask</span></div>
         <div style="display: flex; flex-direction: column; gap: 8px; font-size: 14px;">
           <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line);"><span><span lang="es">Sincronización</span><span lang="en">Sync</span></span><span class="mono" style="font-size: 12px; color: var(--muted);"><span lang="es">opcional · se apaga</span><span lang="en">optional · can be off</span></span></div>
@@ -477,7 +769,8 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       </div>
     </div>
     <div style="display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 28px; margin-top: 48px;">
-      <img src="v5-copias.png" alt="" loading="lazy" style="width: 270px; max-width: 70vw; display: block;">
+      <img class="rv zoom" src="v5-sin-carpeta.png" alt="" loading="lazy" style="width: 270px; max-width: 70vw; display: block;">
+      <img class="rv zoom" src="v5-copias.png" alt="" loading="lazy" style="--d: 2; width: 270px; max-width: 70vw; display: block;">
     </div>
     <p style="margin: 36px 0 0; text-align: center; font-size: 15px;"><a href="https://github.com/Larzt/tagoror/blob/main/PRIVACY.md"><span lang="es">Leer la política de privacidad →</span><span lang="en">Read the privacy policy →</span></a></p>
   </div>
@@ -487,14 +780,14 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: clamp(32px,5vw,64px); align-items: center;">
     <div style="display: flex; flex-direction: column; gap: 22px;">
       <div style="display: flex; flex-direction: column; gap: 14px;">
-        <div class="eyebrow">
+        <div class="eyebrow rv">
           <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
           <span lang="es">Personalización</span><span lang="en">Make it yours</span>
         </div>
-        <h2 class="h2"><span lang="es">Pruébalo aquí: elige un acento.</span><span lang="en">Try it here: pick an accent.</span></h2>
-        <p class="lead"><span lang="es">El acento es el único color fuerte de Tagoror. Cámbialo y mira cómo se tiñe esta página.</span><span lang="en">The accent is Tagoror's only strong colour. Change it and watch this page follow.</span></p>
+        <h2 class="h2 rv" style="--d: 1;"><span lang="es">Pruébalo aquí: elige un acento.</span><span lang="en">Try it here: pick an accent.</span></h2>
+        <p class="lead rv" style="--d: 2;"><span lang="es">El acento es el único color fuerte de Tagoror. Cámbialo y mira cómo se tiñe esta página.</span><span lang="en">The accent is Tagoror's only strong colour. Change it and watch this page follow.</span></p>
       </div>
-      <div class="card" style="display: flex; flex-direction: column; gap: 18px; padding: 22px; border-radius: 18px;">
+      <div class="card rv" style="--d: 3; display: flex; flex-direction: column; gap: 18px; padding: 22px; border-radius: 18px;">
         <div style="display: flex; flex-direction: column; gap: 10px;">
           <div class="mono" style="font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--faint);"><span lang="es">Acento</span><span lang="en">Accent</span></div>
           <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
@@ -526,7 +819,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         </div>
       </div>
     </div>
-    <div class="stage" style="position: relative; border-radius: 22px; overflow: hidden; min-height: 460px; display: grid; place-items: center; padding: 28px; background-image: var(--noise), radial-gradient(90% 70% at 30% 90%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 65%), linear-gradient(160deg, #222835, #0b0d11);">
+    <div class="stage rv zoom" style="--d: 2; position: relative; border-radius: 22px; overflow: hidden; min-height: 460px; display: grid; place-items: center; padding: 28px; background-image: var(--noise), radial-gradient(90% 70% at 30% 90%, color-mix(in srgb, var(--accent) 30%, transparent), transparent 65%), linear-gradient(160deg, #222835, #0b0d11);">
       <svg viewBox="0 0 512 512" style="position: absolute; left: -10%; bottom: -35%; width: 100%;" fill="none" stroke="#e4eaf7" aria-hidden="true"><ellipse cx="256" cy="226" rx="168" ry="160" stroke-opacity=".12" stroke-width="10"></ellipse><ellipse cx="256" cy="260" rx="116" ry="102" stroke-opacity=".16" stroke-width="8"></ellipse><ellipse cx="256" cy="290" rx="74" ry="59" stroke-opacity=".2" stroke-width="6"></ellipse></svg>
       <div style="position: relative; width: 300px; max-width: 100%; border-radius: 14px; border: 1px solid rgba(255,255,255,.1); background: rgba(21,23,28,var(--demo-op)); backdrop-filter: blur(6px); color: #e6e8ec; font-size: var(--demo-fs); box-shadow: 0 30px 50px -20px rgba(0,0,0,.7); overflow: hidden;">
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 11px 10px 11px 14px;">
@@ -536,6 +829,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         <div style="display: flex; align-items: center; gap: 4px; padding: 0 6px 6px; border-bottom: 1px solid rgba(255,255,255,.07); font-size: .88em;">
           <span style="display: flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 7px; background: rgba(255,255,255,.075); border: 1px solid rgba(255,255,255,.08); font-weight: 600;"><span style="width: 6px; height: 6px; border-radius: 50%; background: var(--accent);"></span>Personal</span>
           <span style="padding: 4px 9px; color: #8b909a;"><span lang="es">Trabajo</span><span lang="en">Work</span></span>
+          <span style="padding: 2px 6px; color: #a4aab6;">+</span>
           <span style="flex: 1;"></span>
           <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#8b909a" stroke-width="1.5" stroke-linecap="round" style="margin: 0 6px;"><circle cx="6.5" cy="6.5" r="4.2"></circle><path d="M9.8 9.8l3.2 3.2"></path></svg>
           <span style="width: 26px; height: 26px; border-radius: 8px; background: var(--accent); display: grid; place-items: center;"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#0d1014" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 8h9M8 3.5v9"></path></svg></span>
@@ -563,18 +857,26 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
   </div>
 </section>
 
+<section class="chap" data-sc="enter" style="margin-top: clamp(64px,10vw,120px);">
+  <div class="wrap">
+    <h2 class="brand rv" style="font-size: clamp(56px,10vw,128px);">Tagoror<span class="dot">.</span></h2>
+    <p class="chap-s rv" style="--d: 2;"><span lang="es">Gratis y libre, para Linux y Windows.</span><span lang="en">Free and open, for Linux and Windows.</span></p>
+    <a href="#descargar" class="badge rv" style="--d: 3;"><span lang="es">Versión 5.0.4 ↓</span><span lang="en">Version 5.0.4 ↓</span></a>
+  </div>
+</section>
+
 <section id="descargar" class="wrap sec">
   <div style="display: flex; flex-direction: column; gap: 14px; max-width: 640px; margin-bottom: 40px;">
-    <div class="eyebrow">
+    <div class="eyebrow rv">
       <svg width="18" height="14" viewBox="0 0 36 28" fill="none" stroke="currentColor" aria-hidden="true"><ellipse cx="18" cy="13" rx="16" ry="12" stroke-width="1.5" opacity=".45"></ellipse><ellipse cx="18" cy="17" rx="9" ry="7" stroke-width="1.5" opacity=".75"></ellipse><circle cx="18" cy="20" r="2.2" fill="currentColor" stroke="none"></circle></svg>
       <span lang="es">Descargar</span><span lang="en">Download</span>
     </div>
-    <h2 class="h2"><span lang="es">Gratis, para siempre, en tu escritorio.</span><span lang="en">Free, forever, on your desktop.</span></h2>
-    <p class="lead"><span lang="es">Todo enlaza a la última versión publicada en GitHub.</span><span lang="en">Everything links to the latest release on GitHub.</span></p>
+    <h2 class="h2 rv" style="--d: 1;"><span lang="es">Gratis, para siempre, en tu escritorio.</span><span lang="en">Free, forever, on your desktop.</span></h2>
+    <p class="lead rv" style="--d: 2;"><span lang="es">Todo enlaza a la última versión publicada en GitHub.</span><span lang="en">Everything links to the latest release on GitHub.</span></p>
   </div>
   <div id="platforms" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 16px; align-items: start;">
 
-    <div class="plat" data-plat="windows">
+    <div class="plat rv" data-plat="windows">
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
         <div style="display: flex; flex-direction: column;">
           <span style="font-size: 20px; font-weight: 600;">Windows</span>
@@ -594,7 +896,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       </div>
     </div>
 
-    <div class="plat" data-plat="linux">
+    <div class="plat rv" data-plat="linux" style="--d: 1;">
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
         <div style="display: flex; flex-direction: column;">
           <span style="font-size: 20px; font-weight: 600;">Linux</span>
@@ -621,7 +923,7 @@ makepkg -si</pre>
       </div>
     </div>
 
-    <div class="plat" data-plat="source">
+    <div class="plat rv" data-plat="source" style="--d: 2;">
       <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
         <div style="display: flex; flex-direction: column;">
           <span style="font-size: 20px; font-weight: 600;"><span lang="es">Desde el código</span><span lang="en">From source</span></span>
@@ -645,8 +947,8 @@ cmake --build build</pre>
 </section>
 
 <section id="faq" class="faq" style="max-width: 820px; margin: 0 auto; padding: clamp(64px,10vw,120px) clamp(16px,4vw,32px);">
-  <h2 style="margin: 0 0 28px; font-size: clamp(28px,3.4vw,40px); letter-spacing: -.03em; font-weight: 600;"><span lang="es">Preguntas frecuentes</span><span lang="en">FAQ</span></h2>
-  <div style="display: flex; flex-direction: column; border-top: 1px solid var(--line);">
+  <h2 class="rv" style="margin: 0 0 28px; font-size: clamp(28px,3.4vw,40px); letter-spacing: -.03em; font-weight: 600;"><span lang="es">Preguntas frecuentes</span><span lang="en">FAQ</span></h2>
+  <div class="rv" style="--d: 1; display: flex; flex-direction: column; border-top: 1px solid var(--line);">
     <details name="faq" open>
       <summary><span><span lang="es">¿Es gratis?</span><span lang="en">Is it free?</span></span></summary>
       <p><span lang="es">Sí. Tagoror es software libre con licencia MIT: gratis, sin versión premium y con todo el código en GitHub.</span><span lang="en">Yes. Tagoror is free software under the MIT license: no premium tier, and all the code is on GitHub.</span></p>
@@ -658,6 +960,10 @@ cmake --build build</pre>
     <details name="faq">
       <summary><span><span lang="es">¿Puedo sincronizar sin Google?</span><span lang="en">Can I sync without Google?</span></span></summary>
       <p><span lang="es">Sí. Desde la 5.0 puedes usar tu propio servidor WebDAV (Nextcloud, ownCloud, la mayoría de NAS) o una carpeta que ya sincronizan Syncthing, Dropbox, OneDrive o el cliente de Nextcloud. Los tres fusionan nota a nota.</span><span lang="en">Yes. Since 5.0 you can use your own WebDAV server (Nextcloud, ownCloud, most NAS) or a folder that Syncthing, Dropbox, OneDrive or the Nextcloud client already keep in step. All three merge note by note.</span></p>
+    </details>
+    <details name="faq">
+      <summary><span><span lang="es">¿Puedo poner mi propio tono de alarma?</span><span lang="en">Can I use my own alarm tone?</span></span></summary>
+      <p><span lang="es">Sí. Desde la 5.0.4, en Apariencia → Alarma eliges entre cuatro tonos o un WAV tuyo (PCM de 16 bits, hasta 8 MB, que se copia a la carpeta de datos), con su control de volumen.</span><span lang="en">Yes. Since 5.0.4, Appearance → Alarm offers four tones or a WAV of your own (16-bit PCM, up to 8 MB, copied into the data folder), with a volume slider.</span></p>
     </details>
     <details name="faq">
       <summary><span><span lang="es">¿Funciona en Wayland?</span><span lang="en">Does it work on Wayland?</span></span></summary>
@@ -697,6 +1003,7 @@ cmake --build build</pre>
   function load(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function $$(sel) { return Array.prototype.slice.call(document.querySelectorAll(sel)); }
   function lang() { return root.getAttribute('data-lang'); }
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Idioma
   function setLang(l) {
@@ -738,6 +1045,103 @@ cmake --build build</pre>
   }
   setInterval(tick, 30000);
 
+  // Aparición al entrar en pantalla
+  var rv = $$('.rv');
+  if ('IntersectionObserver' in window && !still) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+    rv.forEach(function (el) { io.observe(el); });
+  } else {
+    rv.forEach(function (el) { el.classList.add('in'); });
+  }
+
+  // Frase palabra a palabra: las palabras con * van en el acento
+  var words = [];
+  $$('[data-words] [lang]').forEach(function (span) {
+    var list = span.textContent.trim().split(/\s+/);
+    span.textContent = '';
+    list.forEach(function (w, i) {
+      var s = document.createElement('span');
+      s.className = 'w' + (w.charAt(0) === '*' ? ' acc' : '');
+      s.textContent = w.replace(/^\*/, '');
+      span.appendChild(s);
+      if (i < list.length - 1) span.appendChild(document.createTextNode(' '));
+    });
+  });
+  function lightWords(p) {
+    $$('[data-words] [lang]').forEach(function (span) {
+      var ws = span.querySelectorAll('.w'), n = ws.length;
+      for (var i = 0; i < n; i++) ws[i].style.opacity = Math.max(.14, Math.min(1, (p * 1.35 - .1) * n - i + .14));
+    });
+  }
+
+  // Historia fija de la interfaz: la captura sigue al paso que está en el centro
+  var steps = $$('.step'), shots = $$('#device img'), current = 'nav';
+  function pickStep() {
+    var mid = innerHeight / 2, best = null, dist = Infinity;
+    steps.forEach(function (s) {
+      var r = s.getBoundingClientRect(), d = Math.abs(r.top + r.height / 2 - mid);
+      if (d < dist) { dist = d; best = s; }
+    });
+    var k = best && best.getAttribute('data-k');
+    if (!k || k === current) return;
+    current = k;
+    steps.forEach(function (s) { s.classList.toggle('on', s === best); });
+    shots.forEach(function (img) { img.classList.toggle('on', img.getAttribute('data-k') === k); });
+  }
+
+  // Efectos ligados al scroll: cada [data-sc] recibe --p entre 0 y 1
+  var sc = $$('[data-sc]'), ticking = false;
+  function frame() {
+    ticking = false;
+    var vh = innerHeight;
+    if (!still) sc.forEach(function (el) {
+      var r = el.getBoundingClientRect(), p;
+      if (r.bottom < -vh || r.top > 2 * vh) return;
+      if (el.getAttribute('data-sc') === 'pin') p = -r.top / Math.max(1, r.height - vh);
+      else p = (vh - r.top) / (vh * 0.85);
+      p = Math.max(0, Math.min(1, p));
+      if (el._p === p) return;
+      el._p = p;
+      el.style.setProperty('--p', p.toFixed(4));
+      if (el.querySelector('[data-words]')) lightWords(p);
+    });
+    pickStep();
+  }
+  function onScroll() { if (!ticking) { ticking = true; requestAnimationFrame(frame); } }
+  addEventListener('scroll', onScroll, { passive: true });
+  addEventListener('resize', onScroll);
+  frame();
+
+  // Tráiler: se reproduce solo, sin sonido, mientras está a la vista
+  var video = document.getElementById('trailerVideo'), playBtn = document.getElementById('vidPlay'), soundBtn = document.getElementById('vidSound');
+  var userPaused = still;
+  function syncButtons() {
+    playBtn.setAttribute('data-on', video.paused ? 'false' : 'true');
+    soundBtn.setAttribute('data-on', video.muted ? 'false' : 'true');
+  }
+  function tryPlay() { var pr = video.play(); if (pr && pr.catch) pr.catch(function () {}); }
+  video.addEventListener('play', syncButtons);
+  video.addEventListener('pause', syncButtons);
+  video.addEventListener('volumechange', syncButtons);
+  playBtn.addEventListener('click', function () {
+    if (video.paused) { userPaused = false; tryPlay(); } else { userPaused = true; video.pause(); }
+  });
+  soundBtn.addEventListener('click', function () {
+    video.muted = !video.muted;
+    if (!video.muted && video.paused) { userPaused = false; tryPlay(); }
+  });
+  video.addEventListener('click', function () { playBtn.click(); });
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { if (!userPaused) tryPlay(); }
+        else if (!video.paused) video.pause();
+      });
+    }, { threshold: 0.35 }).observe(video);
+  }
+
   // Selector de tipo de nota
   $$('.nb').forEach(function (b) {
     b.addEventListener('click', function () {
@@ -748,7 +1152,7 @@ cmake --build build</pre>
   });
 
   // Checklist de ejemplo
-  var CHECK = [['Paleta de comandos', 'Command palette'], ['Notas Markdown', 'Markdown notes'], ['Escribir el changelog', 'Write the changelog'], ['Publicar en el foro', 'Post on the forum']];
+  var CHECK = [['Tonos de alarma', 'Alarm tones'], ['Densidad compacta', 'Compact density'], ['Escribir el changelog', 'Write the changelog'], ['Publicar en el foro', 'Post on the forum']];
   var checks = [true, true, false, false], box = document.getElementById('checkItems');
   CHECK.forEach(function (c, i) {
     var b = document.createElement('button');
@@ -763,7 +1167,9 @@ cmake --build build</pre>
     var done = 0;
     Array.prototype.forEach.call(box.children, function (b, i) { b.setAttribute('aria-checked', checks[i] ? 'true' : 'false'); if (checks[i]) done++; });
     document.getElementById('progressBar').style.width = Math.round(done / CHECK.length * 100) + '%';
-    document.getElementById('progressLabel').textContent = done + '/' + CHECK.length;
+    var label = document.getElementById('progressLabel');
+    label.textContent = (done === CHECK.length ? '✓ ' : '') + done + '/' + CHECK.length;
+    label.style.color = done === CHECK.length ? 'var(--accent)' : '#8d93a0';
   }
   renderChecks();
 
