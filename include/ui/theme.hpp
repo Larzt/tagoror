@@ -152,6 +152,14 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawLine(QPointF(c, c - 5.8), QPointF(c, c - 4.0));
         p.drawLine(QPointF(c + 3.8, c - 3.4), QPointF(c + 4.8, c - 4.4));
         p.drawLine(QPointF(c, c + 1.0), QPointF(c + 2.2, c - 1.4));
+    } else if (kind == "bars") {
+        // Seguimiento: three bars rising, a log that adds up. Not a stopwatch,
+        // which is the timers' countdown.
+        pen.setWidthF(1.9);
+        p.setPen(pen);
+        p.drawLine(QPointF(c - 4.2, c + 5.0), QPointF(c - 4.2, c + 1.0));
+        p.drawLine(QPointF(c, c + 5.0), QPointF(c, c - 2.4));
+        p.drawLine(QPointF(c + 4.2, c + 5.0), QPointF(c + 4.2, c - 5.6));
     } else if (kind == "markdown") {
         // The usual Markdown mark: an M and a down arrow in a box.
         p.drawRoundedRect(QRectF(c - 6.5, c - 4.5, 13, 9), 2, 2);
@@ -440,6 +448,52 @@ QToolButton#heroStop { color: #2b0e0a; background: #ff7a6b; border: none; font-w
 QWidget#bdayCard { background: rgba(255,255,255,0.045); border: 1px solid %2; border-radius: 10px; }
 QWidget#bdayCard:hover { background: rgba(255,255,255,0.065); }
 QWidget#bdayCard[kbfocus="true"]:focus { border: 1px solid %5; }
+/* Seguimiento (1.1): the stopwatch card, its chips, the forms. */
+QWidget#tracking { background: transparent; }
+QFrame#trackClock { background: rgba(255,255,255,0.045); border: 1px solid %2; border-radius: 12px; }
+QLineEdit#trackField {
+    background: transparent; border: none; padding: 2px 0;
+    font-size: {fs:14}px; font-weight: 600; color: %3;
+}
+QLineEdit#trackField:focus { border: none; }
+QLabel#trackTask { font-size: {fs:14}px; font-weight: 600; }
+QLabel#trackClockTime { color: %3; font-size: 24px; font-weight: 500; font-family: "IBM Plex Mono", monospace; }
+QLabel#trackClockTime[state="idle"], QLabel#trackClockTime[state="paused"] { color: %4; }
+QLabel#trackClockTime[compact="true"] { font-size: 17px; }
+QToolButton#trackChip {
+    color: %3; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 10px; padding: 3px 8px; font-size: 11px;
+}
+QToolButton#trackChip:hover { background: rgba(255,255,255,0.11); }
+QToolButton#trackGhost { background: transparent; border: 1px solid rgba(255,255,255,0.18); border-radius: 17px; }
+QToolButton#trackGhost:hover { background: %7; }
+QToolButton#trackRecent {
+    color: #d4d6db; background: %6; border: 1px solid %2; border-radius: 8px;
+    padding: 5px 8px; font-size: 11.5px; text-align: left;
+}
+QToolButton#trackRecent:hover { background: %7; color: %3; }
+QLabel#trackEmptyTitle { font-size: 13px; font-weight: 600; }
+QLabel#trackPeriod { color: %3; font-size: 11px; font-family: "IBM Plex Mono", monospace; }
+QLabel#trackTileValue { color: %3; font-size: 19px; font-weight: 500; font-family: "IBM Plex Mono", monospace; }
+QListView#trackList { background: transparent; border: none; outline: 0; }
+QLabel#overlayTitle { font-size: 13px; font-weight: 600; }
+QToolButton#trackPicker {
+    color: %3; background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px;
+    padding: 5px 8px; font-size: 12px; text-align: left;
+}
+QToolButton#trackPicker:hover { border: 1px solid rgba(255,255,255,0.2); }
+QLabel#trackWarn {
+    color: #f2b757; background: rgba(242,183,87,0.10); border: 1px solid rgba(242,183,87,0.35);
+    border-radius: 7px; padding: 6px 8px; font-size: 11px;
+}
+QLabel#trackAmount { color: %3; font-size: 11px; font-family: "IBM Plex Mono", monospace; }
+QPlainTextEdit#trackPreview {
+    background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px; padding: 3px;
+    color: %4; font-size: 10px; font-family: "IBM Plex Mono", monospace;
+}
+QFrame#trackPeek {
+    background: #1c1f26; border: 1px solid rgba(255,255,255,0.13); border-radius: 12px;
+}
 /* Settings (1.0): tabs, provider cards and their fields. */
 QScrollArea#setTabs, QWidget#setTabsHost { background: transparent; border: none; }
 QToolButton#setTab {
@@ -999,7 +1053,10 @@ QToolButton#calNav[kbfocus="true"]:focus, QToolButton#todayBtn[kbfocus="true"]:f
 QToolButton#bdayTab[kbfocus="true"]:focus, QToolButton#bdayGhost[kbfocus="true"]:focus,
 QToolButton#listDone[kbfocus="true"]:focus, QToolButton#quitBtn[kbfocus="true"]:focus,
 QToolButton#alarmBtn[kbfocus="true"]:focus, QToolButton#footerTimer[kbfocus="true"]:focus,
-QToolButton#dragHandle[kbfocus="true"]:focus {
+QToolButton#dragHandle[kbfocus="true"]:focus,
+QToolButton#trackChip[kbfocus="true"]:focus, QToolButton#trackRecent[kbfocus="true"]:focus,
+QToolButton#trackPicker[kbfocus="true"]:focus, QToolButton#trackGhost[kbfocus="true"]:focus,
+QToolButton#trackGo[kbfocus="true"]:focus {
     border: 1px solid %5;
 }
 /* Widgets already in the accent when chosen need another focus colour: the

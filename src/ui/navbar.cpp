@@ -35,6 +35,10 @@ public:
     bool active = false;
     bool dot = false;
     QString countdown;
+    QString status;          ///< Seguimiento's h:mm.
+    QColor statusColor;
+    bool statusPaused = false;
+    std::function<void(bool)> hoverChanged;
 
     void retranslate() {
         const QString name = L(m_item.name);
@@ -52,8 +56,16 @@ public:
     }
 
 protected:
-    void enterEvent(QEnterEvent *) override { m_hover = true; update(); }
-    void leaveEvent(QEvent *) override { m_hover = false; update(); }
+    void enterEvent(QEnterEvent *) override {
+        m_hover = true;
+        update();
+        if (hoverChanged) hoverChanged(true);
+    }
+    void leaveEvent(QEvent *) override {
+        m_hover = false;
+        update();
+        if (hoverChanged) hoverChanged(false);
+    }
 
     void paintEvent(QPaintEvent *) override {
         QPainter p(this);
@@ -75,7 +87,7 @@ protected:
         const int pillW = rail ? 40 : 44, pillH = 24, gap = 3;
         QFont f = font();
         f.setPixelSize(rail ? 10 : 11);
-        const bool timer = !countdown.isEmpty();
+        const bool timer = !countdown.isEmpty() || !status.isEmpty();
         if (timer) {
             f.setFamily("IBM Plex Mono");
             f.setStyleHint(QFont::Monospace);
@@ -107,6 +119,27 @@ protected:
         }
 
         p.setFont(f);
+        if (!status.isEmpty()) {
+            // h:mm after the project's dot: white, not the accent, so it is not
+            // mistaken for a timer counting down. Paused, hollow and dimmed.
+            const int textW = fm.horizontalAdvance(status);
+            const qreal blockW = 6 + 4 + textW;
+            const qreal x = (width() - blockW) / 2.0;
+            const qreal y = pill.bottom() + gap + fm.height() / 2.0;
+            if (statusPaused) {
+                p.setPen(QPen(statusColor, 1.3));
+                p.setBrush(Qt::NoBrush);
+                p.drawEllipse(QPointF(x + 3, y), 2.6, 2.6);
+            } else {
+                p.setPen(Qt::NoPen);
+                p.setBrush(statusColor);
+                p.drawEllipse(QPointF(x + 3, y), 3, 3);
+            }
+            p.setPen(statusPaused ? QColor(Theme::muted()) : QColor(Theme::fg()));
+            p.drawText(QRectF(x + 10, pill.bottom() + gap, textW + 2, fm.height()),
+                       Qt::AlignLeft | Qt::AlignTop, status);
+            return;
+        }
         p.setPen(timer ? m_theme->accent : active ? QColor(Theme::fg()) : QColor(Theme::muted()));
         const QString label = timer ? countdown : L(m_item.name);
         // The rail is 60px wide: a long name breaks onto a second line there, as in
@@ -146,6 +179,9 @@ void NavBar::setItems(const QList<Item> &items) {
         connect(item, &QAbstractButton::clicked, this, [this, page] {
             if (activated) activated(page);
         });
+        item->hoverChanged = [this, page, item](bool in) {
+            if (hovered) hovered(page, item, in);
+        };
         m_items.append(item);
     }
     setLayoutMode(m_layout);
@@ -194,6 +230,17 @@ void NavBar::setCountdown(QWidget *page, const QString &text) {
     for (NavItem *i : m_items)
         if (i->item().page == page && i->countdown != text) {
             i->countdown = text;
+            i->update();
+        }
+}
+
+void NavBar::setStatus(QWidget *page, const QString &text, const QColor &color, bool paused) {
+    for (NavItem *i : m_items)
+        if (i->item().page == page &&
+            (i->status != text || i->statusColor != color || i->statusPaused != paused)) {
+            i->status = text;
+            i->statusColor = color;
+            i->statusPaused = paused;
             i->update();
         }
 }

@@ -4,8 +4,9 @@
   A sticky-notes widget for the Linux and Windows desktop, written in C++20 with Qt 6.<br>
   Frameless, translucent, and made to sit <em>on</em> the desktop rather than get in
   the way — text and Markdown notes, checklists, reminders that actually ring,
-  a planner for your week, timers, birthdays that do not get forgotten and voice
-  notes with a waveform, all one click or one <kbd>Ctrl+K</kbd> away.<br>
+  a planner for your week, timers, a clock that tracks your hours per project,
+  birthdays that do not get forgotten and voice notes with a waveform, all one
+  click or one <kbd>Ctrl+K</kbd> away.<br>
   Your notes are kept where you choose — including a USB stick — backed up on a
   schedule you set, and synced between computers through Google Drive, your own
   WebDAV server or a folder you already sync, only if you want to.
@@ -114,6 +115,50 @@
 - The countdown of the running one replaces the *Timers* label in the
   navigation, on every page. When it reaches zero the alarm plays and the notice
   offers **+1 min** or **Stop**.
+
+### Tracking (Seguimiento)
+
+<p align="center">
+  <img src="docs/v51-seguimiento.png" alt="The Seguimiento page: a session running on a card in its project's colour, recent tasks, today's line from 8 to 20 h and the day's sessions" width="400">
+</p>
+
+- *Seguimiento* in the navigation (**Ctrl+5**), after Birthdays. **A clock that
+  adds up**, where a timer counts down: type what you are on and press
+  **Enter**, or click one of the *Recent* tasks. One or two clicks, and no
+  project needed — it is optional, and a task you have logged before brings back
+  the project it went with last.
+- Running, the card takes the **project's colour**, the clock counts up and
+  **pause** keeps the session open while **stop** saves it.
+  **Ctrl+Shift+Space** pauses or resumes from any page. Starting another task
+  stops the one running first.
+- **It lives in the navigation**, as a timer does: while a session runs the
+  label becomes `h:mm` after a dot in the project's colour (hollow and dimmed
+  while paused), and hovering it shows a card with the task, pause and stop.
+- **Registro** groups the sessions by day with each day's total, and draws
+  today as a line from 8 to 20 h with the **gaps nobody logged** hatched. On
+  hover a session offers ▶ (start it again now) and ⋯ (edit, duplicate with
+  **Ctrl+D**, move to another project, delete with **Del**); a double click
+  edits. Deleting asks nothing: *Undo* waits in the notices for a few seconds.
+- **+** (or **Ctrl+N** on this page) adds a session you forgot to start: it
+  proposes the end of the last one as its start and now as its end. Start, end
+  and duration recompute each other, and an overlap with another session is
+  pointed out but never blocks saving.
+- **Resumen** shows the week or the month as bars stacked by project, the hours
+  with the daily average and the **estimated amount** — which only adds what has
+  a rate, and says how many hours that is — then each project's share.
+- **Proyectos**: only the name is required. Eight fixed colours, an optional
+  client and an optional hourly rate (empty: hours, no money). Changing the rate
+  asks whether the sessions already logged change with it; archiving hides a
+  project from the lists without losing a minute.
+- **Export to CSV** from Resumen, starting on the period on screen: this week,
+  this month, last month or any range, all projects or one, a row per session or
+  per day and task, and an optional totals row per project. The preview shows
+  exactly the columns that will go on the invoice; in Spanish it uses `;` and a
+  decimal comma, as Excel expects there.
+- From 720 px wide the clock takes the whole width and Registro and Resumen sit
+  side by side. Like a timer it stores instants, not a count, so **it keeps
+  adding up with the app closed**; sessions live in their own `tracking.json`,
+  backed up and synced like everything else.
 
 ### Birthdays
 
@@ -232,7 +277,7 @@
   next to **⋯** does it in one click from any page, and so does **Ctrl+M**. While
   something rings, the stones turn red, a halo beats around it and a badge counts
   the alarms.
-- **The navigation stays put**: Notes, Planner, Timers and Birthdays along the
+- **The navigation stays put**: Notes, Planner, Timers, Birthdays and Seguimiento along the
   bottom, the open one marked, or as a rail on the left once the panel is wider
   than 480 px. A red dot on Notes says a reminder is ringing while you are
   elsewhere.
@@ -417,7 +462,7 @@ always, and those two rows in settings are simply disabled.
 
 - **Ctrl+K** opens the **command palette**: type to go to any page, create any
   kind of note or switch area — accents don't matter, *cumple* finds Birthdays.
-- **Ctrl+1…4** open the pages, **Ctrl+,** the settings, **Alt+1…9** the areas,
+- **Ctrl+1…5** open the pages, **Ctrl+,** the settings, **Alt+1…9** the areas,
   **Ctrl+M** folds the panel; *Settings → Shortcuts* lists them all.
 - **Tab** goes through everything that can be clicked: the navigation, each
   note's title and body, checklist boxes, link rows, the date chip, the settings
@@ -679,10 +724,11 @@ published elsewhere and on their own schedule:
 ├── notes.json     # notes, timers, accent, opacity, window size, preferences
 ├── birthdays.json # the birthdays
 ├── events.json    # the planner's events and tasks
+├── tracking.json  # Seguimiento's projects and sessions
 ├── alarm*.wav     # the generated alarm tones, and alarm-custom.wav if you picked one
 ├── audio/         # one WAV per voice note
 ├── images/        # the images attached to notes
-└── backups/       # notes-, birthdays- and events-<timestamp>.json
+└── backups/       # notes-, birthdays-, events- and tracking-<timestamp>.json
 ```
 
 The folder is configurable from settings. Changing it copies the attachments —
@@ -694,9 +740,10 @@ move these ones over.
 Birthdays are kept apart from the notes, in `birthdays.json`. A folder written
 by an earlier version has them inside `notes.json`; they are moved across the
 first time 0.9 opens it, and nothing has to be done by hand. The planner's
-events follow the same rules in `events.json`.
+events follow the same rules in `events.json`, and Seguimiento's projects and
+sessions in `tracking.json`.
 
-All three files are written to a temporary file and renamed into place, so an
+All four files are written to a temporary file and renamed into place, so an
 interrupted write cannot leave one half-finished. Before each scheduled
 overwrite the previous set is copied into `backups/` under a single timestamp;
 you can restore any of them from *Settings → Backups*, which brings back every
@@ -722,7 +769,7 @@ The code is split into three layers, and headers mirror the sources:
 
 ```
 include/core/    note, area, birthday, event, timer, paths,   the data, where it is kept
-                 store, updater                               and the update check
+                 tracking, store, updater                     and the update check
                  synccontroller, syncengine, syncbackend,     sync: which backend and when,
                  drivesync, webdavbackend, folderbackend,     the merge, and Google Calendar
                  calendarsync
@@ -730,8 +777,8 @@ include/ui/      panel, navigator, navbar, areatabs,          the window, its pa
                  alertcenter, alertzone, palette, splash,     you move between them
                  dock
                  notecard, mdpage, markdown, planner,         what is on each page
-                 timers, birthdays, settings,
-                 datetimepicker
+                 timers, birthdays, tracking, trackdialogs,
+                 settings, datetimepicker, overlay
                  popup, theme, keynav, waveform,              shared pieces
                  dragwidgets, elidedlabel, imagethumb
 include/audio/   recorder, alarm, wave                        microphone, alarm tone, WAV
@@ -743,14 +790,15 @@ tagoror-small.svg  simplified variant, used below 32px
 
 `core` knows nothing about the interface, `ui` never touches the disk — it goes
 through `Store`, which owns the notes, the areas, the timers, the birthdays, the
-events and their JSON files — and `audio` only deals with the microphone and WAV
+events, the tracked sessions and their JSON files — and `audio` only deals with the microphone and WAV
 files. Sync is the same pass whatever the backend: `SyncEngine` merges, a
 `SyncBackend` (Drive, WebDAV or a folder) only lists, downloads and uploads, and
 `SyncController` picks one and decides when to run it.
 
-The panel is one window with six pages inside it: the note list, the planner,
-the timers, the birthdays, the settings and a Markdown note's own page.
-`PlannerView`, `TimerView`, `BirthdayView` and `SettingsView` are built the same
+The panel is one window with seven pages inside it: the note list, the planner,
+the timers, the birthdays, Seguimiento, the settings and a Markdown note's own
+page. `PlannerView`, `TimerView`, `BirthdayView`, `TrackingView` and
+`SettingsView` are built the same
 way — each reads from the `Store` and reports what the user asked for upwards,
 leaving `Panel` as the only thing that changes anything or saves. `Panel` has
 help: `Navigator` decides which page is open and how big the window is for it,

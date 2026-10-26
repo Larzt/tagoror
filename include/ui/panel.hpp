@@ -3,6 +3,7 @@
 #include <QDate>
 #include <QElapsedTimer>
 #include <QFont>
+#include <QJsonObject>
 #include <QList>
 #include <QRect>
 #include <QSize>
@@ -43,11 +44,12 @@ class NoteCard;
 class PlannerView;
 class SettingsView;
 class TimerView;
+class TrackingView;
 
 /// The single window: draws its own chrome and presents what the Store keeps.
 /// An outer stack swaps the expanded panel for the folded dock; inside it,
 /// another swaps between the note list, the planner, the timers, the
-/// birthdays and the settings.
+/// birthdays, Seguimiento and the settings.
 class Panel : public QWidget {
     Q_OBJECT
 
@@ -184,6 +186,25 @@ private:
     void dismissBirthday(Birthday *b);
     /// @}
 
+    /// @name Seguimiento
+    /// The page asks; this is where sessions start, stop and change.
+    /// @{
+    void startTracking(const QString &task, const QString &projectId);
+    void toggleTrackingPause();     ///< Ctrl+Shift+Space from any page.
+    void stopTracking();
+    void openSessionEditor(Session *s);   ///< Null: a past session to add.
+    void deleteSession(Session *s);       ///< No question: "Deshacer" in the notices.
+    void undoDeleteSession();
+    void duplicateSession(Session *s);
+    void setSessionProject(Session *s, const QString &projectId);
+    void openProjectEditor(Project *p);   ///< Null: a new project.
+    void refreshTracking();               ///< The page, the navigation and the card.
+    void tickTracking();                  ///< Every second while a session runs.
+    /// The card over the navigation's Seguimiento item, with pause and stop.
+    void showTrackPeek(QWidget *item);
+    void refreshTrackPeek();
+    /// @}
+
     /// @name Reminders
     /// @{
     void checkReminders();          ///< Anything due? Then ring and show it.
@@ -318,6 +339,7 @@ private:
     PlannerView *m_planner = nullptr;
     TimerView *m_timerView = nullptr;
     BirthdayView *m_birthdays = nullptr;
+    TrackingView *m_tracking = nullptr;
     SettingsView *m_settings = nullptr;
 
     QFrame *m_header = nullptr;
@@ -331,6 +353,7 @@ private:
     QPoint m_headerClickAt;
     QToolButton *m_timerAddBtn = nullptr;  ///< Header "+" on the timers page.
     QToolButton *m_bdayAddBtn = nullptr;   ///< Header "+" on the birthdays page.
+    QToolButton *m_trackAddBtn = nullptr;  ///< Header "+" on Seguimiento: a session, or a project.
     QWidget *m_empty = nullptr;            ///< "No notes" placeholder.
     QLabel *m_emptyText = nullptr;
     QPushButton *m_emptyBtn = nullptr;
@@ -353,6 +376,13 @@ private:
     AreaTabs *m_areaTabs = nullptr;
     QTimer *m_dueTimer = nullptr;          ///< Reminder heartbeat.
     QTimer *m_tick = nullptr;              ///< Running timers.
+    QTimer *m_trackTick = nullptr;         ///< A running session, every second.
+    /// The session just deleted, to bring it back from the notice, until it expires.
+    QJsonObject m_undoSession;
+    QTimer *m_undoTimer = nullptr;
+    QFrame *m_peek = nullptr;              ///< Seguimiento's card over the navigation.
+    QWidget *m_peekItem = nullptr;
+    QTimer *m_peekHide = nullptr;
     AlertCenter *m_alerts = nullptr;       ///< What rings, and the tone.
     Updater *m_updater = nullptr;
     SyncController *m_sync = nullptr;   ///< When to sync.

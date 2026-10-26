@@ -96,6 +96,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.1.0" date="2026-10-26">
+      <description>
+        <p>Seguimiento, a new page with a clock that adds up your hours per task
+           and project: start it with Enter or a recent task, pause it from any
+           page, see the day's sessions and gaps, a weekly or monthly summary
+           with the estimated amount, projects with colours and hourly rates,
+           and export to CSV for invoicing.</p>
+      </description>
+    </release>
     <release version="1.0.4" date="2026-10-16">
       <description>
         <p>A "+" after the last area tab creates a new area. The alarm tone can be

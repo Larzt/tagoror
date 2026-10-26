@@ -947,12 +947,15 @@ void SettingsView::addCalendar() {
 void SettingsView::addShortcuts() {
     const QList<QPair<const char *, QList<QPair<const char *, QString>>>> groups{
         {"PÁGINAS", {{"Notas", "Ctrl+1"}, {"Planner", "Ctrl+2"}, {"Timers", "Ctrl+3"},
-                     {"Cumpleaños", "Ctrl+4"}, {"Ajustes", "Ctrl+,"},
+                     {"Cumpleaños", "Ctrl+4"}, {"Seguimiento", "Ctrl+5"}, {"Ajustes", "Ctrl+,"},
                      {"Paleta de comandos", "Ctrl+K"}, {"Volver a las notas", "Esc"}}},
         {"NOTAS", {{"Nota de texto", "Ctrl+N"}, {"Checklist", "Ctrl+⇧L"},
                    {"Recordatorio", "Ctrl+⇧R"}, {"Nota de voz", "Ctrl+⇧V"},
                    {"Nota Markdown", "Ctrl+⇧M"}, {"Buscar", "Ctrl+F"},
                    {"Terminar de escribir", "Enter"}, {"Nueva línea en una nota", "⇧+Enter"}}},
+        {"SEGUIMIENTO", {{"Pausar o reanudar", "Ctrl+⇧+Espacio"},
+                         {"Añadir una sesión pasada", "Ctrl+N"}, {"Duplicar sesión", "Ctrl+D"},
+                         {"Borrar sesión", "Supr"}}},
         {"ÁREAS", {{"Nueva área", "Ctrl+T"}, {"Ir a un área", "Alt+1…9"},
                    {"Renombrar", "F2"}, {"Mover", "Ctrl+⇧+← →"}}},
         {"NOTA MARKDOWN", {{"Editar ⇄ vista previa", "Ctrl+E"}, {"Negrita", "Ctrl+B"},

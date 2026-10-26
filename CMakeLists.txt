@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 1.0.4 LANGUAGES CXX)
+project(tagoror VERSION 1.1.0 LANGUAGES CXX)
 
 # La versión que llega al binario (la que compara el aviso de actualizaciones)
 # y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de
@@ -47,6 +47,7 @@ add_executable(tagoror
     src/core/webdavbackend.cpp
     src/core/folderbackend.cpp
     src/core/calendarsync.cpp
+    src/core/tracking.cpp
     include/core/birthday.hpp
     include/core/drivesync.hpp
     include/core/synccontroller.hpp
@@ -62,6 +63,7 @@ add_executable(tagoror
     include/core/paths.hpp
     include/core/store.hpp
     include/core/timer.hpp
+    include/core/tracking.hpp
     include/core/updater.hpp
 
     src/ui/panel.cpp
@@ -69,6 +71,9 @@ add_executable(tagoror
     src/ui/planner.cpp
     src/ui/timers.cpp
     src/ui/birthdays.cpp
+    src/ui/tracking.cpp
+    src/ui/trackdialogs.cpp
+    src/ui/overlay.cpp
     src/ui/settings.cpp
     src/ui/areatabs.cpp
     src/ui/popup.cpp
@@ -89,6 +94,9 @@ add_executable(tagoror
     include/ui/timers.hpp
     include/ui/keynav.hpp
     include/ui/birthdays.hpp
+    include/ui/tracking.hpp
+    include/ui/trackdialogs.hpp
+    include/ui/overlay.hpp
     include/ui/settings.hpp
     include/ui/areatabs.hpp
     include/ui/popup.hpp

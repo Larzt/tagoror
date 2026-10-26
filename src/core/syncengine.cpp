@@ -18,7 +18,8 @@ namespace {
 /// to each machine. The order matters: it is the order of the objects passed
 /// to Store::mergeRemote().
 const QStringList &jsonFiles() {
-    static const QStringList files{"notes.json", "birthdays.json", "events.json"};
+    static const QStringList files{"notes.json", "birthdays.json", "events.json",
+                                   "tracking.json"};
     return files;
 }
 const QStringList &subdirs() {
@@ -157,7 +158,8 @@ void SyncEngine::mergeAndPlan() {
             return;
         }
         const Store::MergeResult merged =
-            m_store->mergeRemote(m_remoteJson.value(0), m_remoteJson.value(1), m_remoteJson.value(2));
+            m_store->mergeRemote(m_remoteJson.value(0), m_remoteJson.value(1),
+                                 m_remoteJson.value(2), m_remoteJson.value(3));
         m_pull = merged.pull;
         // Merged: next time it is not downloaded again unless it changed.
         for (int i = 0; i < jsonFiles().size(); ++i) {

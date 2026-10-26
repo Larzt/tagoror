@@ -161,8 +161,16 @@ void Popup::addItem(const QString &iconKind, const QString &title,
 
 void Popup::addShortcutItem(const QString &iconKind, const QString &title,
                             const QString &shortcut, std::function<void()> action) {
-    auto *row = new PopupRow(paintIcon(iconKind, QColor(Theme::muted())), title, QString(),
+    const QColor tint = iconKind == "trash" ? QColor("#ff7a6b") : QColor(Theme::muted());
+    auto *row = new PopupRow(paintIcon(iconKind, tint), title, QString(),
                              [this, action] { run(action); }, nullptr, shortcut);
+    m_col->addWidget(row);
+}
+
+void Popup::addColorItem(const QColor &dot, const QString &title, const QString &subtitle,
+                         std::function<void()> action) {
+    auto *row = new PopupRow(paintIcon("glyph-dot", dot), title, subtitle,
+                             [this, action] { run(action); });
     m_col->addWidget(row);
 }
 

@@ -8,6 +8,8 @@
 #include "ui/planner.hpp"
 #include "ui/settings.hpp"
 #include "ui/timers.hpp"
+#include "ui/trackdialogs.hpp"
+#include "ui/tracking.hpp"
 #include "ui/dragwidgets.hpp"
 #include "ui/keynav.hpp"
 #include "ui/navbar.hpp"
@@ -69,6 +71,7 @@
 #include <QPointer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QUuid>
 
 namespace {
 
@@ -157,6 +160,25 @@ Panel::Panel() {
     m_tick = new QTimer(this);
     m_tick->setInterval(500);
     connect(m_tick, &QTimer::timeout, this, &Panel::tickTimers);
+    // Seguimiento's clock shows seconds too, but on its own timer: it runs for
+    // hours, and the timers' half-second heartbeat would do twice the work.
+    m_trackTick = new QTimer(this);
+    m_trackTick->setInterval(1000);
+    connect(m_trackTick, &QTimer::timeout, this, &Panel::tickTracking);
+    // "Deshacer" stays in the notices a few seconds after deleting a session.
+    m_undoTimer = new QTimer(this);
+    m_undoTimer->setSingleShot(true);
+    m_undoTimer->setInterval(8000);
+    connect(m_undoTimer, &QTimer::timeout, this, [this] {
+        m_undoSession = QJsonObject();
+        refreshNotices();
+    });
+    m_peekHide = new QTimer(this);
+    m_peekHide->setSingleShot(true);
+    m_peekHide->setInterval(260);
+    connect(m_peekHide, &QTimer::timeout, this, [this] {
+        if (m_peek) m_peek->hide();
+    });
 
     m_updater = new Updater(this);
     connect(m_updater, &Updater::finished, this, &Panel::onUpdateChecked);
@@ -193,6 +215,7 @@ Panel::Panel() {
     refreshNotices();   // with what the last check found
     checkReminders();   // something may have come due while the app was closed
     tickTimers();       // and a timer may have reached zero
+    refreshTracking();  // a session left running keeps counting
 
     qApp->installEventFilter(this);
     buildResizeGrips();   // resizing from any edge
@@ -279,7 +302,8 @@ void Panel::buildShell() {
     m_navBar->setItems({{m_scroll, "notes", "Notas", "Ctrl+1"},
                         {m_planner, "calendar", "Planner", "Ctrl+2"},
                         {m_timerView, "timer", "Timers", "Ctrl+3"},
-                        {m_birthdays, "cake", "Cumpleaños", "Ctrl+4"}});
+                        {m_birthdays, "cake", "Cumpleaños", "Ctrl+4"},
+                        {m_tracking, "bars", "Seguimiento", "Ctrl+5"}});
     m_navBar->activated = [this](QWidget *page) {
         if (page == m_scroll) {
             showNotes();
@@ -294,6 +318,12 @@ void Panel::buildShell() {
                 }
         openPage(page);
     };
+    // Over Seguimiento with a session running: a card with the task, pause and stop.
+    m_navBar->hovered = [this](QWidget *page, QWidget *item, bool in) {
+        if (page != m_tracking) return;
+        if (in) showTrackPeek(item);
+        else if (m_peek) m_peekHide->start();
+    };
     m_mainCol->addWidget(m_navBar);
     m_stack->addWidget(m_shell);
 
@@ -304,6 +334,7 @@ void Panel::buildShell() {
     m_nav->addPage(m_planner, m_navBar->buttonFor(m_planner), "planner", "Planner");
     m_nav->addPage(m_timerView, m_navBar->buttonFor(m_timerView), "timers", "Timers");
     m_nav->addPage(m_birthdays, m_navBar->buttonFor(m_birthdays), "birthdays", "Cumpleaños");
+    m_nav->addPage(m_tracking, m_navBar->buttonFor(m_tracking), "tracking", "Seguimiento");
     // Settings has no item in the bar: it comes from "⋯", and leaving parks the
     // focus there.
     m_nav->addPage(m_settings, m_moreBtn, "settings", "Ajustes");
@@ -332,6 +363,9 @@ void Panel::installShortcuts() {
     key(QKeySequence(Qt::CTRL | Qt::Key_2), [this] { openPage(m_planner); });
     key(QKeySequence(Qt::CTRL | Qt::Key_3), [this] { openPage(m_timerView); });
     key(QKeySequence(Qt::CTRL | Qt::Key_4), [this] { openPage(m_birthdays); });
+    key(QKeySequence(Qt::CTRL | Qt::Key_5), [this] { openPage(m_tracking); });
+    // Pause or resume what is being tracked, from any page.
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Space), [this] { toggleTrackingPause(); });
     key(QKeySequence(Qt::CTRL | Qt::Key_Comma), [this] { openPage(m_settings); });
     key(QKeySequence(Qt::CTRL | Qt::Key_M), [this] {
         if (appMode()) showMinimized();
@@ -348,7 +382,15 @@ void Panel::installShortcuts() {
 
     // Notes: Ctrl+N is a text note straight away; the others name their type.
     key(QKeySequence(Qt::CTRL | Qt::Key_F), [this] { focusSearch(); });
-    key(QKeySequence(Qt::CTRL | Qt::Key_N), [this] { showNotes(); addNote(Note::Text); });
+    // On Seguimiento Ctrl+N adds a session, as its "+" does.
+    key(QKeySequence(Qt::CTRL | Qt::Key_N), [this] {
+        if (m_body->currentWidget() == m_tracking) {
+            openSessionEditor(nullptr);
+            return;
+        }
+        showNotes();
+        addNote(Note::Text);
+    });
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L), [this] { showNotes(); addNote(Note::Check); });
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), [this] { showNotes(); addNote(Note::Reminder); });
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), [this] { showNotes(); addNote(Note::Voice); });
@@ -391,6 +433,14 @@ QFrame *Panel::buildHeader() {
     connect(m_bdayAddBtn, &QToolButton::clicked, this,
             [this] { openBirthdayEditor(nullptr, m_bdayAddBtn); });
     l->addWidget(m_bdayAddBtn);
+    m_trackAddBtn = iconButton("plus", "Añadir · Ctrl+N");
+    m_trackAddBtn->setFixedSize(28, 28);
+    m_trackAddBtn->hide();
+    connect(m_trackAddBtn, &QToolButton::clicked, this, [this] {
+        if (m_tracking->tab() == TrackingView::Projects) openProjectEditor(nullptr);
+        else openSessionEditor(nullptr);
+    });
+    l->addWidget(m_trackAddBtn);
 
     // Folding is one click away on every page, next to "⋯"; in app mode it
     // minimises instead (applyAppModeChrome() swaps the icon and the tip, and
@@ -621,6 +671,26 @@ QWidget *Panel::buildBody() {
         save();
     });
 
+    m_tracking = new TrackingView(m_theme);
+    m_tracking->setSources(&m_store.sessions(), &m_store.projects());
+    connect(m_tracking, &TrackingView::startRequested, this, &Panel::startTracking);
+    connect(m_tracking, &TrackingView::pauseToggled, this, &Panel::toggleTrackingPause);
+    connect(m_tracking, &TrackingView::stopRequested, this, &Panel::stopTracking);
+    connect(m_tracking, &TrackingView::runningProjectPicked, this, [this](const QString &id) {
+        if (Session *s = m_store.runningSession()) setSessionProject(s, id);
+    });
+    connect(m_tracking, &TrackingView::relaunchRequested, this,
+            [this](Session *s) { startTracking(s->task, s->project); });
+    connect(m_tracking, &TrackingView::sessionEditRequested, this, &Panel::openSessionEditor);
+    connect(m_tracking, &TrackingView::sessionDeleteRequested, this, &Panel::deleteSession);
+    connect(m_tracking, &TrackingView::sessionDuplicateRequested, this, &Panel::duplicateSession);
+    connect(m_tracking, &TrackingView::sessionMoveRequested, this, &Panel::setSessionProject);
+    connect(m_tracking, &TrackingView::projectEditRequested, this, &Panel::openProjectEditor);
+    connect(m_tracking, &TrackingView::exportRequested, this, [this](const QDate &from, const QDate &to) {
+        trackdlg::exportCsv(&m_theme, m_shell, m_store.sessions(), m_store.projects(), from, to,
+                            QString());
+    });
+
     m_settings = new SettingsView(m_theme);
     m_settings->setSource(&m_store);
     connect(m_settings, &SettingsView::accentPicked, this, [this](const QColor &c) {
@@ -765,6 +835,7 @@ QWidget *Panel::buildBody() {
     m_body->addWidget(m_planner);
     m_body->addWidget(m_timerView);
     m_body->addWidget(m_birthdays);
+    m_body->addWidget(m_tracking);
     m_body->addWidget(m_settings);
     m_body->addWidget(m_mdPage);
 
@@ -835,7 +906,7 @@ void Panel::applyTheme() {
     setStyleSheet(m_theme.sheet());
 
     for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_maxBtn, m_closeBtn, m_searchBtn,
-                           m_timerAddBtn, m_bdayAddBtn})
+                           m_timerAddBtn, m_bdayAddBtn, m_trackAddBtn})
         b->setIcon(paintIcon(b->property("iconKind").toString(), QColor(Theme::muted())));
     // The new-note button is filled with the accent, so its icon is dark.
     m_addBtn->setIcon(paintIcon("plus", QColor("#0c1222")));
@@ -844,6 +915,7 @@ void Panel::applyTheme() {
     if (m_planner) m_planner->setTheme(m_theme);
     if (m_timerView) m_timerView->setTheme(m_theme);
     if (m_birthdays) m_birthdays->setTheme(m_theme);
+    if (m_tracking) m_tracking->setTheme(m_theme);
     // Settings is not rebuilt: it repaints what carries the accent and keeps the
     // opacity slider alive, which is what just called here.
     if (m_settings) m_settings->setTheme(m_theme);
@@ -868,7 +940,7 @@ void Panel::retranslate() {
     m_search->setPlaceholderText(L("Buscar en %1…").arg(QString()));
 
     for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_maxBtn, m_closeBtn, m_searchBtn,
-                           m_addBtn, m_timerAddBtn, m_bdayAddBtn})
+                           m_addBtn, m_timerAddBtn, m_bdayAddBtn, m_trackAddBtn})
         b->setToolTip(L(b->property("tip").toString()));
     m_navBar->retranslate();
 
@@ -887,6 +959,7 @@ void Panel::retranslate() {
         m_birthdays->setByMonth(m_store.prefs().birthdaysByMonth);
         m_birthdays->retranslate();
     }
+    if (m_tracking) m_tracking->retranslate();
     if (m_settings) m_settings->retranslate();
     m_mdPage->retranslate();
     refreshTitle();
@@ -960,6 +1033,16 @@ void Panel::refreshNav() {
     m_navBar->setActive(current == m_settings ? nullptr
                         : current == m_mdPage ? static_cast<QWidget *>(m_scroll)
                                               : current);
+
+    // Seguimiento: h:mm (no seconds, so it does not pull the eye) after the
+    // project's dot; hollow and dimmed while paused.
+    if (const Session *s = m_store.runningSession()) {
+        const Project *p = m_store.project(s->project);
+        m_navBar->setStatus(m_tracking, Track::hm(s->durationMs()),
+                            p ? p->tint() : m_theme.accent, s->paused());
+    } else {
+        m_navBar->setStatus(m_tracking, QString(), QColor(), false);
+    }
 
     const Timer *next = nullptr;
     for (const Timer *t : m_store.timers())
@@ -1462,6 +1545,7 @@ void Panel::openPage(QWidget *page) {
     if (page == m_planner) m_planner->refresh();
     else if (page == m_timerView) m_timerView->refresh();
     else if (page == m_birthdays) m_birthdays->refresh();
+    else if (page == m_tracking) m_tracking->refresh();
     else if (page == m_settings) m_settings->refresh();
     closeSearch();
     m_nav->open(page);
@@ -1518,6 +1602,7 @@ void Panel::refreshTitle() {
     const bool back = m_body->currentWidget() == m_settings || m_body->currentWidget() == m_mdPage;
     m_timerAddBtn->setVisible(m_body->currentWidget() == m_timerView);
     m_bdayAddBtn->setVisible(m_body->currentWidget() == m_birthdays);
+    m_trackAddBtn->setVisible(m_body->currentWidget() == m_tracking);
     m_backBtn->setVisible(back);
     m_header->layout()->setContentsMargins(back ? 6 : 14, 0, 6, 0);
 }
@@ -1644,6 +1729,284 @@ void Panel::tickTimers() {
     refreshNav();
     if (!running) m_tick->stop();
     else if (!m_tick->isActive()) m_tick->start();
+}
+
+/// One click or Enter: whatever runs stops (it is saved) and this starts now.
+void Panel::startTracking(const QString &task, const QString &projectId) {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (Session *running = m_store.runningSession()) running->stop(now);
+    auto *s = new Session;
+    s->task = task;
+    s->project = m_store.project(projectId) ? projectId : QString();
+    s->startMs = now;
+    if (const Project *p = m_store.project(s->project)) s->rate = p->rate;
+    m_store.addSession(s);   // saves
+    refreshTracking();
+}
+
+/// Pausing does not close the session; it stays one stretch with a gap.
+void Panel::toggleTrackingPause() {
+    Session *s = m_store.runningSession();
+    if (!s) return;
+    if (s->paused()) s->resume();
+    else s->pause();
+    save();
+    refreshTracking();
+}
+
+void Panel::stopTracking() {
+    Session *s = m_store.runningSession();
+    if (!s) return;
+    s->stop();
+    save();
+    refreshTracking();
+}
+
+void Panel::refreshTracking() {
+    if (!m_tracking) return;
+    m_tracking->refresh();
+    const bool running = m_store.runningSession() != nullptr;
+    if (running && !m_trackTick->isActive()) m_trackTick->start();
+    else if (!running) m_trackTick->stop();
+    refreshNav();
+    refreshTrackPeek();
+}
+
+void Panel::tickTracking() {
+    if (!m_store.runningSession()) {
+        refreshTracking();   // stopped elsewhere (a sync): the last repaint
+        return;
+    }
+    if (m_body->currentWidget() == m_tracking) m_tracking->tick();
+    refreshNav();
+    refreshTrackPeek();
+}
+
+/// By id, not by pointer: the form may stay open across a sync that replaces
+/// the session.
+void Panel::openSessionEditor(Session *s) {
+    // One form at a time: Ctrl+N or "+" again while one is open does nothing.
+    for (QWidget *w : m_shell->findChildren<QWidget *>("overlay", Qt::FindDirectChildrenOnly))
+        if (w->isVisible()) return;
+    if (m_body->currentWidget() != m_tracking) openPage(m_tracking);
+    const QString id = s ? s->id : QString();
+    const auto find = [this](const QString &id) -> Session * {
+        for (Session *x : m_store.sessions())
+            if (x->id == id) return x;
+        return nullptr;
+    };
+    trackdlg::editSession(
+        &m_theme, m_shell, s, m_store.sessions(), m_store.projects(),
+        [this, id, find](const trackdlg::SessionDraft &d) {
+            Session *target = id.isEmpty() ? nullptr : find(id);
+            if (!id.isEmpty() && !target) return;   // deleted meanwhile
+            const bool fresh = !target;
+            if (fresh) target = new Session;
+            target->task = d.task;
+            target->project = m_store.project(d.project) ? d.project : QString();
+            target->startMs = d.startMs;
+            target->pausedMs = d.pausedMs;
+            target->rate = target->project.isEmpty() ? -1 : d.rate;
+            if (!target->running() || d.endMs > 0) target->endMs = d.endMs;
+            if (fresh) m_store.addSession(target);
+            else save();
+            refreshTracking();
+        },
+        s ? std::function<void()>([this, id, find] {
+            if (Session *x = find(id)) deleteSession(x);
+        })
+          : std::function<void()>());
+}
+
+void Panel::deleteSession(Session *s) {
+    if (!m_store.sessions().contains(s)) return;
+    m_undoSession = s->toJson();
+    m_store.removeSession(s);   // saves
+    refreshTracking();
+    m_undoTimer->start();
+    refreshNotices();
+}
+
+/// Back with the same id: the tombstone written by the deletion goes away on
+/// the next save, as for anything that exists again.
+void Panel::undoDeleteSession() {
+    if (m_undoSession.isEmpty()) return;
+    Session *s = Session::fromJson(m_undoSession);
+    m_undoSession = QJsonObject();
+    m_undoTimer->stop();
+    m_store.addSession(s);
+    refreshTracking();
+    refreshNotices();
+}
+
+void Panel::duplicateSession(Session *s) {
+    if (!m_store.sessions().contains(s)) return;
+    Session *copy = Session::fromJson(s->toJson());
+    copy->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    copy->updatedMs = 0;
+    // Two running at once would be two clocks: a copy of the running one is
+    // what it has done so far.
+    if (copy->running()) copy->stop();
+    m_store.addSession(copy);
+    refreshTracking();
+}
+
+/// Another project brings its own rate.
+void Panel::setSessionProject(Session *s, const QString &projectId) {
+    if (!m_store.sessions().contains(s)) return;
+    const Project *p = m_store.project(projectId);
+    s->project = p ? p->id : QString();
+    s->rate = p ? p->rate : -1;
+    save();
+    refreshTracking();
+}
+
+void Panel::openProjectEditor(Project *p) {
+    // One form at a time: Ctrl+N or "+" again while one is open does nothing.
+    for (QWidget *w : m_shell->findChildren<QWidget *>("overlay", Qt::FindDirectChildrenOnly))
+        if (w->isVisible()) return;
+    if (m_body->currentWidget() != m_tracking) openPage(m_tracking);
+    const QString id = p ? p->id : QString();
+    trackdlg::editProject(&m_theme, m_shell, p, m_store.projects(), [this, id](const trackdlg::ProjectDraft &d) {
+        Project *target = id.isEmpty() ? nullptr : m_store.project(id);
+        if (!id.isEmpty() && !target) return;   // deleted meanwhile
+        if (!target) {
+            auto *created = new Project;
+            created->name = d.name;
+            created->color = d.color;
+            created->client = d.client;
+            created->rate = d.rate;
+            m_store.addProject(created);
+            // Created from the stopwatch's picker: the next session goes there.
+            if (!m_store.runningSession()) m_tracking->setPendingProject(created->id);
+            refreshTracking();
+            return;
+        }
+        const double oldRate = target->rate;
+        target->name = d.name;
+        target->color = d.color;
+        target->client = d.client;
+        target->rate = d.rate;
+        target->archived = d.archived;
+        const bool rateChanged = qAbs(oldRate - d.rate) > 0.0001;
+        // What runs now is not the past: it takes the new rate either way.
+        int past = 0;
+        for (Session *s : m_store.sessions()) {
+            if (s->project != target->id) continue;
+            if (s->running()) {
+                if (rateChanged) s->rate = d.rate;
+            } else {
+                ++past;
+            }
+        }
+        save();
+        refreshTracking();
+        if (!rateChanged || past == 0) return;
+        // Asked once the form has closed: whether the past is billed at the new rate.
+        trackdlg::askRateScope(&m_theme, m_shell, target->name, d.rate, past, [this, id](bool all) {
+            const Project *pr = m_store.project(id);
+            if (!all || !pr) return;
+            for (Session *s : m_store.sessions())
+                if (s->project == id) s->rate = pr->rate;
+            save();
+            refreshTracking();
+        });
+    });
+}
+
+/// The card over the navigation's item: what runs, its clock, pause and stop.
+/// Inside the shell, like the palette, so it never becomes a window of its own.
+void Panel::showTrackPeek(QWidget *item) {
+    if (!m_store.runningSession()) return;
+    m_peekHide->stop();
+    m_peekItem = item;
+    if (!m_peek) {
+        m_peek = new QFrame(m_shell);
+        m_peek->setObjectName("trackPeek");
+        m_peek->setAttribute(Qt::WA_Hover);
+        auto *col = new QVBoxLayout(m_peek);
+        col->setContentsMargins(12, 10, 10, 10);
+        col->setSpacing(2);
+        auto *task = new ElidedLabel(QString(), QColor(Theme::fg()));
+        task->setObjectName("timerHeroName");
+        auto *project = new ElidedLabel(QString(), QColor(Theme::muted()));
+        project->setObjectName("timerSub");
+        col->addWidget(task);
+        col->addWidget(project);
+        auto *row = new QHBoxLayout;
+        row->setSpacing(6);
+        auto *clock = new QLabel;
+        clock->setObjectName("trackClockTime");
+        clock->setProperty("compact", true);
+        row->addWidget(clock, 1);
+        auto *pause = new QToolButton;
+        pause->setObjectName("trackGhost");
+        pause->setFixedSize(30, 30);
+        pause->setCursor(Qt::PointingHandCursor);
+        connect(pause, &QToolButton::clicked, this, &Panel::toggleTrackingPause);
+        auto *stop = new QToolButton;
+        stop->setObjectName("trackGhost");
+        stop->setFixedSize(30, 30);
+        stop->setCursor(Qt::PointingHandCursor);
+        stop->setIcon(paintIcon("stop", QColor(Theme::fg()), 13));
+        connect(stop, &QToolButton::clicked, this, [this] {
+            stopTracking();
+            if (m_peek) m_peek->hide();
+        });
+        row->addWidget(pause);
+        row->addWidget(stop);
+        col->addLayout(row);
+        task->setProperty("peek", "task");
+        project->setProperty("peek", "project");
+        clock->setProperty("peek", "clock");
+        pause->setProperty("peek", "pause");
+        stop->setProperty("peek", "stop");
+        m_peek->installEventFilter(this);
+    }
+    m_peek->setFixedWidth(qMin(230, m_shell->width() - 16));
+    m_peek->show();   // refreshTrackPeek() only fills a visible card
+    refreshTrackPeek();
+    m_peek->adjustSize();
+    // Above the item on the bar, beside it on the rail; never past the shell.
+    const QRect r(item->mapTo(m_shell, QPoint(0, 0)), item->size());
+    QPoint at = m_navBar->layoutMode() == NavBar::Rail
+                    ? QPoint(r.right() + 6, r.top())
+                    : QPoint(r.center().x() - m_peek->width() / 2, r.top() - m_peek->height() - 6);
+    at.setX(qBound(8, at.x(), m_shell->width() - m_peek->width() - 8));
+    at.setY(qBound(8, at.y(), m_shell->height() - m_peek->height() - 8));
+    m_peek->move(at);
+    m_peek->show();
+    m_peek->raise();
+}
+
+void Panel::refreshTrackPeek() {
+    if (!m_peek || !m_peek->isVisible()) return;
+    const Session *s = m_store.runningSession();
+    if (!s) {
+        m_peek->hide();
+        return;
+    }
+    const Project *p = m_store.project(s->project);
+    for (QWidget *w : m_peek->findChildren<QWidget *>()) {
+        const QString role = w->property("peek").toString();
+        if (role == "task") {
+            static_cast<ElidedLabel *>(w)->setText(s->task.isEmpty() ? L("Sin tarea") : s->task);
+            static_cast<ElidedLabel *>(w)->setColor(QColor(Theme::fg()));
+        } else if (role == "project") {
+            static_cast<ElidedLabel *>(w)->setText((p ? p->name : L("Sin proyecto")) +
+                                                    (s->paused() ? " · " + L("en pausa") : QString()));
+            static_cast<ElidedLabel *>(w)->setColor(p ? p->tint() : QColor(Theme::muted()));
+        } else if (role == "clock") {
+            static_cast<QLabel *>(w)->setText(Track::clock(s->durationMs()));
+        } else if (role == "pause") {
+            auto *b = static_cast<QToolButton *>(w);
+            b->setIcon(paintIcon(s->paused() ? "play" : "pause", QColor(Theme::fg()), 13));
+            b->setToolTip(s->paused() ? L("Reanudar") : L("Pausar"));
+        } else if (role == "stop") {
+            w->setToolTip(L("Detener y guardar"));
+        }
+        w->update();
+    }
 }
 
 void Panel::revealNote(Note *n) {
@@ -2231,6 +2594,7 @@ void Panel::onStoreReloaded() {
     checkReminders();
     tickTimers();
     onTimersChanged();
+    refreshTracking();
 }
 
 bool Panel::userIdle() const {
@@ -2253,6 +2617,7 @@ void Panel::onStoreMerged() {
     if (m_birthdays) m_birthdays->refresh();
     tickTimers();           // one arriving while running must start counting
     onTimersChanged();
+    refreshTracking();      // a session started or stopped on another machine
     refreshNotices();
     checkReminders();       // and one arriving overdue, ringing
 }
@@ -2341,6 +2706,16 @@ void Panel::refreshNotices() {
         out << x;
     }
 
+    if (!m_undoSession.isEmpty()) {
+        AlertZone::Notice x;
+        x.kind = AlertZone::Notice::Info;
+        x.icon = "trash";
+        x.title = L("Sesión borrada");
+        x.sub = m_undoSession["task"].toString();
+        x.action = L("Deshacer");
+        x.act = [this] { undoDeleteSession(); };
+        out << x;
+    }
     if (!m_store.available()) {
         // The path goes in the subtitle, elided: the old banner took three lines.
         AlertZone::Notice x;
@@ -2427,6 +2802,7 @@ void Panel::openPalette() {
          << Command{go, "calendar", L("Planner"), "Ctrl+2", [this] { openPage(m_planner); }}
          << Command{go, "timer", L("Timers"), "Ctrl+3", [this] { openPage(m_timerView); }}
          << Command{go, "cake", L("Cumpleaños"), "Ctrl+4", [this] { openPage(m_birthdays); }}
+         << Command{go, "bars", L("Seguimiento"), "Ctrl+5", [this] { openPage(m_tracking); }}
          << Command{go, "gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); }};
     const auto make = [this](Note::Type type) {
         return [this, type] {
@@ -2439,6 +2815,23 @@ void Panel::openPalette() {
          << Command{create, "bell", L("Nuevo recordatorio"), "Ctrl+⇧R", make(Note::Reminder)}
          << Command{create, "mic", L("Nueva nota de voz"), "Ctrl+⇧V", make(Note::Voice)}
          << Command{create, "markdown", L("Nueva nota Markdown"), "Ctrl+⇧M", make(Note::Markdown)};
+    // Seguimiento: start (into its field), pause and stop, and a past session.
+    const QString track = L("Seguimiento");
+    if (const Session *s = m_store.runningSession()) {
+        cmds << Command{track, s->paused() ? "play" : "pause",
+                        s->paused() ? L("Reanudar «%1»").arg(s->task) : L("Pausar «%1»").arg(s->task),
+                        "Ctrl+⇧+Space", [this] { toggleTrackingPause(); }}
+             << Command{track, "stop", L("Detener «%1»").arg(s->task), QString(),
+                        [this] { stopTracking(); }};
+    } else {
+        cmds << Command{track, "play", L("Empezar a contar"), QString(), [this] {
+            openPage(m_tracking);
+            m_tracking->focusTask();
+        }};
+    }
+    cmds << Command{track, "plus", L("Añadir una sesión pasada"), QString(), [this] {
+        openSessionEditor(nullptr);
+    }};
     const QList<Area *> &list = m_store.areas();
     const QString open = currentArea();
     for (int i = 0; i < list.size(); ++i) {
@@ -2748,6 +3141,11 @@ bool Panel::eventFilter(QObject *watched, QEvent *event) {
         }
         m_headerClick.start();
         m_headerClickAt = at;
+    }
+    // The card stays while the pointer is on it, and goes a moment after it leaves.
+    if (watched == m_peek && m_peek) {
+        if (event->type() == QEvent::Enter) m_peekHide->stop();
+        else if (event->type() == QEvent::Leave) m_peekHide->start();
     }
     if (event->type() == QEvent::Resize) {
         if (watched == m_bodyHost) placeAlertZone();

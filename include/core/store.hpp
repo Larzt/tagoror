@@ -19,12 +19,13 @@
 #include "core/lang.hpp"
 #include "core/note.hpp"
 #include "core/timer.hpp"
+#include "core/tracking.hpp"
 
 class QJsonObject;
 class QTimer;
 
 /// Everything that outlives the process: notes, birthdays, events, timers,
-/// areas and the preferences that travel with them. Kept apart from Panel so
+/// tracked time, areas and the preferences that travel with them. Kept apart from Panel so
 /// the window knows nothing about JSON, QSettings or migrations.
 class Store : public QObject {
     Q_OBJECT
@@ -163,9 +164,26 @@ public:
     void addBirthday(Birthday *b);
     void removeBirthday(Birthday *b);
 
+    /// @}
+
+    /// @name Seguimiento
+    /// Projects and sessions, in tracking.json (see tracking.hpp): own file,
+    /// own backups with the same timestamp and the same lock as birthdays.
+    /// @{
+    const QList<Project *> &projects() const { return m_projects; }
+    Project *project(const QString &id) const;
+    void addProject(Project *p);
+    const QList<Session *> &sessions() const { return m_sessions; }
+    /// The one that runs (paused or not), if any. Starting one stops it first.
+    Session *runningSession() const;
+    void addSession(Session *s);
+    void removeSession(Session *s);
+    /// Whether tracking.json was read; without it nothing syncs it.
+    bool trackingReadable() const { return m_trackingReadable; }
+    /// @}
+
     Prefs &prefs() { return m_prefs; }
     const Prefs &prefs() const { return m_prefs; }
-    /// @}
 
     /// Hook to refresh what only the owner knows (the window size) right before
     /// writing. Must be cleared before the owner dies: Store saves once more in
@@ -182,6 +200,7 @@ public:
     QString path() const;              ///< notes.json
     QString birthdaysPath() const;     ///< birthdays.json, next to it.
     QString eventsPath() const;        ///< events.json, next to it.
+    QString trackingPath() const;      ///< tracking.json, next to it.
     void load();                       ///< Seeds two demo notes when there is no file.
     void save();
 
@@ -232,7 +251,7 @@ public:
         QSet<QString> pull;
     };
     MergeResult mergeRemote(const QJsonObject &notesRoot, const QJsonObject &birthdaysRoot,
-                            const QJsonObject &eventsRoot);
+                            const QJsonObject &eventsRoot, const QJsonObject &trackingRoot);
     /// Attachments used by the notes, as "audio/<name>" or "images/<name>".
     QStringList attachments() const;
     /// JSON files that may be uploaded. One that existed but could not be read is
@@ -273,6 +292,9 @@ private:
     /// Same for the planner, with its own lock.
     void loadEvents();
     void saveEvents();
+    /// And for Seguimiento.
+    void loadTracking();
+    void saveTracking();
     void seedDemoNotes();
     /// Guarantees at least one area and keeps the list sorted by pos.
     void ensureAreas();
@@ -299,6 +321,8 @@ private:
     QList<Timer *> m_timers;
     QList<Event *> m_events;
     QList<Event::Category *> m_categories;
+    QList<Project *> m_projects;
+    QList<Session *> m_sessions;
     Prefs m_prefs;
     QTimer *m_saveTimer = nullptr;
     bool m_available = true;
@@ -306,6 +330,7 @@ private:
     /// since what is in memory is not the user's data.
     bool m_birthdaysReadable = true;
     bool m_eventsReadable = true;
+    bool m_trackingReadable = true;
 
     /// Each element's JSON (without its timestamp) as last seen, keyed
     /// "<type>:<id>", to detect changes nobody reported.

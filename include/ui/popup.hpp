@@ -39,6 +39,9 @@ public:
     /// menus, the palette's vocabulary).
     void addShortcutItem(const QString &iconKind, const QString &title,
                          const QString &shortcut, std::function<void()> action);
+    /// A row led by a dot of @p dot's colour: Seguimiento's projects.
+    void addColorItem(const QColor &dot, const QString &title, const QString &subtitle,
+                      std::function<void()> action);
     void addEditor(const QString &placeholder, const QString &text,
                    std::function<void(const QString &)> commit);
     /// Several fields confirmed together. Two addEditor() calls cannot do this:

@@ -4,6 +4,41 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] — 2026-10-26
+
+Seguimiento: a fifth page with a clock that adds up your hours, per task and
+per project.
+
+### Added
+
+- **Seguimiento** (**Ctrl+5**), after Birthdays in the navigation; no existing
+  shortcut changes. Type what you are on and press Enter, or click a recent
+  task: the clock counts up on a card in the project's colour, with pause and
+  stop. The project is optional and remembered per task.
+  **Ctrl+Shift+Space** pauses or resumes from any page.
+- **In the navigation**, while a session runs, the item reads `h:mm` after a
+  dot in the project's colour — hollow and dimmed while paused — and hovering
+  it shows a card with the task, pause and stop.
+- **Registro**: sessions grouped by day with their totals, and today's line
+  from 8 to 20 h with the unlogged gaps hatched. ▶ starts a session again, ⋯
+  edits, duplicates (Ctrl+D), moves it to another project or deletes it (Del),
+  with *Undo* in the notices instead of a question.
+- **Adding a past session** (+ or Ctrl+N on the page) proposes the end of the
+  last session and now; start, end and duration recompute each other, and
+  overlaps warn without blocking.
+- **Resumen**: the week or the month as bars stacked by project, total hours
+  with the daily average, and the estimated amount of what has a rate.
+- **Proyectos** with eight fixed colours, an optional client and hourly rate.
+  Changing the rate asks whether past sessions follow it; archiving hides a
+  project without losing its hours.
+- **Export to CSV** for invoicing, from the period on screen: per session or
+  per day and task, optional totals per project, with a preview. In Spanish it
+  uses `;` and a decimal comma, as Excel expects.
+- From 720 px wide the clock spans the page and Registro and Resumen sit side
+  by side.
+- Sessions are kept in their own `tracking.json`, backed up with the rest under
+  the same timestamp and synced like the other files.
+
 ## [1.0.4] — 2026-10-16
 
 A "+" for new areas, alarm tones to choose from, a compact layout, finished

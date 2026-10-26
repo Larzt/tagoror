@@ -11,7 +11,7 @@
 class QBoxLayout;
 
 /// The fixed page navigation of 1.0: Notas · Planner · Timers · Cumpleaños,
-/// always visible, with the open one marked. Before it every page was a
+/// and Seguimiento since 1.1, always visible, with the open one marked. Before it every page was a
 /// header button that toggled back to the notes, so nothing said "you are
 /// here".
 ///
@@ -43,6 +43,10 @@ public:
     void setActive(QWidget *page);
     /// Replaces that item's label with a countdown while it is not empty.
     void setCountdown(QWidget *page, const QString &text);
+    /// Seguimiento's state on its item: while a session runs the label becomes
+    /// h:mm after a dot in the project's colour; paused, the dot is hollow and
+    /// the time dimmed. An empty @p text puts the name back.
+    void setStatus(QWidget *page, const QString &text, const QColor &color, bool paused);
     /// Red dot: something on that page is ringing and it is not open.
     void setDot(QWidget *page, bool on);
     /// Re-reads the labels and tooltips in the current language.
@@ -52,6 +56,8 @@ public:
     QWidget *buttonFor(QWidget *page) const;
 
     std::function<void(QWidget *)> activated;
+    /// The pointer entered (@p in) or left an item: Panel shows the tracking card.
+    std::function<void(QWidget *page, QWidget *item, bool in)> hovered;
 
 private:
     class NavItem;
