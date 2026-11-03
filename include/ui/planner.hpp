@@ -2,6 +2,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QJsonObject>
 #include <QList>
 #include <QSet>
 #include <QWidget>
@@ -67,6 +68,13 @@ public:
     ///         press leaves the page.
     bool closeEditor();
 
+    /// Ctrl+C, Ctrl+V and Ctrl+D. They act on what is under the pointer, or on
+    /// the block with keyboard focus; in the form, Ctrl+D duplicates the event
+    /// being edited and the other two are left to its text fields.
+    void copyShortcut();
+    void pasteShortcut();
+    void duplicateShortcut();
+
     /// Filterable categories that are not in events.json.
     static constexpr auto kReminders = "reminders";
     static constexpr auto kBirthdays = "birthdays";
@@ -90,6 +98,16 @@ public:
     };
     QList<Item> itemsOn(const QDate &day) const;
 
+    /// A place on the visible view: the day (and, on the grid, the hour) under
+    /// a point, and the item there if any.
+    struct Spot {
+        bool valid = false;
+        bool onItem = false;
+        Item item;
+        QDate day;
+        qreal hour = -1;      ///< -1 off the grid: the pasted item keeps its time.
+    };
+
     /// Built-in categories followed by the user's, with display names. @c custom
     /// is null for built-in ones.
     struct CatInfo {
@@ -111,6 +129,9 @@ signals:
     void reminderCreated(const QString &title, const QDateTime &when);
     /// A reminder dragged to another moment, with its new dueAtMs.
     void reminderMoved(Note *n, qint64 dueAtMs);
+    /// A copy of a reminder pasted: @p snapshot is the original as it was when
+    /// copied (it may have been deleted since), to be created at @p dueAtMs.
+    void reminderPasted(const QJsonObject &snapshot, qint64 dueAtMs);
     void noteActivated(Note *n);
     void birthdayActivated(Birthday *b);
     void viewChanged(int view);
@@ -148,7 +169,34 @@ private:
     /// Creates (null @p c) or edits a custom category. Created from the form, it
     /// becomes the chosen one for the event being written.
     void openCategoryEditor(Event::Category *c, QWidget *anchor, bool pickForForm);
+
+    /// What was copied, as it was then: pasting still works if the original is
+    /// edited or deleted afterwards.
+    struct Clip {
+        Item::Source source = Item::FromEvent;
+        QJsonObject data;     ///< Event::toJson() or Note::toJson(). Empty: nothing.
+        QDate day;            ///< The occurrence copied.
+        QString title;
+        QString text;         ///< What went to the system clipboard.
+    };
+    static Clip clipOf(const Item &item);
+    /// Whether the event or note behind @p item still exists (a sync may have
+    /// removed it while a menu was open).
+    bool alive(const Item &item) const;
+    Spot spotAt(const QPoint &globalPos) const;
+    /// The block with keyboard focus on the grid, or the first copyable item of
+    /// the selected day in the month.
+    bool keyboardItem(Item &out) const;
+    void copyItem(const Item &item);
+    /// A copy of @p clip on @p day, at @p hour if given (keeping its length).
+    void pasteClip(const Clip &clip, const QDate &day, qreal hour);
+    void duplicateItem(const Item &item);
+    /// Turns the form of an existing event into a new one with the same fields.
+    void duplicateInForm();
+    void openContextMenu(const Spot &spot, const QPoint &globalPos);
+
     Theme m_theme;
+    Clip m_clip;
     const QList<Event *> *m_events = nullptr;
     const QList<Note *> *m_notes = nullptr;
     const QList<Birthday *> *m_birthdays = nullptr;
@@ -196,6 +244,7 @@ private:
     QList<QToolButton *> m_alertButtons;   ///< "minutes" property: -1 means no alert.
     QLabel *m_fError = nullptr;
     QToolButton *m_fDelete = nullptr;
+    QToolButton *m_fDuplicate = nullptr;
     QList<QToolButton *> m_kindButtons;
     QList<QToolButton *> m_repeatButtons;
     QList<QToolButton *> m_catButtons;

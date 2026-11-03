@@ -4,6 +4,40 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] — 2026-11-03
+
+Copy and paste in the planner, to repeat a task on another day without
+writing it again.
+
+### Added
+
+- **Ctrl+C copies** the event, task or reminder under the pointer (or the
+  block with keyboard focus), and **Ctrl+V pastes** it where the pointer is: on
+  the day or week grid at that quarter hour, keeping its length; on the month
+  or the all-day band on that day, at its own time. Off the view it goes to the
+  selected day. What is copied is taken whole, so it can still be pasted after
+  the original is edited or deleted, as many times as needed.
+- **Ctrl+D duplicates** in place: the copy appears beside the original, ready
+  to be dragged elsewhere, and the clipboard is left alone.
+- **Right click** on an item: open, copy, duplicate and paste; on an empty hour
+  or day: paste there or create something new.
+- **Duplicar** in the edit form (also Ctrl+D) turns it into a new one with the
+  same fields and the date selected, for a copy on another day; the original is
+  not touched.
+- A copy is a new element: unticked, not rung yet, and not linked to the
+  original's Google event — in a Google calendar's category it is uploaded as a
+  new one. A copied series starts again on the day it is pasted. A pasted
+  checklist starts unticked and gets its own copy of the images.
+- Copying also puts the title, day and time on the system clipboard as text, to
+  paste into a note or a message. Copying something else elsewhere replaces it,
+  as with any clipboard.
+- *Settings → Shortcuts* lists the three under *Planner*.
+
+### Fixed
+
+- **A right click on a month day or the all-day band** no longer opens the day
+  as if it were a left click.
+
 ## [1.1.0] — 2026-10-26
 
 Seguimiento: a fifth page with a clock that adds up your hours, per task and

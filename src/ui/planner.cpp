@@ -10,12 +10,16 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
+#include <QContextMenuEvent>
+#include <QCursor>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -23,6 +27,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QShortcut>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QTextEdit>
@@ -32,6 +37,7 @@
 #include <QVBoxLayout>
 
 using Item = PlannerView::Item;
+using Spot = PlannerView::Spot;
 
 namespace {
 
@@ -126,6 +132,16 @@ bool sameItem(const Item &a, const Item &b) {
 /// Drags move in quarter-hour steps.
 qreal snapQuarter(qreal hours) { return std::round(hours * 4) / 4.0; }
 
+/// Decimal hours as a time of day; 24:00 is 23:59, the last minute a QTime has.
+QTime clockAt(qreal hours) {
+    const int min = qBound(0, int(std::lround(hours * 60)), 24 * 60);
+    return min >= 24 * 60 ? QTime(23, 59) : QTime(0, 0).addSecs(min * 60);
+}
+
+/// Marks what the planner put on the system clipboard, next to the plain text:
+/// if something else is copied afterwards, Ctrl+V no longer pastes the event.
+constexpr auto kClipMime = "application/x-tagoror-planner";
+
 QIcon colorDot(const QColor &color) {
     QPixmap dot(16, 16);
     dot.fill(Qt::transparent);
@@ -158,6 +174,7 @@ public:
     std::function<void(const QRect &)> onReveal;   ///< Asks the scroll area to show a rect.
     /// Called on drop after a drag: the new day and hours (decimal).
     std::function<void(const Item &, const QDate &, qreal, qreal)> onMove;
+    std::function<void(const Spot &, const QPoint &)> onContext;   ///< Right click.
 
     explicit TimeGrid(const Theme *theme, QWidget *parent = nullptr)
         : QWidget(parent), m_theme(theme) {
@@ -189,6 +206,29 @@ public:
     // All-day items are not here but in WeekHead: at the top of the grid they
     // were out of view as soon as it scrolled to 08:00, which is where it opens.
     int yFor(qreal hours) const { return int(hours * kHour); }
+
+    bool itemAt(const QPoint &p, Item &out) const {
+        const int hit = blockAt(p);
+        if (hit < 0) return false;
+        out = m_blocks.at(hit).item;
+        return true;
+    }
+    bool focusedItem(Item &out) const {
+        if (!hasFocus() || m_focus < 0 || m_focus >= m_blocks.size()) return false;
+        out = m_blocks.at(m_focus).item;
+        return true;
+    }
+    /// The day and quarter hour under @p p, as the slot a paste lands in.
+    Spot spotAt(const QPoint &p) const {
+        Spot s;
+        const int col = columnAt(p.x());
+        if (col < 0 || p.y() < 0 || p.y() >= height()) return s;
+        s.valid = true;
+        s.day = m_days.at(col);
+        s.hour = qBound<qreal>(0, std::floor(p.y() / qreal(kHour) * 4) / 4.0, 23.75);
+        s.onItem = itemAt(p, s.item);
+        return s;
+    }
 
     QSize sizeHint() const override { return {kGutter + 7 * 40, 24 * kHour + 1}; }
     QSize minimumSizeHint() const override {
@@ -243,6 +283,12 @@ protected:
     void leaveEvent(QEvent *) override {
         m_hover = -1;
         update();
+    }
+
+    void contextMenuEvent(QContextMenuEvent *e) override {
+        if (m_dragging) return;
+        const Spot s = spotAt(e->pos());
+        if (s.valid && onContext) onContext(s, e->globalPos());
     }
 
     bool event(QEvent *e) override {
@@ -652,6 +698,7 @@ public:
     std::function<void(const Item &)> onActivate;
     /// Called on drop on another day: same item, same time, another date.
     std::function<void(const Item &, const QDate &)> onMove;
+    std::function<void(const Spot &, const QPoint &)> onContext;
 
     WeekHead(const Theme *theme, QWidget *parent = nullptr) : QWidget(parent), m_theme(theme) {
         setFixedHeight(kDays);
@@ -667,6 +714,22 @@ public:
         setFixedHeight(kDays + (m_band.isEmpty() ? 0 : kBand));
         update();
     }
+    /// The day under @p p and the all-day item there, if any. No hour: what is
+    /// pasted here keeps its own.
+    Spot spotAt(const QPoint &p) const {
+        Spot s;
+        const int c = columnAt(p.x());
+        if (c < 0) return s;
+        s.valid = true;
+        s.day = m_days.at(c);
+        for (int i = 0; i < m_band.size(); ++i)
+            if (bandRect(i).contains(p)) {
+                s.onItem = true;
+                s.item = m_band.at(i).first;
+            }
+        return s;
+    }
+
     /// The grid's scrollbar takes width on the right: columns here must match.
     void setRightInset(int px) {
         m_inset = px;
@@ -688,6 +751,7 @@ protected:
     }
 
     void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton) return;   // the right one opens the menu
         const QPoint at = e->position().toPoint();
         if (m_dragging) {
             const Item item = m_dragItem;
@@ -724,6 +788,11 @@ protected:
         bool hot = columnAt(at.x()) >= 0 && at.y() < kDays;
         for (int i = 0; i < m_band.size() && !hot; ++i) hot = bandRect(i).contains(at);
         setCursor(hot ? Qt::PointingHandCursor : Qt::ArrowCursor);
+    }
+    void contextMenuEvent(QContextMenuEvent *e) override {
+        if (m_dragging) return;
+        const Spot s = spotAt(e->pos());
+        if (s.valid && onContext) onContext(s, e->globalPos());
     }
 
     QRect bandRect(int index) const {
@@ -824,6 +893,7 @@ public:
     std::function<void(int)> onShift;               ///< Previous/next month.
     /// An item dropped on another day: same time, another date.
     std::function<void(const Item &, const QDate &)> onMove;
+    std::function<void(const Spot &, const QPoint &)> onContext;
 
     explicit MonthBoard(const Theme *theme, QWidget *parent = nullptr)
         : QWidget(parent), m_theme(theme) {
@@ -841,6 +911,22 @@ public:
         for (int i = 0; i < 42; ++i)
             m_items.append(source ? source(m_start.addDays(i)) : QList<Item>());
         update();
+    }
+
+    /// The day under @p p and the chip there, if any (only the ones drawn: "+N
+    /// more" is not an item).
+    Spot spotAt(const QPoint &p) const {
+        Spot s;
+        const int c = cellAt(p);
+        if (c < 0) return s;
+        s.valid = true;
+        s.day = m_start.addDays(c);
+        for (int k = 0; k < shownIn(c); ++k)
+            if (chipRect(c, k).contains(p)) {
+                s.onItem = true;
+                s.item = m_items.at(c).at(k);
+            }
+        return s;
     }
 
 protected:
@@ -910,6 +996,7 @@ protected:
         update();
     }
     void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton) return;   // the right one opens the menu
         const int c = cellAt(e->position().toPoint());
         if (m_dragging) {
             const Item item = m_dragItem;
@@ -922,6 +1009,11 @@ protected:
         }
         m_pressed = false;
         if (c >= 0 && onPick) onPick(m_start.addDays(c));
+    }
+    void contextMenuEvent(QContextMenuEvent *e) override {
+        if (m_dragging) return;
+        const Spot s = spotAt(e->pos());
+        if (s.valid && onContext) onContext(s, e->globalPos());
     }
     void wheelEvent(QWheelEvent *e) override {
         // Wheel: month by month.
@@ -1204,6 +1296,7 @@ void PlannerView::build() {
     head->source = [this](const QDate &d) { return itemsOn(d); };
     head->onActivate = [this](const Item &it) { activate(it); };
     head->onMove = [this](const Item &it, const QDate &d) { moveItem(it, d, -1, -1); };
+    head->onContext = [this](const Spot &sp, const QPoint &at) { openContextMenu(sp, at); };
     m_weekHead = head;
     gl->addWidget(head);
 
@@ -1215,6 +1308,7 @@ void PlannerView::build() {
     m_grid->onMove = [this](const Item &it, const QDate &d, qreal start, qreal end) {
         moveItem(it, d, start, end);
     };
+    m_grid->onContext = [this](const Spot &sp, const QPoint &at) { openContextMenu(sp, at); };
     m_gridScroll = new QScrollArea;
     m_gridScroll->setWidget(m_grid);
     // setWidget() turns background filling on, and the grid came out in the
@@ -1241,10 +1335,34 @@ void PlannerView::build() {
     m_month->onSelect = [this](const QDate &d) { goTo(d); };
     m_month->onShift = [this](int dir) { shift(dir); };
     m_month->onMove = [this](const Item &it, const QDate &d) { moveItem(it, d, -1, -1); };
+    m_month->onContext = [this](const Spot &sp, const QPoint &at) { openContextMenu(sp, at); };
     m_stack->addWidget(m_month);
 
     buildEditor();
     m_stack->addWidget(m_editor);
+
+    // Window-wide, not only with the focus inside: the grid and the month take
+    // focus by Tab only, so after a click it is usually elsewhere. A hidden
+    // widget's shortcuts do not fire, so they only act on this page, and the
+    // form's text fields keep Ctrl+C and Ctrl+V for their text (they claim
+    // them first through ShortcutOverride).
+    const auto key = [this](const QKeySequence &seq, void (PlannerView::*fn)()) {
+        auto *sc = new QShortcut(seq, this);
+        connect(sc, &QShortcut::activated, this, fn);
+    };
+    key(QKeySequence::Copy, &PlannerView::copyShortcut);
+    key(QKeySequence::Paste, &PlannerView::pasteShortcut);
+    key(QKeySequence(Qt::CTRL | Qt::Key_D), &PlannerView::duplicateShortcut);
+
+    // Copying anything else elsewhere replaces what was copied here, as with any
+    // clipboard. Recognised by its marker or, where a platform drops custom
+    // formats, by its text.
+    connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this, [this] {
+        if (m_clip.data.isEmpty()) return;
+        const QMimeData *mime = QGuiApplication::clipboard()->mimeData();
+        if (mime && (mime->hasFormat(kClipMime) || mime->text() == m_clip.text)) return;
+        m_clip = Clip();
+    });
 
     setView(m_view);
 }
@@ -1532,6 +1650,13 @@ void PlannerView::buildEditor() {
         if (e) emit eventDeleted(e);
     });
     foot->addWidget(m_fDelete);
+    m_fDuplicate = new QToolButton;
+    m_fDuplicate->setObjectName("listDone");
+    m_fDuplicate->setText(L("Duplicar"));
+    m_fDuplicate->setToolTip(L("Una copia nueva con los mismos datos · Ctrl+D"));
+    m_fDuplicate->setCursor(Qt::PointingHandCursor);
+    connect(m_fDuplicate, &QToolButton::clicked, this, [this] { duplicateInForm(); });
+    foot->addWidget(m_fDuplicate);
     foot->addStretch();
     auto *cancel = segButton(L("Cancelar"));
     cancel->setProperty("tip", "Cancelar");
@@ -2034,6 +2159,8 @@ void PlannerView::retranslate() {
     m_fDate->setPlaceholderText(L("dd/mm/aaaa"));
     m_fDesc->setPlaceholderText(L("Descripción"));
     m_fDelete->setText(L("Eliminar"));
+    m_fDuplicate->setText(L("Duplicar"));
+    m_fDuplicate->setToolTip(L("Una copia nueva con los mismos datos · Ctrl+D"));
     if (auto *save = findChild<QPushButton *>("plannerSave")) save->setText(L("Guardar"));
     refresh();
 }
@@ -2087,10 +2214,7 @@ void PlannerView::toggleDone(const Item &item) {
 /// start, end and exceptions shift by the same days, so skipped occurrences
 /// and done tasks stay the same ones.
 void PlannerView::moveItem(const Item &item, const QDate &day, qreal start, qreal end) {
-    auto clock = [](qreal hours) {
-        const int min = qBound(0, int(std::lround(hours * 60)), 24 * 60);
-        return min >= 24 * 60 ? QTime(23, 59) : QTime(0, 0).addSecs(min * 60);
-    };
+    const auto clock = clockAt;
     const qint64 days = item.day.daysTo(day);
     if (item.source == Item::FromEvent) {
         Event *e = item.event;
@@ -2135,6 +2259,7 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
     m_editorTitle->setText(e ? L("Editar") : L("Nuevo evento o tarea"));
     m_fError->hide();
     m_fDelete->setVisible(e != nullptr);
+    m_fDuplicate->setVisible(e != nullptr);
     // An existing event does not turn into a reminder: that would be deleting one
     // and creating something else.
     m_kindButtons.at(2)->setVisible(e == nullptr);
@@ -2279,4 +2404,216 @@ void PlannerView::saveEditor() {
     if (isNew) emit eventCreated(e);
     else emit eventChanged(e);
     goTo(date);
+}
+
+// Copy, paste and duplicate.
+//
+// Events, tasks and reminders can be copied; a birthday cannot, as it cannot
+// be dragged: it is a person's date, not an appointment. The copy is taken
+// whole when copying, so editing or deleting the original afterwards does not
+// change what is pasted.
+
+PlannerView::Clip PlannerView::clipOf(const Item &item) {
+    Clip c;
+    c.source = item.source;
+    c.day = item.day;
+    c.title = item.title;
+    if (item.source == Item::FromEvent && item.event) c.data = item.event->toJson();
+    else if (item.source == Item::FromReminder && item.note) c.data = item.note->toJson();
+    QString when = Lang::locale().toString(item.day, "d MMM yyyy");
+    if (!item.allDay)
+        when += " " + (item.source == Item::FromEvent ? hhmm(item.start) + "–" + hhmm(item.end)
+                                                      : hhmm(item.start));
+    c.text = item.title + " · " + when;
+    return c;
+}
+
+bool PlannerView::alive(const Item &item) const {
+    if (item.source == Item::FromEvent) return m_events && m_events->contains(item.event);
+    if (item.source == Item::FromReminder) return m_notes && m_notes->contains(item.note);
+    return m_birthdays && m_birthdays->contains(item.birthday);
+}
+
+PlannerView::Spot PlannerView::spotAt(const QPoint &globalPos) const {
+    auto over = [&](const QWidget *w) {
+        return w->isVisible() && w->rect().contains(w->mapFromGlobal(globalPos));
+    };
+    QWidget *page = m_stack->currentWidget();
+    if (page == m_month) return over(m_month) ? m_month->spotAt(m_month->mapFromGlobal(globalPos)) : Spot();
+    if (page != m_gridPage) return {};
+    auto *head = static_cast<WeekHead *>(m_weekHead);
+    if (over(head)) return head->spotAt(head->mapFromGlobal(globalPos));
+    // The grid is taller than what shows of it: only the visible part counts.
+    if (!over(m_gridScroll->viewport())) return {};
+    return m_grid->spotAt(m_grid->mapFromGlobal(globalPos));
+}
+
+bool PlannerView::keyboardItem(Item &out) const {
+    QWidget *page = m_stack->currentWidget();
+    if (page == m_gridPage) return m_grid->focusedItem(out);
+    if (page == m_month && m_month->hasFocus())
+        for (const Item &it : itemsOn(m_cursor))
+            if (movable(it)) {
+                out = it;
+                return true;
+            }
+    return false;
+}
+
+void PlannerView::copyShortcut() {
+    if (m_stack->currentWidget() == m_editor) return;
+    Item it;
+    if (!keyboardItem(it)) {
+        const Spot s = spotAt(QCursor::pos());
+        if (!s.onItem) return;
+        it = s.item;
+    }
+    if (movable(it)) copyItem(it);
+}
+
+void PlannerView::pasteShortcut() {
+    if (m_stack->currentWidget() == m_editor || m_clip.data.isEmpty()) return;
+    // Under the pointer if it is over the view; otherwise the focused block's
+    // day, or the selected one, at the copied time.
+    Spot s = spotAt(QCursor::pos());
+    if (!s.valid) {
+        Item it;
+        s.day = keyboardItem(it) ? it.day : m_cursor;
+        s.hour = -1;
+    }
+    pasteClip(m_clip, s.day, s.hour);
+}
+
+void PlannerView::duplicateShortcut() {
+    if (m_stack->currentWidget() == m_editor) {
+        duplicateInForm();
+        return;
+    }
+    Item it;
+    if (!keyboardItem(it)) {
+        const Spot s = spotAt(QCursor::pos());
+        if (!s.onItem) return;
+        it = s.item;
+    }
+    if (movable(it)) duplicateItem(it);
+}
+
+void PlannerView::copyItem(const Item &item) {
+    if (!alive(item)) return;
+    m_clip = clipOf(item);
+    // Plain text too, so it can be pasted into a note or a message.
+    auto *mime = new QMimeData;
+    mime->setText(m_clip.text);
+    mime->setData(kClipMime, QByteArray("1"));
+    QGuiApplication::clipboard()->setMimeData(mime);
+    QToolTip::showText(QCursor::pos(), L("Copiado «%1» · Ctrl+V para pegar").arg(item.title), this);
+}
+
+void PlannerView::duplicateItem(const Item &item) {
+    if (!alive(item)) return;
+    // Same day and time: it appears beside the original, ready to be dragged.
+    // The clipboard is left as it was.
+    pasteClip(clipOf(item), item.day, -1);
+}
+
+void PlannerView::pasteClip(const Clip &clip, const QDate &day, qreal hour) {
+    if (clip.data.isEmpty() || !day.isValid()) return;
+    if (clip.source == Item::FromEvent) {
+        Event *e = Event::fromJson(clip.data);
+        // A new event: its own id, not linked to Google (if it belongs to a
+        // Google calendar it is uploaded there as a new one), nothing done and
+        // nothing rung yet.
+        e->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        e->updatedMs = 0;
+        e->gcalCal.clear();
+        e->gcalId.clear();
+        e->gcalHash.clear();
+        e->gcalExpanded = false;
+        e->skip.clear();
+        e->doneOn.clear();
+        e->firedMs = 0;
+        e->ringingMs = 0;
+        // A single event moves by the days between the occurrence copied and the
+        // target (a multi-day one copied from its third day lands with that day
+        // there). A series starts again on the target: shifted from its first day
+        // it would also fill the weeks before.
+        const qint64 days = e->repeat == Event::Once ? clip.day.daysTo(day) : e->date.daysTo(day);
+        auto shift = [days](QDate &d) {
+            if (d.isValid()) d = d.addDays(days);
+        };
+        shift(e->date);
+        shift(e->endDate);
+        shift(e->until);
+        const bool multiDay = e->endDate.isValid() && e->endDate > e->date;
+        if (hour >= 0 && !e->allDay) {
+            const int length = e->start.secsTo(e->effectiveEnd());
+            e->start = clockAt(hour);
+            if (!multiDay) {
+                const int endSecs = qMin(e->start.msecsSinceStartOfDay() / 1000 + length, 23 * 3600 + 59 * 60);
+                e->end = QTime(0, 0).addSecs(endSecs);
+            }
+        }
+        emit eventCreated(e);
+    } else if (clip.source == Item::FromReminder) {
+        const QDateTime was =
+            QDateTime::fromMSecsSinceEpoch(qint64(clip.data["dueAtMs"].toDouble()));
+        const QDateTime to(day, hour >= 0 ? clockAt(hour) : was.time());
+        emit reminderPasted(clip.data, to.toMSecsSinceEpoch());
+    } else {
+        return;
+    }
+    // Deferred: the caller may be a menu or the widget the refresh repaints.
+    QTimer::singleShot(0, this, [this] { refresh(); });
+}
+
+void PlannerView::duplicateInForm() {
+    if (m_stack->currentWidget() != m_editor || !m_editing) return;
+    // Same fields, but saving creates a new one; the original is left untouched.
+    m_editing = nullptr;
+    m_editorTitle->setText(L("Copia"));
+    m_fError->hide();
+    m_fDelete->hide();
+    m_fDuplicate->hide();
+    m_kindButtons.at(2)->setVisible(true);
+    // Repetition shows again for a copy of a Google occurrence: the copy is new.
+    setEditorKind(m_fKind);
+    // A copy usually goes on another day: the date is what gets written next.
+    m_fDate->setFocus(Qt::OtherFocusReason);
+    m_fDate->selectAll();
+}
+
+/// Right click: on an item, open, copy, duplicate and paste; on an empty slot,
+/// paste and new.
+void PlannerView::openContextMenu(const Spot &spot, const QPoint &globalPos) {
+    const bool item = spot.onItem && movable(spot.item);
+    auto *menu = new Popup(m_theme, this);
+    if (item) {
+        const Item it = spot.item;
+        menu->addHeader(it.title);
+        menu->addShortcutItem(it.source == Item::FromEvent ? "pencil" : "reminder", L("Abrir"),
+                              L("Intro"), [this, it] {
+            if (alive(it)) activate(it);
+        });
+        menu->addShortcutItem("copy", L("Copiar"), "Ctrl+C", [this, it] { copyItem(it); });
+        menu->addShortcutItem("plus", L("Duplicar"), "Ctrl+D", [this, it] { duplicateItem(it); });
+    } else {
+        QString head = Lang::locale().toString(spot.day, "dddd d MMMM");
+        if (!head.isEmpty()) head[0] = head[0].toUpper();
+        if (spot.hour >= 0) head += " · " + hhmm(spot.hour);
+        menu->addHeader(head);
+    }
+    if (!m_clip.data.isEmpty()) {
+        if (item) menu->addSeparator();
+        const QDate day = spot.day;
+        const qreal hour = spot.hour;
+        menu->addShortcutItem("paste", L("Pegar «%1»").arg(m_clip.title), "Ctrl+V",
+                              [this, day, hour] { pasteClip(m_clip, day, hour); });
+    }
+    if (!item) {
+        const QDate day = spot.day;
+        const qreal hour = spot.hour >= 0 ? std::floor(spot.hour * 2) / 2.0 : 10.0;
+        menu->addShortcutItem("plus", L("Nuevo evento o tarea"), QString(),
+                              [this, day, hour] { openEditor(nullptr, day, hour); });
+    }
+    menu->showAt(globalPos);
 }

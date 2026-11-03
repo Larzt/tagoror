@@ -779,6 +779,16 @@ const QHash<QString, QString> &table() {
         {"Duplicar sesión", "Duplicate session"},
         {"Borrar sesión", "Delete session"},
         {"Añadir · Ctrl+N", "Add · Ctrl+N"},
+        // 1.2: copy and paste in the planner.
+        {"Copiar", "Copy"},
+        {"Pegar «%1»", "Paste “%1”"},
+        {"Copia", "Copy"},
+        {"PLANNER", "PLANNER"},
+        {"Copiar lo que hay bajo el ratón", "Copy what is under the pointer"},
+        {"Pegar en la hora o el día bajo el ratón", "Paste at the hour or day under the pointer"},
+        {"Duplicar en el mismo sitio", "Duplicate in place"},
+        {"Copiado «%1» · Ctrl+V para pegar", "Copied “%1” · Ctrl+V to paste"},
+        {"Una copia nueva con los mismos datos · Ctrl+D", "A new copy with the same details · Ctrl+D"},
     };
     return t;
 }

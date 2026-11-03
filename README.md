@@ -95,6 +95,10 @@
 - Click an empty hour to create something there, or use **+**. The form can
   also create a plain reminder note, which is what the old calendar did when you
   picked a day.
+- **Copy, paste and duplicate**: **Ctrl+C** copies the event, task or reminder
+  under the pointer and **Ctrl+V** pastes it at the hour or day under the
+  pointer, keeping its length; **Ctrl+D** duplicates it in place. A right click
+  offers the same, and the edit form has *Duplicar* for a copy on another day.
 - Events live in `events.json` next to your notes and are backed up with them.
 - Narrow the window and the side panel folds away; the grid keeps working.
 

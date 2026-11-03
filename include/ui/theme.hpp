@@ -277,6 +277,12 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
     } else if (kind == "copy") {
         p.drawRoundedRect(QRectF(c - 5.4, c - 5.4, 8.0, 8.0), 2.0, 2.0);
         p.drawRoundedRect(QRectF(c - 2.6, c - 2.6, 8.0, 8.0), 2.0, 2.0);
+    } else if (kind == "paste") {
+        // A clipboard: the board, and the clip on top.
+        p.drawRoundedRect(QRectF(c - 4.6, c - 3.6, 9.2, 9.6), 2.0, 2.0);
+        p.drawRoundedRect(QRectF(c - 2.2, c - 5.6, 4.4, 2.8), 1.0, 1.0);
+        p.drawLine(QPointF(c - 2.0, c + 0.6), QPointF(c + 2.0, c + 0.6));
+        p.drawLine(QPointF(c - 2.0, c + 3.0), QPointF(c + 1.0, c + 3.0));
     } else if (kind == "pencil") {
         p.drawLine(QPointF(c - 5.2, c + 5.2), QPointF(c - 4.4, c + 2.4));
         p.drawLine(QPointF(c - 4.4, c + 2.4), QPointF(c + 2.6, c - 4.6));

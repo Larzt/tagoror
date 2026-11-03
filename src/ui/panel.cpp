@@ -631,6 +631,7 @@ QWidget *Panel::buildBody() {
         save();
         checkReminders();
     });
+    connect(m_planner, &PlannerView::reminderPasted, this, &Panel::pasteReminder);
     connect(m_planner, &PlannerView::noteActivated, this, &Panel::revealNote);
     connect(m_planner, &PlannerView::birthdayActivated, this, [this](Birthday *) {
         openPage(m_birthdays);
@@ -1669,6 +1670,35 @@ void Panel::createReminder(const QString &title, const QDateTime &when) {
     // Stays in the planner, on the day where it just appeared.
     m_planner->goTo(when.date());
     checkReminders();
+}
+
+/// A reminder (or a checklist with a date) pasted or duplicated in the
+/// planner: a new note with the same contents at another moment. Its images
+/// are copied, not shared, since deleting a note deletes its files.
+void Panel::pasteReminder(const QJsonObject &snapshot, qint64 dueAtMs) {
+    Note *n = Note::fromJson(snapshot);
+    n->id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    n->updatedMs = 0;
+    n->dueAtMs = dueAtMs;
+    n->due = dueLabel(n->dueAt());
+    n->fired = false;
+    n->ringing = false;
+    // A copy of a checklist starts unticked, as a duplicated task does.
+    for (CheckItem &it : n->items) it.done = false;
+    // Voice notes never have a date, but nothing should point at another's take.
+    n->audio.clear();
+    QList<QString> images;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (const QString &name : n->images) {
+        const QString suffix = QFileInfo(name).suffix().isEmpty() ? "png" : QFileInfo(name).suffix();
+        const QString copy = QString("%1-%2.%3").arg(n->id).arg(now + images.size()).arg(suffix);
+        if (QFile::copy(Note::imagePath(name), Note::imagePath(copy))) images.append(copy);
+    }
+    n->images = images;
+
+    m_store.add(n);
+    rebuildList();
+    checkReminders();   // one pasted at a moment already past rings now
 }
 
 void Panel::createTimer(const QString &name, qint64 ms) {

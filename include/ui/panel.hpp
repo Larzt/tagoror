@@ -155,6 +155,7 @@ private:
     void refreshTitle();
     void showNotes();
     void createReminder(const QString &title, const QDateTime &when);
+    void pasteReminder(const QJsonObject &snapshot, qint64 dueAtMs);
     void revealNote(Note *n);       ///< From the planner to its card in the list.
     /// Brings @p n's card into view (switching area if needed) without focusing it.
     NoteCard *scrollToNote(Note *n);
