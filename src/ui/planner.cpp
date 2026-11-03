@@ -1582,12 +1582,23 @@ void PlannerView::buildEditor() {
         b->setProperty("tip", repeatNames[i]);
         connect(b, &QToolButton::clicked, this, [this, i] {
             m_fRepeat = i;
-            refreshEditorChoices();
+            setEditorKind(m_fKind);   // the last day shows only for a series
         });
         m_repeatButtons << b;
         rg->addWidget(b, i / 2, i % 2);
     }
     col->addWidget(m_repeatBox);
+
+    // A series' last day: the range runs from the date above to this one. Empty,
+    // it repeats with no end, as before 1.2.2.
+    m_fUntilBox = new QWidget;
+    auto *ul = new QVBoxLayout(m_fUntilBox);
+    ul->setContentsMargins(0, 0, 0, 0);
+    ul->setSpacing(2);
+    ul->addWidget(caption("SE REPITE HASTA"));
+    m_fUntil = field(L("Sin fin · dd/mm/aaaa"));
+    ul->addWidget(m_fUntil);
+    col->addWidget(m_fUntilBox);
 
     col->addWidget(caption("CATEGORÍA"));
     // rebuildCatButtons() fills it: the list changes when the user creates or
@@ -1671,7 +1682,7 @@ void PlannerView::buildEditor() {
     col->addLayout(foot);
     col->addStretch();
 
-    for (QLineEdit *e : {m_fTitle, m_fDate, m_fStart, m_fEnd, m_fLastDay})
+    for (QLineEdit *e : {m_fTitle, m_fDate, m_fStart, m_fEnd, m_fLastDay, m_fUntil})
         connect(e, &QLineEdit::returnPressed, this, [this] { saveEditor(); });
 
     auto *scroll = new QScrollArea;
@@ -2157,6 +2168,7 @@ void PlannerView::retranslate() {
     }
     m_fTitle->setPlaceholderText(L("Título"));
     m_fDate->setPlaceholderText(L("dd/mm/aaaa"));
+    m_fUntil->setPlaceholderText(L("Sin fin · dd/mm/aaaa"));
     m_fDesc->setPlaceholderText(L("Descripción"));
     m_fDelete->setText(L("Eliminar"));
     m_fDuplicate->setText(L("Duplicar"));
@@ -2278,6 +2290,9 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
         m_fLastDay->setText(e->endDate.isValid() && e->endDate > e->date
                                 ? e->endDate.toString("dd/MM/yyyy")
                                 : QString());
+        m_fUntil->setText(e->repeat != Event::Once && e->until.isValid()
+                              ? e->until.toString("dd/MM/yyyy")
+                              : QString());
     } else {
         const QTime start = QTime(0, 0).addSecs(int(hour * 3600));
         const QTime end = start.addSecs(3600) > start ? start.addSecs(3600) : QTime(23, 59);
@@ -2292,6 +2307,7 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
         m_fCategory = "work";
         m_fAllDay = false;
         m_fLastDay->clear();
+        m_fUntil->clear();
     }
     rebuildCatButtons();
     setEditorKind(m_fKind);
@@ -2323,6 +2339,7 @@ void PlannerView::setEditorKind(int kind) {
     m_fLastDayBox->setVisible(allDay);
     m_fAllDayBtn->setVisible(!reminder);
     m_repeatBox->setVisible(!reminder && !instance);
+    m_fUntilBox->setVisible(!reminder && !instance && m_fRepeat != Event::Once);
     m_catBox->setVisible(!reminder);
     if (auto *alerts = findChild<QWidget *>("plannerAlertBox")) alerts->setVisible(!reminder);
     for (QWidget *w : findChildren<QLabel *>())
@@ -2354,6 +2371,8 @@ void PlannerView::saveEditor() {
     const QTime end = allDay ? QTime(23, 59) : QTime::fromString(m_fEnd->text().trimmed(), "H:mm");
     const QString lastText = m_fLastDay->text().trimmed();
     const QDate lastDay = QDate::fromString(lastText, "d/M/yyyy");
+    const QString untilText = m_fUntil->text().trimmed();
+    const QDate until = QDate::fromString(untilText, "d/M/yyyy");
     auto fail = [this](const QString &why, QWidget *field) {
         m_fError->setText(why);
         m_fError->show();
@@ -2371,6 +2390,9 @@ void PlannerView::saveEditor() {
     }
     if (allDay && !lastText.isEmpty() && (!lastDay.isValid() || lastDay < date))
         return fail(L("El último día tiene que ser dd/mm/aaaa, y no antes de la fecha."), m_fLastDay);
+    const bool series = m_fRepeat != Event::Once && !(m_editing && m_editing->gcalInstance());
+    if (series && !untilText.isEmpty() && (!until.isValid() || until < date))
+        return fail(L("La repetición tiene que acabar en dd/mm/aaaa, y no antes de la fecha."), m_fUntil);
     // A timed event from Google spanning days keeps its length: it moves whole
     // with its date, and its end is on the last day.
     int span = 0;
@@ -2392,6 +2414,8 @@ void PlannerView::saveEditor() {
     if (allDay) e->endDate = lastDay.isValid() && lastDay > date ? lastDay : QDate();
     else e->endDate = span > 0 ? date.addDays(span) : QDate();
     e->repeat = e->gcalInstance() ? Event::Once : Event::Repeat(m_fRepeat);
+    // Empty means no end; one that no longer repeats has none either.
+    e->until = series ? until : QDate();
     e->category = m_fCategory;
     e->remind = m_fAlert >= 0;
     // Without an alert the previous lead is kept, so re-enabling it remembers it.

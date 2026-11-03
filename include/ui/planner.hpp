@@ -244,6 +244,8 @@ private:
     QWidget *m_fStartBox = nullptr;
     QLineEdit *m_fLastDay = nullptr;     ///< Last day of an all-day event.
     QWidget *m_fLastDayBox = nullptr;
+    QLineEdit *m_fUntil = nullptr;       ///< Last day of a series; empty, no end.
+    QWidget *m_fUntilBox = nullptr;
     QToolButton *m_fAllDayBtn = nullptr;
     bool m_fAllDay = false;
     QTextEdit *m_fDesc = nullptr;

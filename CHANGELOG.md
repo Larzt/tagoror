@@ -4,6 +4,16 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.2] — 2026-11-03
+
+### Added
+
+- **A date range for repeating events and tasks**: under *Repetición* the
+  form now has *Se repite hasta*, the last day of the series. It runs from the
+  event's date to that day, both included; left empty it repeats with no end,
+  as before. Dragging the series moves its last day with it, and Google
+  Calendar receives it as the rule's end.
+
 ## [1.2.1] — 2026-11-03
 
 ### Added

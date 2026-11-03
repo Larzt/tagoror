@@ -83,8 +83,9 @@
 - **Events and tasks** with a start and an end, a category (work, personal,
   studies, other, or **your own**, with a name and a colour — created from the
   side panel or the form, edited with the pencil next to it; deleting one moves
-  its events to *other*) and an optional repeat — every day, week or month. A task has
-  a box to tick, and a repeating task is ticked per day, not all at once.
+  its events to *other*) and an optional repeat — every day, week, month or
+  year — with no end or *until* a chosen day. A task has a box to tick, and a
+  repeating task is ticked per day, not all at once.
 - They can **ring before they start** — at the start, or 5, 10, 15 or 30
   minutes, 1 or 2 hours, or a day before — through the same alarm as
   everything else; the notice above the navigation says what is starting and

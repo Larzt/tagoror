@@ -791,6 +791,11 @@ const QHash<QString, QString> &table() {
         {"Una copia nueva con los mismos datos · Ctrl+D", "A new copy with the same details · Ctrl+D"},
         // 1.2.1: delete from the planner's right-click menu.
         {"Eliminar la serie", "Delete the series"},
+        // 1.2.2: a series' last day.
+        {"SE REPITE HASTA", "REPEATS UNTIL"},
+        {"Sin fin · dd/mm/aaaa", "No end · dd/mm/yyyy"},
+        {"La repetición tiene que acabar en dd/mm/aaaa, y no antes de la fecha.",
+         "The repetition must end on dd/mm/yyyy, and not before the date."},
     };
     return t;
 }

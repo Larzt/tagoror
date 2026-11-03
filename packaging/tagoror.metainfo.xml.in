@@ -96,6 +96,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.2.2" date="2026-11-03">
+      <description>
+        <p>Repeating events and tasks can end on a chosen day: the edit form
+           has a "repeats until" field under the repetition.</p>
+      </description>
+    </release>
     <release version="1.2.1" date="2026-11-03">
       <description>
         <p>Events, tasks and reminders can be deleted from the planner's right
