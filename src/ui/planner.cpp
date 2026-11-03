@@ -2566,6 +2566,16 @@ void PlannerView::pasteClip(const Clip &clip, const QDate &day, qreal hour) {
     QTimer::singleShot(0, this, [this] { refresh(); });
 }
 
+void PlannerView::deleteItem(const Item &item) {
+    // Deferred: the caller is a menu, and the refresh frees the block it was
+    // opened on. Checked again then: a sync may have removed it meanwhile.
+    QTimer::singleShot(0, this, [this, item] {
+        if (!alive(item)) return;
+        if (item.source == Item::FromEvent) emit eventDeleted(item.event);
+        else if (item.source == Item::FromReminder) emit reminderDeleted(item.note);
+    });
+}
+
 void PlannerView::duplicateInForm() {
     if (m_stack->currentWidget() != m_editor || !m_editing) return;
     // Same fields, but saving creates a new one; the original is left untouched.
@@ -2582,7 +2592,7 @@ void PlannerView::duplicateInForm() {
     m_fDate->selectAll();
 }
 
-/// Right click: on an item, open, copy, duplicate and paste; on an empty slot,
+/// Right click: on an item, open, copy, duplicate, paste and delete; on an empty slot,
 /// paste and new.
 void PlannerView::openContextMenu(const Spot &spot, const QPoint &globalPos) {
     const bool item = spot.onItem && movable(spot.item);
@@ -2614,6 +2624,16 @@ void PlannerView::openContextMenu(const Spot &spot, const QPoint &globalPos) {
         const qreal hour = spot.hour >= 0 ? std::floor(spot.hour * 2) / 2.0 : 10.0;
         menu->addShortcutItem("plus", L("Nuevo evento o tarea"), QString(),
                               [this, day, hour] { openEditor(nullptr, day, hour); });
+    }
+    if (item) {
+        // Last and apart, as in a note's menu. A repeating event goes whole, as
+        // with the form's Delete: the label says so.
+        const Item it = spot.item;
+        const bool series = it.source == Item::FromEvent && it.event &&
+                            it.event->repeat != Event::Once;
+        menu->addSeparator();
+        menu->addItem("trash", series ? L("Eliminar la serie") : L("Eliminar"), QString(),
+                      [this, it] { deleteItem(it); });
     }
     menu->showAt(globalPos);
 }

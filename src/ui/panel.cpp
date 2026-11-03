@@ -632,6 +632,13 @@ QWidget *Panel::buildBody() {
         checkReminders();
     });
     connect(m_planner, &PlannerView::reminderPasted, this, &Panel::pasteReminder);
+    connect(m_planner, &PlannerView::reminderDeleted, this, [this](Note *n) {
+        removeNote(n);
+        refreshDueCards();
+        refreshNotices();
+        applyBadgeAlert();
+        refreshPlanner();
+    });
     connect(m_planner, &PlannerView::noteActivated, this, &Panel::revealNote);
     connect(m_planner, &PlannerView::birthdayActivated, this, [this](Birthday *) {
         openPage(m_birthdays);

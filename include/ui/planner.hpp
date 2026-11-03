@@ -132,6 +132,9 @@ signals:
     /// A copy of a reminder pasted: @p snapshot is the original as it was when
     /// copied (it may have been deleted since), to be created at @p dueAtMs.
     void reminderPasted(const QJsonObject &snapshot, qint64 dueAtMs);
+    /// A reminder deleted from the right-click menu: the same as its card's
+    /// "Delete note".
+    void reminderDeleted(Note *n);
     void noteActivated(Note *n);
     void birthdayActivated(Birthday *b);
     void viewChanged(int view);
@@ -191,6 +194,9 @@ private:
     /// A copy of @p clip on @p day, at @p hour if given (keeping its length).
     void pasteClip(const Clip &clip, const QDate &day, qreal hour);
     void duplicateItem(const Item &item);
+    /// From the right-click menu, with no form and no confirmation, as a note's
+    /// card does.
+    void deleteItem(const Item &item);
     /// Turns the form of an existing event into a new one with the same fields.
     void duplicateInForm();
     void openContextMenu(const Spot &spot, const QPoint &globalPos);

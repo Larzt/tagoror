@@ -4,6 +4,14 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.1] — 2026-11-03
+
+### Added
+
+- **Delete from the right click** in the planner: events, tasks and reminders
+  go without opening the form. On a repeating event it reads *Eliminar la
+  serie*, since it removes the whole series, as the form's Delete does.
+
 ## [1.2.0] — 2026-11-03
 
 Copy and paste in the planner, to repeat a task on another day without

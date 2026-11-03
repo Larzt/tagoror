@@ -96,6 +96,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.2.1" date="2026-11-03">
+      <description>
+        <p>Events, tasks and reminders can be deleted from the planner's right
+           click, without opening the edit form.</p>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-11-03">
       <description>
         <p>Copy, paste and duplicate in the planner: Ctrl+C copies the event,

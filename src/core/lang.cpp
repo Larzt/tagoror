@@ -789,6 +789,8 @@ const QHash<QString, QString> &table() {
         {"Duplicar en el mismo sitio", "Duplicate in place"},
         {"Copiado «%1» · Ctrl+V para pegar", "Copied “%1” · Ctrl+V to paste"},
         {"Una copia nueva con los mismos datos · Ctrl+D", "A new copy with the same details · Ctrl+D"},
+        // 1.2.1: delete from the planner's right-click menu.
+        {"Eliminar la serie", "Delete the series"},
     };
     return t;
 }

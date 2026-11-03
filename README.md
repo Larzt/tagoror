@@ -98,7 +98,8 @@
 - **Copy, paste and duplicate**: **Ctrl+C** copies the event, task or reminder
   under the pointer and **Ctrl+V** pastes it at the hour or day under the
   pointer, keeping its length; **Ctrl+D** duplicates it in place. A right click
-  offers the same, and the edit form has *Duplicar* for a copy on another day.
+  offers the same plus *Eliminar*, and the edit form has *Duplicar* for a copy
+  on another day.
 - Events live in `events.json` next to your notes and are backed up with them.
 - Narrow the window and the side panel folds away; the grid keeps working.
 
