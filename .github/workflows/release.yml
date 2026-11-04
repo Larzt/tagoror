@@ -7,7 +7,7 @@
 #
 # Publicar es entonces: subir la versión en CMakeLists.txt, escribir su sección
 # en CHANGELOG.md, y push. El resto -- etiqueta, notas, AppImage, instalador,
-# ZIP y .exe de Windows -- sale de aquí.
+# ZIP y .exe de Windows, .ipa de iOS y APK de Android -- sale de aquí.
 #
 # La etiqueta la crea la propia release (softprops la pone si no está) en vez
 # de empujarla desde un paso anterior, y eso es a propósito: una etiqueta
@@ -159,9 +159,23 @@ jobs:
     permissions:
       contents: write
 
+  # .ipa sin firmar siempre; el APK solo se publica si mobile.yml lo firmó en
+  # release con el keystore de los secretos (salida apk_signed). Ver
+  # docs/mobile-builds.md.
+  mobile:
+    name: iOS y Android
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    uses: ./.github/workflows/mobile.yml
+    secrets: inherit
+    with:
+      version: ${{ needs.check.outputs.version }}
+    permissions:
+      contents: write
+
   publish:
     name: Publicar
-    needs: [check, linux, windows]
+    needs: [check, linux, windows, mobile]
     if: needs.check.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -187,4 +201,16 @@ jobs:
             artifacts/**/Tagoror-*-x86_64-installer.run
             artifacts/**/Tagoror-*-win64.zip
             artifacts/**/Tagoror-*-setup.exe
+            artifacts/**/Tagoror-unsigned.ipa
+          fail_on_unmatched_files: true
+
+      # Aparte porque es opcional: sin keystore, el APK es debug y se queda en
+      # los artifacts del workflow. La release ya existe, así que esto solo le
+      # añade el fichero. El patrón no casa con el *-debug.apk.
+      - name: Añadir el APK firmado
+        if: needs.mobile.outputs.apk_signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check.outputs.version }}
+          files: artifacts/**/Tagoror-*-android-arm64.apk
           fail_on_unmatched_files: true
