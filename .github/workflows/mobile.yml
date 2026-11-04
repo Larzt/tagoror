@@ -20,6 +20,10 @@ on:
         description: 'Versión a compilar; si falta se deduce como en un push'
         required: false
         type: string
+    outputs:
+      apk_signed:
+        description: "'true' si el APK se firmó en release con el keystore de los secretos"
+        value: ${{ jobs.android.outputs.signed }}
 
 # Igual que en windows.yml: el nombre del workflow en el grupo separa la
 # ejecución propia de la llamada desde release.yml, y solo se cancela la propia.
@@ -34,6 +38,12 @@ env:
   QT_VERSION: '6.9.*'
   # CFBundleIdentifier en iOS y nombre del paquete en Android.
   BUNDLE_ID: org.appstride.tagoror
+  # Lo que pide Qt 6.9 (qtbase/doc/global/macros.qdocconf): NDK r26b, JDK 17,
+  # plataforma y build-tools de la API 35. Al subir de Qt, revisar los cuatro.
+  ANDROID_NDK_VERSION: '26.1.10909125'
+  ANDROID_PLATFORM: 'android-35'
+  ANDROID_BUILD_TOOLS: '35.0.1'
+  JAVA_VERSION: '17'
 
 jobs:
   version:
@@ -140,3 +150,178 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: Tagoror-unsigned.ipa
+
+  android:
+    name: Android (.apk)
+    needs: version
+    runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.sign.outputs.signed }}
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias del sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build
+
+      - name: JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      # Desde Qt 6.7 los paquetes de Android son all_os; la action instala
+      # también la Qt de escritorio para Linux que hace de host y deja su ruta
+      # en QT_HOST_PATH.
+      - name: Instalar Qt para Android
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          target: android
+          arch: android_arm64_v8a
+          modules: qtmultimedia
+          cache: true
+
+      # ANDROID_HOME es del runner, no del workflow: ${{ env.* }} no lo ve hasta
+      # que pasa por GITHUB_ENV.
+      - name: Ruta del SDK
+        run: echo "ANDROID_SDK_DIR=$ANDROID_HOME" >> "$GITHUB_ENV"
+
+      # El SDK ya viene en la imagen; el NDK de la versión exacta no siempre,
+      # y son ~1,5 GB: se guarda en caché.
+      - name: Caché del NDK
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ANDROID_SDK_DIR }}/ndk/${{ env.ANDROID_NDK_VERSION }}
+          key: android-ndk-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}
+
+      - name: SDK y NDK
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          packages=("platforms;$ANDROID_PLATFORM" "build-tools;$ANDROID_BUILD_TOOLS" "platform-tools")
+          if [[ "${{ steps.ndk-cache.outputs.cache-hit }}" != "true" ]]; then
+            packages+=("ndk;$ANDROID_NDK_VERSION")
+          fi
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "${packages[@]}" > /dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+          echo "BUILD_TOOLS_DIR=$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS" >> "$GITHUB_ENV"
+
+      # Gradle descarga su distribución y las dependencias de Android en cada
+      # ejecución; con esto, solo cuando cambia la versión de Qt.
+      - name: Caché de Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-qt${{ env.QT_VERSION }}-${{ hashFiles('packaging/android/**') }}
+          restore-keys: gradle-${{ runner.os }}-qt${{ env.QT_VERSION }}-
+
+      # HTTPS en Android necesita OpenSSL (ver CMakeLists.txt). Solo hace falta
+      # la parte de OpenSSL 3 para arm64: el repositorio entero trae todas las
+      # versiones y arquitecturas.
+      - name: OpenSSL de KDAB
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse \
+            https://github.com/KDAB/android_openssl.git "$RUNNER_TEMP/android_openssl"
+          cd "$RUNNER_TEMP/android_openssl"
+          git sparse-checkout set --no-cone /android_openssl.cmake /ssl_3/include /ssl_3/arm64-v8a
+          echo "android_openssl $(git rev-parse --short HEAD)"
+          ls ssl_3/arm64-v8a
+
+      # Sin el cliente OAuth de Google: en móvil Drive sale desactivado hasta
+      # cambiar el redirect (ver docs/mobile-builds.md). WebDAV sí funciona.
+      - name: Configurar
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-android -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DANDROID_SDK_ROOT="$ANDROID_HOME" \
+            -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
+            -DQT_ANDROID_SDK_BUILD_TOOLS_REVISION="$ANDROID_BUILD_TOOLS" \
+            -DTAGOROR_VERSION="$VERSION" \
+            -DTAGOROR_BUNDLE_ID="$BUNDLE_ID" \
+            -DTAGOROR_ANDROID_OPENSSL_DIR="$RUNNER_TEMP/android_openssl"
+
+      # Un APK Release sin firmar; la firma va en el paso siguiente.
+      - name: Compilar el APK
+        run: cmake --build build-android --target apk --parallel
+
+      # Con los cuatro secretos, firma de release: es la que permite actualizar
+      # la app instalada y la única que se publica. Sin ellos, una clave debug
+      # de usar y tirar: el APK se instala, pero cada build lleva una clave
+      # distinta y para pasar de uno a otro hay que desinstalar antes.
+      - name: Firmar
+        id: sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          unsigned="$(find build-android -name '*-release-unsigned.apk' | head -n 1)"
+          if [[ -z "$unsigned" ]]; then
+            echo "::error::No se encontró el APK sin firmar"
+            find build-android -name '*.apk'
+            exit 1
+          fi
+          echo "APK: $unsigned"
+
+          aligned="$RUNNER_TEMP/aligned.apk"
+          "$BUILD_TOOLS_DIR/zipalign" -f -p 4 "$unsigned" "$aligned"
+
+          keystore="$RUNNER_TEMP/signing.keystore"
+          if [[ -n "$KEYSTORE_BASE64" && -n "$KEYSTORE_PASSWORD" && -n "$KEY_ALIAS" && -n "$KEY_PASSWORD" ]]; then
+            echo "Firmando en release con el keystore de los secretos."
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+            out="Tagoror-$VERSION-android-arm64.apk"
+            "$BUILD_TOOLS_DIR/apksigner" sign \
+              --ks "$keystore" \
+              --ks-pass env:KEYSTORE_PASSWORD \
+              --ks-key-alias "$KEY_ALIAS" \
+              --key-pass env:KEY_PASSWORD \
+              --out "$out" "$aligned"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Faltan los secretos ANDROID_*: APK firmado con una clave debug, no se publica."
+            keytool -genkeypair -v -keystore "$keystore" -storepass android \
+              -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US" > /dev/null
+            out="Tagoror-$VERSION-android-arm64-debug.apk"
+            "$BUILD_TOOLS_DIR/apksigner" sign \
+              --ks "$keystore" --ks-pass pass:android \
+              --ks-key-alias androiddebugkey --key-pass pass:android \
+              --out "$out" "$aligned"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+          rm -f "$keystore"
+
+          "$BUILD_TOOLS_DIR/apksigner" verify --print-certs "$out"
+          # Que los permisos y el OpenSSL hayan llegado de verdad al APK.
+          "$BUILD_TOOLS_DIR/aapt2" dump permissions "$out"
+          unzip -l "$out" | grep -E 'lib(ssl|crypto)_3\.so'
+          ls -lh "$out"
+          echo "apk=$out" >> "$GITHUB_OUTPUT"
+
+      - name: Guardar el APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: tagoror-android-${{ env.VERSION }}
+          path: ${{ steps.sign.outputs.apk }}
+          if-no-files-found: error
+
+      # Como el .ipa: solo con una etiqueta empujada a mano, y solo el APK
+      # firmado en release. El debug se queda en los artifacts.
+      - name: Colgarlo de la release
+        if: >-
+          github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+          steps.sign.outputs.signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.sign.outputs.apk }}
