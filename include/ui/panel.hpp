@@ -53,6 +53,9 @@ class TrackingView;
 /// birthdays, Seguimiento and the settings.
 class Panel : public QWidget {
     Q_OBJECT
+    /// Development only (TAGOROR_DEV_TOOLS): drives the pages and dialogs to
+    /// photograph them.
+    friend class ScreenshotTour;
 
 public:
     Panel();

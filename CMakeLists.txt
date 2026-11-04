@@ -205,6 +205,15 @@ qt_add_resources(tagoror "fonts"
         fonts/plex/IBMPlexMono-Bold.ttf)
 
 target_include_directories(tagoror PRIVATE include)
+
+# Herramientas de desarrollo: el recorrido de capturas de la interfaz móvil
+# (scripts/mobile-shots.sh). Nunca en lo que se publica: es OFF por defecto y
+# solo existe en escritorio con GCC o Clang (usa su demangler).
+option(TAGOROR_DEV_TOOLS "Compilar el recorrido de capturas (solo desarrollo)" OFF)
+if (TAGOROR_DEV_TOOLS AND NOT MSVC AND NOT ANDROID AND NOT IOS)
+    target_sources(tagoror PRIVATE src/dev/screenshottour.cpp include/dev/screenshottour.hpp)
+    target_compile_definitions(tagoror PRIVATE TAGOROR_DEV_TOOLS)
+endif()
 target_compile_definitions(tagoror PRIVATE TAGOROR_APP_ID="${TAGOROR_APP_ID}")
 # Hasta ahora la versión solo llegaba al .rc de Windows y el binario no sabía
 # cuál era. El buscador de actualizaciones necesita compararla con la publicada,

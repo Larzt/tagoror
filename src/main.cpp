@@ -13,6 +13,9 @@
 #endif
 
 #include "ui/panel.hpp"
+#ifdef TAGOROR_DEV_TOOLS
+#include "dev/screenshottour.hpp"
+#endif
 
 // Set by CMake (see TAGOROR_APP_ID); a hand build gets the default.
 #ifndef TAGOROR_APP_ID
@@ -105,6 +108,14 @@ int main(int argc, char *argv[]) {
         // phone then cuts (the screenshot tour crops to the screen to show it).
         panel.resize(size);
         panel.show();
+#ifdef TAGOROR_DEV_TOOLS
+        // scripts/mobile-shots.sh: photograph every page and quit. No startUp():
+        // its splash and update check would get in the pictures.
+        if (const QString dir = qEnvironmentVariable("TAGOROR_SHOTS_DIR"); !dir.isEmpty()) {
+            new ScreenshotTour(&panel, dir);
+            return app.exec();
+        }
+#endif
         panel.startUp(true);
         return app.exec();
     }
