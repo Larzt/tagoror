@@ -118,8 +118,8 @@ jobs:
               CODE_SIGNING_REQUIRED=NO \
               CODE_SIGN_IDENTITY="" \
               CODE_SIGN_ENTITLEMENTS="" 2>&1 | tee "$RUNNER_TEMP/ios.log"; then
-            msg="$(grep -E -A2 "error:|\*\* BUILD FAILED|fatal|Undefined symbol|ld: " "$RUNNER_TEMP/ios.log" \
-              | grep -v '^--$' | head -n 60 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+            msg="$(grep -E -A25 "error:|\*\* BUILD FAILED|fatal|Undefined symbol|ld: " "$RUNNER_TEMP/ios.log" \
+              | grep -v '^--$' | head -n 120 | awk '{ gsub(/%/, "%25"); printf "%s%%0A", $0 }')"
             echo "::error title=iOS::${msg:-sin líneas de error reconocibles; ver el log}"
             exit 1
           fi
@@ -250,7 +250,7 @@ jobs:
             -DQT_HOST_PATH="$QT_HOST_PATH" \
             -DANDROID_SDK_ROOT="$ANDROID_HOME" \
             -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \
-            -DQT_ANDROID_SDK_BUILD_TOOLS_REVISION="$ANDROID_BUILD_TOOLS" \
+            -DTAGOROR_ANDROID_BUILD_TOOLS="$ANDROID_BUILD_TOOLS" \
             -DTAGOROR_VERSION="$VERSION" \
             -DTAGOROR_BUNDLE_ID="$BUNDLE_ID" \
             -DTAGOROR_ANDROID_OPENSSL_DIR="$RUNNER_TEMP/android_openssl"
@@ -264,7 +264,7 @@ jobs:
           if ! cmake --build build-android --target apk --parallel 2>&1 | tee "$RUNNER_TEMP/apk.log"; then
             # Una sola anotación con todo: GitHub solo guarda 10 por paso.
             msg="$(grep -E -A3 "What went wrong|error:|ERROR|FAILURE|Exception|Cannot|failed" "$RUNNER_TEMP/apk.log" \
-              | grep -v '^--$' | head -n 60 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+              | grep -v '^--$' | head -n 60 | awk '{ gsub(/%/, "%25"); printf "%s%%0A", $0 }')"
             echo "::error title=APK::${msg:-sin líneas de error reconocibles; ver el log}"
             exit 1
           fi

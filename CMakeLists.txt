@@ -301,6 +301,16 @@ if (ANDROID)
         QT_ANDROID_VERSION_NAME "${TAGOROR_SHORT_VERSION}"
         QT_ANDROID_VERSION_CODE "${TAGOROR_VERSION_CODE}")
 
+    # Qué build-tools usa Gradle. Vacío, Qt elige los más nuevos instalados. Va
+    # como propiedad del target y no como -DQT_ANDROID_SDK_BUILD_TOOLS_REVISION:
+    # en Qt 6.9 la variable deja la versión vacía ("Invalid revision" en Gradle).
+    set(TAGOROR_ANDROID_BUILD_TOOLS "" CACHE STRING
+        "Versión de las Android SDK build-tools (vacío = la más nueva)")
+    if (TAGOROR_ANDROID_BUILD_TOOLS)
+        set_target_properties(tagoror PROPERTIES
+            QT_ANDROID_SDK_BUILD_TOOLS_REVISION "${TAGOROR_ANDROID_BUILD_TOOLS}")
+    endif()
+
     # Los permisos van por Qt y no escritos a mano en el manifiesto: Qt los
     # inserta en %%INSERT_PERMISSIONS junto a los de sus módulos (INTERNET, el
     # de Multimedia...) sin repetir ninguno, y un permiso duplicado rompe el APK.
