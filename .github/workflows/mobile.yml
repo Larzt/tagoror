@@ -9,6 +9,8 @@ name: Mobile
 
 on:
   push:
+    # TEMPORAL: probar en la rama del PR #1. Quitar antes de fusionar.
+    branches: [mobile-builds]
     tags: ['v*']
   workflow_dispatch:
   workflow_call:
