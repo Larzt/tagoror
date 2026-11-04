@@ -255,5 +255,12 @@ cualquiera de los cuatro, firma con clave debug y avisa con un *warning*.
   iOS y Android apenas sirven.
 - **Elegir ficheros** (importar un tono WAV, adjuntar imágenes): en Android el
   selector puede devolver rutas `content://` que la app todavía no sabe abrir.
+- **Permisos de más en Android:** además de los nuestros, Qt Multimedia declara
+  por su cuenta `CAMERA`, `BLUETOOTH`, `MODIFY_AUDIO_SETTINGS` y
+  `WRITE_EXTERNAL_STORAGE`. No se piden mientras la app no los use, pero salen en
+  la ficha del APK. Se pueden quitar con un `tools:node="remove"` en el
+  manifiesto cuando moleste.
+- **Tamaño:** el APK pesa unos 58 MB, porque en Android Qt Multimedia lleva
+  FFmpeg dentro. En iOS se usa el backend nativo (AVFoundation) y no hace falta.
 - **Icono en iOS:** sale el genérico. Hace falta un catálogo de assets con un PNG
   de 1024×1024.
