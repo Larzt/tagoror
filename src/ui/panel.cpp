@@ -30,6 +30,7 @@
 #include "core/syncengine.hpp"
 #include "core/webdavbackend.hpp"
 #include "core/lang.hpp"
+#include "core/platform.hpp"
 #include "core/updater.hpp"
 
 #include <QAction>
@@ -2554,6 +2555,9 @@ bool Panel::updateAvailable() const {
 /// Once a day, on the same heartbeat as reminders and backups. Asking is an
 /// HTTP request, so the stored date sets the pace, not the timer.
 bool Panel::updateCheckDue() const {
+#ifdef TAGOROR_MOBILE
+    return false;   // installed from outside: the releases page offers nothing to it
+#endif
     if (!m_store.prefs().updateCheck || m_updater->busy()) return false;
 
     constexpr qint64 kDayMs = 24LL * 3600 * 1000;
@@ -2896,6 +2900,9 @@ void Panel::openAbout(QWidget *anchor) {
 }
 
 void Panel::buildTray() {
+#ifdef TAGOROR_MOBILE
+    return;   // no tray on a phone; closing the app is the system's business
+#endif
     if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
 
     m_tray = new QSystemTrayIcon(qApp->windowIcon(), this);
@@ -3069,6 +3076,11 @@ void Panel::applyWindowFlags() {
         flags = Qt::Window | Qt::FramelessWindowHint | Qt::WindowMinMaxButtonsHint;
         if (m_store.prefs().onTop) flags |= Qt::WindowStaysOnTopHint;
     }
+#ifdef TAGOROR_MOBILE
+    // A phone has no layers to stack on and no frame to hide: the window is the
+    // screen. Stored preferences are left alone; they travel with the sync.
+    flags = Qt::Window;
+#endif
 
     const bool wasVisible = isVisible();
     setWindowFlags(flags);

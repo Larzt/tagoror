@@ -7,6 +7,7 @@
 #include "core/syncengine.hpp"
 #include "core/webdavbackend.hpp"
 #include "core/lang.hpp"
+#include "core/platform.hpp"
 #include "core/updater.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
@@ -328,7 +329,9 @@ void SettingsView::refresh() {
             addWindow();
             addData();
             addInputs();
-            addUpdates();
+#ifndef TAGOROR_MOBILE
+            addUpdates();   // a phone gets its updates from where it was installed
+#endif
             addQuit();
             break;
         case Appearance:
@@ -586,7 +589,7 @@ void SettingsView::addWindow() {
                                                : L("El mismo para todas"),
                   m_store->prefs().sizePerPage, [this](bool on) { emit sizePerPageToggled(on); });
 
-#ifdef Q_OS_LINUX
+#ifdef TAGOROR_LINUX_DESKTOP
     // See choosePlatform() in main.cpp: the panel's placement and "always on top"
     // depend on this. Outside Linux the choice does not exist.
     const bool nativeWayland = QSettings().value("platform").toString() == "wayland";

@@ -1,12 +1,16 @@
+#include "core/platform.hpp"
+
 #include <QApplication>
 #include <QDir>
 #include <QFontDatabase>
 #include <QIcon>
+#include <QSettings>
+#ifndef TAGOROR_MOBILE
 #include <QLocalServer>
-#include <QSystemTrayIcon>
 #include <QLocalSocket>
 #include <QLockFile>
-#include <QSettings>
+#include <QSystemTrayIcon>
+#endif
 
 #include "ui/panel.hpp"
 
@@ -17,7 +21,7 @@
 
 namespace {
 
-#ifdef Q_OS_LINUX
+#ifdef TAGOROR_LINUX_DESKTOP
 
 /// Under a Wayland session, asks for XWayland. On Wayland a window can neither
 /// place itself nor know where it is (Qt always reports 0,0), and the widget
@@ -34,12 +38,12 @@ void choosePlatform() {
         qputenv("QT_QPA_PLATFORM", "xcb");
 }
 
-#endif  // Q_OS_LINUX
+#endif  // TAGOROR_LINUX_DESKTOP
 
 }  // namespace
 
 int main(int argc, char *argv[]) {
-#ifdef Q_OS_LINUX
+#ifdef TAGOROR_LINUX_DESKTOP
     choosePlatform();       // before QApplication: afterwards it cannot be chosen
 #endif
 
@@ -79,6 +83,13 @@ int main(int argc, char *argv[]) {
 
     // The icon theme wins (so an icon pack can override); otherwise the embedded one.
     app.setWindowIcon(QIcon::fromTheme(TAGOROR_APP_ID, embedded));
+#ifdef TAGOROR_MOBILE
+    // On a phone the system already guarantees one instance, there is no tray to
+    // hide in and the window is the whole screen.
+    Panel panel;
+    panel.showMaximized();
+    panel.startUp(true);
+#else
     // The panel hides in the tray and comes back from there, so having no visible
     // window is no reason to quit. Without a tray, Panel::closeEvent quits itself.
     app.setQuitOnLastWindowClosed(false);
@@ -128,5 +139,6 @@ int main(int argc, char *argv[]) {
     const bool toTray = app.arguments().contains("--tray") && QSystemTrayIcon::isSystemTrayAvailable();
     if (!toTray) panel.show();
     panel.startUp(!toTray);
+#endif
     return app.exec();
 }
