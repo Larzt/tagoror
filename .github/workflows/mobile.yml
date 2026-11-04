@@ -8,10 +8,7 @@
 name: Mobile
 
 on:
-  # TEMPORAL: para probarlo en la rama antes de fusionar. workflow_dispatch solo
-  # aparece cuando el fichero ya está en main. Quitar antes del PR.
   push:
-    branches: [mobile-builds]
     tags: ['v*']
   workflow_dispatch:
   workflow_call:
