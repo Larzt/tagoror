@@ -20,6 +20,7 @@
 #include <QUrl>
 #include <QEnterEvent>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -230,9 +231,14 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
     // The tabs, in a strip that scrolls sideways when the panel is narrow rather
     // than demanding the width of all five names (see *Card widths*).
     auto *tabs = new QWidget;
-    auto *tl = new QHBoxLayout(tabs);
-    tl->setContentsMargins(0, 0, 0, 0);
-    tl->setSpacing(2);
+    // On a phone there is no sideways scrolling: the five tabs go in two rows of
+    // a grid (three and two), each a third of the width, which fits the longest
+    // name at 360px.
+    QGridLayout *grid = mobileUi() ? new QGridLayout(tabs) : nullptr;
+    QHBoxLayout *tl = grid ? nullptr : new QHBoxLayout(tabs);
+    QLayout *tabLayout = grid ? static_cast<QLayout *>(grid) : tl;
+    tabLayout->setContentsMargins(0, 0, 0, 0);
+    tabLayout->setSpacing(2);
     const QList<QPair<Tab, const char *>> names{{General, "General"},
                                                 {Appearance, "Apariencia"},
                                                 {Sync, "Sincronización"},
@@ -245,10 +251,19 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
         b->setCursor(Qt::PointingHandCursor);
         b->setFocusPolicy(Qt::TabFocus);
         connect(b, &QToolButton::clicked, this, [this, tab = tab] { setTab(tab); });
-        tl->addWidget(b);
+        if (grid) {
+            b->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+            grid->addWidget(b, int(m_tabButtons.size()) / 3, int(m_tabButtons.size()) % 3);
+        } else {
+            tl->addWidget(b);
+        }
         m_tabButtons << b;
     }
-    tl->addStretch();
+    if (grid) {
+        for (int c = 0; c < 3; ++c) grid->setColumnStretch(c, 1);
+    } else {
+        tl->addStretch();
+    }
     auto *tabScroll = new QScrollArea;
     tabScroll->setObjectName("setTabs");
     tabScroll->setWidget(tabs);
@@ -260,7 +275,14 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
     tabScroll->viewport()->setAutoFillBackground(false);
     tabScroll->viewport()->setObjectName("scrollViewport");
     tabs->setObjectName("setTabsHost");
-    col->addWidget(tabScroll);
+    if (grid) {
+        // No strip to scroll: the grid itself, as tall as its two rows.
+        tabScroll->takeWidget();
+        delete tabScroll;
+        col->addWidget(tabs);
+    } else {
+        col->addWidget(tabScroll);
+    }
 
     auto *host = new QWidget;
     host->setObjectName("listHost");
