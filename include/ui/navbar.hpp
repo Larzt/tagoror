@@ -38,6 +38,8 @@ public:
     void setItems(const QList<Item> &items);
     void setLayoutMode(Layout layout);
     Layout layoutMode() const { return m_layout; }
+    /// Height the rail needs to show every item (see setLayoutMode() and NavItem).
+    int railHeight() const { return int(m_items.size()) * (62 + 4) + 16; }
 
     /// The open page; null when it is none of them (settings).
     void setActive(QWidget *page);

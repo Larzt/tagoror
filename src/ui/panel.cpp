@@ -912,7 +912,10 @@ void Panel::placeAlertZone() {
 /// width is what is scarce, beside the planner it is height.
 void Panel::updateNavLayout() {
     if (!m_navBar || !m_shell) return;
-    const bool rail = m_shell->width() >= NavBar::kRailFrom;
+    // A phone turned sideways is wide but short: six items down the side would
+    // be cut, so the rail only comes in where it fits whole.
+    const bool rail = m_shell->width() >= NavBar::kRailFrom &&
+                      (!kMobile || m_shell->height() >= m_navBar->railHeight());
     if (rail == (m_navBar->layoutMode() == NavBar::Rail)) return;
     if (rail) {
         m_mainCol->removeWidget(m_navBar);
