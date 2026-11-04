@@ -291,6 +291,12 @@ void Panel::buildShell() {
     auto *outer = new QVBoxLayout(this);
     m_outer = outer;
     outer->setContentsMargins(shadowMargin(), shadowMargin(), shadowMargin(), shadowMargin());
+    // By default the top layout makes its minimum the window's, and a window
+    // grows to fit it. A phone's window is the screen: one page asking for a
+    // moment for more width left the window wider than the screen for good (the
+    // rest cut off, and past NavBar::kRailFrom the bar turned into a rail). The
+    // pages fit the screen instead, not the other way round.
+    if (mobileUi()) outer->setSizeConstraint(QLayout::SetNoConstraint);
 
     m_stack = new QStackedWidget;
     outer->addWidget(m_stack);
