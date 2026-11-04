@@ -9,9 +9,10 @@ compila Tagoror para:
 | Android (arm64) | `Tagoror-<versión>-android-arm64.apk` | Release, con tu keystore (secretos `ANDROID_*`) |
 | Android (arm64) | `Tagoror-<versión>-android-arm64-debug.apk` | Clave debug de usar y tirar, si faltan los secretos |
 
-> **Aviso:** la interfaz es la de escritorio. Funciona en el móvil, pero no está
-> pensada para él: los botones son pequeños y algunas acciones piden clic derecho
-> o doble clic. Ver [Limitaciones](#limitaciones).
+> **Aviso:** la app se comporta como una app móvil (pantalla completa, pestañas
+> abajo, botón atrás), pero los controles son los de escritorio: los botones
+> son pequeños y algunas acciones piden clic derecho o doble clic. Ver
+> [Limitaciones](#limitaciones).
 
 ---
 
@@ -208,7 +209,26 @@ cualquiera de los cuatro, firma con clave debug y avisa con un *warning*.
 - En móvil no existen: la bandeja del sistema, la instancia única por socket
   local, la compatibilidad X11/Wayland y el buscador de actualizaciones (una app
   instalada por SideStore o como APK no se actualiza desde la página de
-  releases). La ventana es normal y ocupa la pantalla.
+  releases).
+- La ventana ocupa toda la pantalla y respeta las safe areas: el notch o la isla
+  dinámica en iOS, y las barras del sistema en Android. No tiene margen de
+  sombra, esquinas redondeadas ni opacidad, y no restaura la geometría guardada.
+  Las preferencias de ventana y opacidad son las del escritorio y viajan con la
+  sincronización: en móvil se ignoran, sin cambiarlas.
+- No hay nada propio del widget: ni plegar a burbuja, ni siempre encima, ni
+  arrastre, ni tiradores de redimensionado, ni modo aplicación. En Ajustes
+  desaparecen el grupo Ventana, la opacidad, la carpeta de guardado y el botón de
+  salir.
+- Ajustes es la sexta pestaña de la barra inferior. Para que las seis etiquetas
+  quepan enteras, «Cumpleaños» y «Seguimiento» se acortan a «Cumples» y «Tiempo»
+  (el título de la página mantiene el nombre largo), y la letra es 1 px menor.
+- En horizontal la barra sigue abajo si el carril lateral no cabe a lo alto. La
+  rotación es libre.
+- El botón atrás de Android cierra, por orden, el menú, el diálogo, la paleta,
+  el formulario de Seguimiento, la búsqueda o el campo que se está escribiendo.
+  Si no hay nada abierto, vuelve a Notas. Solo desde Notas sale de la app.
+- Los datos se guardan en cuanto la app pasa a segundo plano: el sistema puede
+  cerrarla allí sin avisar.
 - Antes de la primera grabación se pide el permiso del micrófono. La primera vez,
   el sistema pregunta y hay que volver a pulsar grabar.
 - Permisos:
