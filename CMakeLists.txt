@@ -274,6 +274,12 @@ if (IOS)
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${TAGOROR_BUNDLE_ID}"
         # iPhone y iPad.
         XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
+
+    # En iOS Qt Multimedia trae dos backends como plugins estáticos: el nativo
+    # (AVFoundation) y el de FFmpeg, cuyas bibliotecas no vienen con el paquete
+    # de Qt y dejan el enlazado sin los símbolos av_*. La app solo graba con
+    # QAudioSource y reproduce WAV, y para eso basta el nativo.
+    qt_import_plugins(tagoror EXCLUDE Qt6::QFFmpegMediaPlugin)
     return()
 endif()
 
