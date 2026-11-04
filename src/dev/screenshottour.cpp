@@ -351,6 +351,20 @@ void ScreenshotTour::report(const QString &, QWidget *root, QTextStream &out) co
             small << QString("%1(%2x%3)")
                          .arg(b->text().isEmpty() ? b->toolTip().left(24) : b->text().left(24))
                          .arg(b->width()).arg(b->height());
+    // Buttons cut by their container (a fixed-height row too short for them).
+    QStringList clipped;
+    for (QAbstractButton *b : root->findChildren<QAbstractButton *>()) {
+        if (!b->isVisible() || b->isWindow() || !b->parentWidget()) continue;
+        const QRect inParent(b->pos(), b->size());
+        if (!b->parentWidget()->rect().contains(inParent))
+            clipped << QString("%1 %2x%3 in %4 %5x%6")
+                           .arg(b->text().isEmpty() ? b->toolTip().left(24) : b->text().left(24))
+                           .arg(b->width()).arg(b->height())
+                           .arg(typeName(b->parentWidget()))
+                           .arg(b->parentWidget()->width()).arg(b->parentWidget()->height());
+    }
+    if (!clipped.isEmpty())
+        out << QString("  CLIPPED buttons: %1 — %2\n").arg(clipped.size()).arg(clipped.mid(0, 8).join("; "));
     if (!small.isEmpty())
         out << QString("  small touch targets: %1 — %2\n").arg(small.size()).arg(small.mid(0, 12).join(", "));
 }
