@@ -90,6 +90,25 @@ int main(int argc, char *argv[]) {
     panel.showMaximized();
     panel.startUp(true);
 #else
+    if (mobileUi()) {
+        // TAGOROR_FORCE_MOBILE=1: the phone layout in a window the size of a phone
+        // (TAGOROR_MOBILE_SIZE=WxH, 412x915 by default). A preview, not a second
+        // Tagoror: no single instance (it would hand over to the real one) and no
+        // tray.
+        QSize size(412, 915);
+        const QStringList wh = qEnvironmentVariable("TAGOROR_MOBILE_SIZE").split('x');
+        if (wh.size() == 2 && wh.at(0).toInt() > 0 && wh.at(1).toInt() > 0)
+            size = QSize(wh.at(0).toInt(), wh.at(1).toInt());
+        Panel panel;
+        // As on a phone: the window is asked for the screen's size, and if the
+        // layout's minimum is larger the widget grows past the screen, which a
+        // phone then cuts (the screenshot tour crops to the screen to show it).
+        panel.resize(size);
+        panel.show();
+        panel.startUp(true);
+        return app.exec();
+    }
+
     // The panel hides in the tray and comes back from there, so having no visible
     // window is no reason to quit. Without a tray, Panel::closeEvent quits itself.
     app.setQuitOnLastWindowClosed(false);

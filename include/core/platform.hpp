@@ -18,10 +18,18 @@
 #define TAGOROR_LINUX_DESKTOP 1
 #endif
 
-/// The same as a constant, for plain `if (kMobile)`: the desktop path stays
-/// compiled (and checked) everywhere, and the compiler drops the dead branch.
+/// Whether the interface behaves as on a phone: the window is the screen, no
+/// widget chrome, Ajustes as a tab, the back button. Always on Android and iOS.
+///
+/// On the desktop, TAGOROR_FORCE_MOBILE=1 turns the same paths on to look at
+/// the phone layout without a phone (see scripts/mobile-shots.sh). Only what
+/// is about the interface asks this; what the platform simply lacks (tray,
+/// microphone permission) stays behind TAGOROR_MOBILE.
 #ifdef TAGOROR_MOBILE
-inline constexpr bool kMobile = true;
+inline bool mobileUi() { return true; }
 #else
-inline constexpr bool kMobile = false;
+inline bool mobileUi() {
+    static const bool forced = qEnvironmentVariableIntValue("TAGOROR_FORCE_MOBILE") == 1;
+    return forced;
+}
 #endif

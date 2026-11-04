@@ -23,7 +23,7 @@ public:
 protected:
     void mousePressEvent(QMouseEvent *e) override {
         // On a phone the window does not move: the press goes to whatever is under it.
-        if (e->button() == Qt::LeftButton && !kMobile) {
+        if (e->button() == Qt::LeftButton && !mobileUi()) {
             if (QWindow *w = window()->windowHandle()) {
                 w->startSystemMove();
                 return;

@@ -88,7 +88,7 @@ protected:
         const int pillW = rail ? 40 : 44, pillH = 24, gap = 3;
         QFont f = font();
         // A phone's bar holds six items: a point smaller so their labels fit whole.
-        f.setPixelSize(rail || kMobile ? 10 : 11);
+        f.setPixelSize(rail || mobileUi() ? 10 : 11);
         const bool timer = !countdown.isEmpty() || !status.isEmpty();
         if (timer) {
             f.setFamily("IBM Plex Mono");

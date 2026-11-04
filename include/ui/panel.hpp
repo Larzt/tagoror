@@ -302,7 +302,7 @@ private:
     void applyAppModeChrome();      ///< Margins, shadow, frame and the "–" button.
     /// On a phone always an app, whatever the synced preference says (it is the
     /// desktop's): no shadow, no dock, the window the whole screen.
-    bool appMode() const { return kMobile || m_store.prefs().appMode; }
+    bool appMode() const { return mobileUi() || m_store.prefs().appMode; }
     int shadowMargin() const;
     /// From the tray or a second instance: also when minimised.
     void showRestored();

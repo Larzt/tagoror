@@ -130,7 +130,7 @@ Panel::Panel() {
     // The widget floats over the desktop with a shadow and its own opacity. On a
     // phone there is nothing behind it to show through, and a translucent window
     // is painted black there.
-    if (kMobile) {
+    if (mobileUi()) {
         setObjectName("mobileWindow");
         setAttribute(Qt::WA_StyledBackground);
     } else {
@@ -145,7 +145,7 @@ Panel::Panel() {
     m_theme.accent = m_store.prefs().accent;
     // The preference is the desktop's and travels with the sync: on a phone it is
     // read as fully opaque, and left as it is.
-    m_theme.opacity = kMobile ? 100 : m_store.prefs().opacity;
+    m_theme.opacity = mobileUi() ? 100 : m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
     m_theme.compact = m_store.prefs().compact;
     m_systemFont = QApplication::font();
@@ -232,13 +232,13 @@ Panel::Panel() {
     qApp->installEventFilter(this);
     // A phone kills apps in the background without warning: whatever is on screen
     // is saved as soon as the app leaves it, not when the destructor would run.
-    if (kMobile)
+    if (mobileUi())
         connect(qApp, &QGuiApplication::applicationStateChanged, this,
                 [this](Qt::ApplicationState state) {
                     if (state == Qt::ApplicationSuspended || state == Qt::ApplicationHidden)
                         save();
                 });
-    if (!kMobile) buildResizeGrips();   // resizing from any edge; a phone has no edges to drag
+    if (!mobileUi()) buildResizeGrips();   // resizing from any edge; a phone has no edges to drag
 
     m_nav->start(m_store.prefs().windowSize);
     applyWindowFlags();
@@ -298,7 +298,7 @@ void Panel::buildShell() {
     m_shell = new QFrame;
     m_shell->setObjectName("shell");
     // No longer fixed: resizable. On a phone the screen decides.
-    if (!kMobile) m_shell->setMinimumWidth(Navigator::kShellMinWidth);
+    if (!mobileUi()) m_shell->setMinimumWidth(Navigator::kShellMinWidth);
 
     // The shadow is set in applyAppModeChrome(): in app mode the window manager
     // draws it and there is no room for it here.
@@ -320,7 +320,7 @@ void Panel::buildShell() {
     m_mainCol->addWidget(buildBody(), 1);
 
     m_navBar = new NavBar(&m_theme);
-    if (kMobile) {
+    if (mobileUi()) {
         // On a phone Ajustes is one more tab: there is no "⋯" habit to find it in.
         // Six items in ~360px: the long names get a short form so every label
         // reads whole (the page title keeps the full one).
@@ -370,7 +370,7 @@ void Panel::buildShell() {
     m_nav->addPage(m_tracking, m_navBar->buttonFor(m_tracking), "tracking", "Seguimiento");
     // On the desktop Settings has no item in the bar: it comes from "⋯", and
     // leaving parks the focus there. On a phone it is a tab.
-    m_nav->addPage(m_settings, kMobile ? m_navBar->buttonFor(m_settings) : m_moreBtn,
+    m_nav->addPage(m_settings, mobileUi() ? m_navBar->buttonFor(m_settings) : m_moreBtn,
                    "settings", "Ajustes");
     // A Markdown note opens on its own page; back returns to the list.
     m_nav->addPage(m_mdPage, m_backBtn, "markdown", "Nota Markdown");
@@ -383,7 +383,7 @@ void Panel::buildShell() {
     m_palette = new CommandPalette(&m_theme, m_shell);
 
     installShortcuts();
-    if (!kMobile)
+    if (!mobileUi())
         setMinimumSize(Navigator::kShellMinWidth + shadowMargin() * 2, Navigator::kShellMinHeight);
 }
 
@@ -403,7 +403,7 @@ void Panel::installShortcuts() {
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Space), [this] { toggleTrackingPause(); });
     key(QKeySequence(Qt::CTRL | Qt::Key_Comma), [this] { openPage(m_settings); });
     key(QKeySequence(Qt::CTRL | Qt::Key_M), [this] {
-        if (kMobile) return;   // a tablet keyboard: nothing to minimise or fold
+        if (mobileUi()) return;   // a tablet keyboard: nothing to minimise or fold
         if (appMode()) showMinimized();
         else collapse();
     });
@@ -436,7 +436,7 @@ void Panel::installShortcuts() {
 QFrame *Panel::buildHeader() {
     auto *header = new DragBar;
     header->setObjectName("header");
-    if (!kMobile) header->setCursor(Qt::OpenHandCursor);
+    if (!mobileUi()) header->setCursor(Qt::OpenHandCursor);
     header->setFixedHeight(40);
     m_header = header;
 
@@ -915,7 +915,7 @@ void Panel::updateNavLayout() {
     // A phone turned sideways is wide but short: six items down the side would
     // be cut, so the rail only comes in where it fits whole.
     const bool rail = m_shell->width() >= NavBar::kRailFrom &&
-                      (!kMobile || m_shell->height() >= m_navBar->railHeight());
+                      (!mobileUi() || m_shell->height() >= m_navBar->railHeight());
     if (rail == (m_navBar->layoutMode() == NavBar::Rail)) return;
     if (rail) {
         m_mainCol->removeWidget(m_navBar);
@@ -952,7 +952,7 @@ QWidget *Panel::buildBadge() {
 void Panel::applyTheme() {
     // On a phone the panel is the screen: square, no border, and the window under
     // it (the safe areas, where the system bars and the notch are) in its colour.
-    setStyleSheet(kMobile ? m_theme.sheet() + QStringLiteral(
+    setStyleSheet(mobileUi() ? m_theme.sheet() + QStringLiteral(
                                 "QWidget#mobileWindow { background: rgb(19,22,27); }"
                                 "QFrame#shell { border: none; border-radius: 0; }")
                           : m_theme.sheet());
@@ -1083,7 +1083,7 @@ void Panel::refreshNav() {
     QWidget *current = m_body ? m_body->currentWidget() : nullptr;
     // Settings is out of the bar (a tab on a phone); a Markdown note's page
     // belongs to Notas.
-    m_navBar->setActive(current == m_settings && !kMobile ? nullptr
+    m_navBar->setActive(current == m_settings && !mobileUi() ? nullptr
                         : current == m_mdPage ? static_cast<QWidget *>(m_scroll)
                                               : current);
 
@@ -1558,14 +1558,14 @@ void Panel::applyAppModeChrome() {
     }
     // A phone has its own ways to leave and switch apps: no window buttons and no
     // folding to a dock.
-    if (m_maxBtn) m_maxBtn->setVisible(appMode() && !kMobile);
-    if (m_closeBtn) m_closeBtn->setVisible(appMode() && !kMobile);
-    if (m_foldBtn) m_foldBtn->setVisible(!kMobile);
+    if (m_maxBtn) m_maxBtn->setVisible(appMode() && !mobileUi());
+    if (m_closeBtn) m_closeBtn->setVisible(appMode() && !mobileUi());
+    if (m_foldBtn) m_foldBtn->setVisible(!mobileUi());
     refreshMaxButton();
 }
 
 void Panel::toggleMaximized() {
-    if (kMobile || !appMode()) return;
+    if (mobileUi() || !appMode()) return;
     if (isMaximized()) showNormal();
     else showMaximized();
 }
@@ -1656,7 +1656,7 @@ void Panel::refreshTitle() {
     m_titleLabel->setText(title);
     m_titleLabel->update();   // ElidedLabel paints itself
     // On a phone Settings is a tab like the others: no back arrow.
-    const bool back = (m_body->currentWidget() == m_settings && !kMobile) ||
+    const bool back = (m_body->currentWidget() == m_settings && !mobileUi()) ||
                       m_body->currentWidget() == m_mdPage;
     m_timerAddBtn->setVisible(m_body->currentWidget() == m_timerView);
     m_bdayAddBtn->setVisible(m_body->currentWidget() == m_birthdays);
@@ -2667,7 +2667,7 @@ void Panel::dropMissingMarkdown() {
 void Panel::onStoreReloaded() {
     dropMissingMarkdown();
     m_theme.accent = m_store.prefs().accent;
-    m_theme.opacity = kMobile ? 100 : m_store.prefs().opacity;
+    m_theme.opacity = mobileUi() ? 100 : m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
     m_theme.compact = m_store.prefs().compact;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
@@ -2864,7 +2864,7 @@ void Panel::openMoreMenu(QWidget *anchor) {
     menu->addShortcutItem("command", L("Paleta de comandos"), "Ctrl+K", [this] { openPalette(); });
     // On a phone Ajustes is a tab of the bar, and the window has no modes, no
     // minimising and no dock.
-    if (!kMobile) {
+    if (!mobileUi()) {
         menu->addShortcutItem("gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); });
         menu->addShortcutItem(appMode() ? "check" : "window", L("Modo aplicación"), QString(),
                               [this] { setAppMode(!appMode()); });
@@ -2953,9 +2953,7 @@ void Panel::openAbout(QWidget *anchor) {
 }
 
 void Panel::buildTray() {
-#ifdef TAGOROR_MOBILE
-    return;   // no tray on a phone; closing the app is the system's business
-#endif
+    if (mobileUi()) return;   // no tray on a phone; closing the app is the system's business
     if (!QSystemTrayIcon::isSystemTrayAvailable()) return;
 
     m_tray = new QSystemTrayIcon(qApp->windowIcon(), this);
@@ -3129,11 +3127,9 @@ void Panel::applyWindowFlags() {
         flags = Qt::Window | Qt::FramelessWindowHint | Qt::WindowMinMaxButtonsHint;
         if (m_store.prefs().onTop) flags |= Qt::WindowStaysOnTopHint;
     }
-#ifdef TAGOROR_MOBILE
     // A phone has no layers to stack on and no frame to hide: the window is the
     // screen. Stored preferences are left alone; they travel with the sync.
-    flags = Qt::Window;
-#endif
+    if (mobileUi()) flags = Qt::Window;
 
     const bool wasVisible = isVisible();
     setWindowFlags(flags);
@@ -3274,7 +3270,7 @@ bool Panel::eventFilter(QObject *watched, QEvent *event) {
     // release goes the same way, or Android would act on the release instead.
     // While propagating the filter sees an unused press again: handleBack() does
     // nothing in that case, so asking twice is harmless.
-    if (kMobile && (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) &&
+    if (mobileUi() && (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) &&
         static_cast<QKeyEvent *>(event)->key() == Qt::Key_Back) {
         if (event->type() == QEvent::KeyPress && !static_cast<QKeyEvent *>(event)->isAutoRepeat())
             m_backHandled = handleBack();
