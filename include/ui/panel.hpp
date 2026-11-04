@@ -396,4 +396,11 @@ private:
     /// Brought to front from the tray: the widget is out of the desktop layer
     /// until sent back. Not saved, it does not survive a restart.
     bool m_lifted = false;
+
+    /// Android's back button: closes what is open (a menu, a dialog, the search,
+    /// a page) one step at a time. @return false on the notes with nothing open,
+    /// which lets the system take the app away.
+    bool handleBack();
+    /// Whether the last back press was used, so its release is swallowed too.
+    bool m_backHandled = false;
 };

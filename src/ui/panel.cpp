@@ -20,6 +20,7 @@
 #include "ui/splash.hpp"
 #include "ui/dock.hpp"
 #include "ui/notecard.hpp"
+#include "ui/overlay.hpp"
 #include "ui/popup.hpp"
 #include "ui/workarea.hpp"
 
@@ -229,6 +230,14 @@ Panel::Panel() {
     refreshTracking();  // a session left running keeps counting
 
     qApp->installEventFilter(this);
+    // A phone kills apps in the background without warning: whatever is on screen
+    // is saved as soon as the app leaves it, not when the destructor would run.
+    if (kMobile)
+        connect(qApp, &QGuiApplication::applicationStateChanged, this,
+                [this](Qt::ApplicationState state) {
+                    if (state == Qt::ApplicationSuspended || state == Qt::ApplicationHidden)
+                        save();
+                });
     if (!kMobile) buildResizeGrips();   // resizing from any edge; a phone has no edges to drag
 
     m_nav->start(m_store.prefs().windowSize);
@@ -3152,6 +3161,47 @@ void Panel::keyPressEvent(QKeyEvent *e) {
     QWidget::keyPressEvent(e);
 }
 
+bool Panel::handleBack() {
+    // Innermost first: a menu over a dialog closes before the dialog.
+    if (QWidget *popup = QApplication::activePopupWidget()) {
+        popup->close();
+        return true;
+    }
+    if (QWidget *modal = QApplication::activeModalWidget()) {
+        modal->close();
+        return true;
+    }
+    if (m_palette && m_palette->isOpen()) {
+        m_palette->close();
+        return true;
+    }
+    // Seguimiento's forms (session, project, rate, export).
+    for (Overlay *o : m_shell->findChildren<Overlay *>())
+        if (o->isVisible()) {
+            o->close();
+            return true;
+        }
+    if (m_search && m_search->isVisible()) {
+        closeSearch();
+        return true;
+    }
+    // Any other page goes back to the notes, as Escape does on the desktop.
+    if (m_body && m_body->currentWidget() != m_scroll) {
+        if (m_body->currentWidget() == m_planner && m_planner->closeEditor()) return true;
+        showNotes();
+        return true;
+    }
+    // On the notes, a card being written in: the first back leaves the field.
+    if (QWidget *f = QApplication::focusWidget();
+        f && isAncestorOf(f) &&
+        (qobject_cast<QLineEdit *>(f) || qobject_cast<QTextEdit *>(f) ||
+         qobject_cast<QPlainTextEdit *>(f))) {
+        f->clearFocus();
+        return true;
+    }
+    return false;   // the notes and nothing open: the system takes over
+}
+
 namespace {
 constexpr int kResizeOut = 8;   ///< Grab band outside the visible frame (in the shadow).
 constexpr int kResizeIn = 4;    ///< And inside it, over the frame's own edge.
@@ -3214,6 +3264,17 @@ void Panel::resizeEvent(QResizeEvent *e) {
 }
 
 bool Panel::eventFilter(QObject *watched, QEvent *event) {
+    // Android's back button, seen here before any widget: the focused one would
+    // ignore it and the system would close the app. The press decides; its
+    // release goes the same way, or Android would act on the release instead.
+    // While propagating the filter sees an unused press again: handleBack() does
+    // nothing in that case, so asking twice is harmless.
+    if (kMobile && (event->type() == QEvent::KeyPress || event->type() == QEvent::KeyRelease) &&
+        static_cast<QKeyEvent *>(event)->key() == Qt::Key_Back) {
+        if (event->type() == QEvent::KeyPress && !static_cast<QKeyEvent *>(event)->isAutoRepeat())
+            m_backHandled = handleBack();
+        return m_backHandled;
+    }
     // A double click on the header maximises, as on a title bar. Counted by hand:
     // the first press starts a system move, which swallows the release and, on
     // some platforms, turns the second press into a plain one.
