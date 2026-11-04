@@ -311,11 +311,23 @@ void Panel::buildShell() {
     m_mainCol->addWidget(buildBody(), 1);
 
     m_navBar = new NavBar(&m_theme);
-    m_navBar->setItems({{m_scroll, "notes", "Notas", "Ctrl+1"},
-                        {m_planner, "calendar", "Planner", "Ctrl+2"},
-                        {m_timerView, "timer", "Timers", "Ctrl+3"},
-                        {m_birthdays, "cake", "Cumpleaños", "Ctrl+4"},
-                        {m_tracking, "bars", "Seguimiento", "Ctrl+5"}});
+    if (kMobile) {
+        // On a phone Ajustes is one more tab: there is no "⋯" habit to find it in.
+        // Six items in ~360px: the long names get a short form so every label
+        // reads whole (the page title keeps the full one).
+        m_navBar->setItems({{m_scroll, "notes", "Notas", QString()},
+                            {m_planner, "calendar", "Planner", QString()},
+                            {m_timerView, "timer", "Timers", QString()},
+                            {m_birthdays, "cake", "Cumples", QString()},
+                            {m_tracking, "bars", "Tiempo", QString()},
+                            {m_settings, "gear", "Ajustes", QString()}});
+    } else {
+        m_navBar->setItems({{m_scroll, "notes", "Notas", "Ctrl+1"},
+                            {m_planner, "calendar", "Planner", "Ctrl+2"},
+                            {m_timerView, "timer", "Timers", "Ctrl+3"},
+                            {m_birthdays, "cake", "Cumpleaños", "Ctrl+4"},
+                            {m_tracking, "bars", "Seguimiento", "Ctrl+5"}});
+    }
     m_navBar->activated = [this](QWidget *page) {
         if (page == m_scroll) {
             showNotes();
@@ -347,9 +359,10 @@ void Panel::buildShell() {
     m_nav->addPage(m_timerView, m_navBar->buttonFor(m_timerView), "timers", "Timers");
     m_nav->addPage(m_birthdays, m_navBar->buttonFor(m_birthdays), "birthdays", "Cumpleaños");
     m_nav->addPage(m_tracking, m_navBar->buttonFor(m_tracking), "tracking", "Seguimiento");
-    // Settings has no item in the bar: it comes from "⋯", and leaving parks the
-    // focus there.
-    m_nav->addPage(m_settings, m_moreBtn, "settings", "Ajustes");
+    // On the desktop Settings has no item in the bar: it comes from "⋯", and
+    // leaving parks the focus there. On a phone it is a tab.
+    m_nav->addPage(m_settings, kMobile ? m_navBar->buttonFor(m_settings) : m_moreBtn,
+                   "settings", "Ajustes");
     // A Markdown note opens on its own page; back returns to the list.
     m_nav->addPage(m_mdPage, m_backBtn, "markdown", "Nota Markdown");
     // The rail takes its width out of the planner, which then widens by as much.
@@ -1056,8 +1069,9 @@ void Panel::rebuildList() {
 void Panel::refreshNav() {
     if (!m_navBar) return;
     QWidget *current = m_body ? m_body->currentWidget() : nullptr;
-    // Settings is out of the bar; a Markdown note's page belongs to Notas.
-    m_navBar->setActive(current == m_settings ? nullptr
+    // Settings is out of the bar (a tab on a phone); a Markdown note's page
+    // belongs to Notas.
+    m_navBar->setActive(current == m_settings && !kMobile ? nullptr
                         : current == m_mdPage ? static_cast<QWidget *>(m_scroll)
                                               : current);
 
@@ -1629,7 +1643,9 @@ void Panel::refreshTitle() {
         title = m_mdPage->note()->title.isEmpty() ? L("Sin título") : m_mdPage->note()->title;
     m_titleLabel->setText(title);
     m_titleLabel->update();   // ElidedLabel paints itself
-    const bool back = m_body->currentWidget() == m_settings || m_body->currentWidget() == m_mdPage;
+    // On a phone Settings is a tab like the others: no back arrow.
+    const bool back = (m_body->currentWidget() == m_settings && !kMobile) ||
+                      m_body->currentWidget() == m_mdPage;
     m_timerAddBtn->setVisible(m_body->currentWidget() == m_timerView);
     m_bdayAddBtn->setVisible(m_body->currentWidget() == m_birthdays);
     m_trackAddBtn->setVisible(m_body->currentWidget() == m_tracking);

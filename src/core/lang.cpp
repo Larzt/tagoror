@@ -18,6 +18,9 @@ const QHash<QString, QString> &table() {
         {"Cumpleaños", "Birthdays"},
         {"Ver notas", "Back to notes"},
         {"Ajustes", "Settings"},
+        // Short tab labels of the phone's bar (six tabs in ~360px).
+        {"Cumples", "Birthdays"},
+        {"Tiempo", "Tracking"},
         {"Plegar a icono", "Fold to icon"},
         {"Filtrar notas…", "Filter notes…"},
         {"Todavía no hay notas", "No notes yet"},

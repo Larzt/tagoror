@@ -5,6 +5,7 @@
 #include <QPainter>
 
 #include "core/lang.hpp"
+#include "core/platform.hpp"
 #include "ui/keynav.hpp"
 
 namespace {
@@ -86,7 +87,8 @@ protected:
         // Icon pill and label, centred as a block.
         const int pillW = rail ? 40 : 44, pillH = 24, gap = 3;
         QFont f = font();
-        f.setPixelSize(rail ? 10 : 11);
+        // A phone's bar holds six items: a point smaller so their labels fit whole.
+        f.setPixelSize(rail || kMobile ? 10 : 11);
         const bool timer = !countdown.isEmpty() || !status.isEmpty();
         if (timer) {
             f.setFamily("IBM Plex Mono");
