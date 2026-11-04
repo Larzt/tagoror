@@ -9,6 +9,7 @@
 #include <QSize>
 #include <QWidget>
 
+#include "core/platform.hpp"
 #include "core/store.hpp"
 #include "ui/theme.hpp"
 
@@ -299,7 +300,9 @@ private:
     /// there is no shadow margin and no dock: "–" minimises.
     void setAppMode(bool on);
     void applyAppModeChrome();      ///< Margins, shadow, frame and the "–" button.
-    bool appMode() const { return m_store.prefs().appMode; }
+    /// On a phone always an app, whatever the synced preference says (it is the
+    /// desktop's): no shadow, no dock, the window the whole screen.
+    bool appMode() const { return kMobile || m_store.prefs().appMode; }
     int shadowMargin() const;
     /// From the tray or a second instance: also when minimised.
     void showRestored();

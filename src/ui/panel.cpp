@@ -126,7 +126,15 @@ QIcon alertIcon() {
 }  // namespace
 
 Panel::Panel() {
-    setAttribute(Qt::WA_TranslucentBackground);
+    // The widget floats over the desktop with a shadow and its own opacity. On a
+    // phone there is nothing behind it to show through, and a translucent window
+    // is painted black there.
+    if (kMobile) {
+        setObjectName("mobileWindow");
+        setAttribute(Qt::WA_StyledBackground);
+    } else {
+        setAttribute(Qt::WA_TranslucentBackground);
+    }
     // Enter clicks the focused button, not only Space.
     keynav::installButtonEnter();
 
@@ -134,7 +142,9 @@ Panel::Panel() {
     // before any disk access.
     m_store.load();
     m_theme.accent = m_store.prefs().accent;
-    m_theme.opacity = m_store.prefs().opacity;
+    // The preference is the desktop's and travels with the sync: on a phone it is
+    // read as fully opaque, and left as it is.
+    m_theme.opacity = kMobile ? 100 : m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
     m_theme.compact = m_store.prefs().compact;
     m_systemFont = QApplication::font();
@@ -219,7 +229,7 @@ Panel::Panel() {
     refreshTracking();  // a session left running keeps counting
 
     qApp->installEventFilter(this);
-    buildResizeGrips();   // resizing from any edge
+    if (!kMobile) buildResizeGrips();   // resizing from any edge; a phone has no edges to drag
 
     m_nav->start(m_store.prefs().windowSize);
     applyWindowFlags();
@@ -278,7 +288,8 @@ void Panel::buildShell() {
 
     m_shell = new QFrame;
     m_shell->setObjectName("shell");
-    m_shell->setMinimumWidth(Navigator::kShellMinWidth);   // no longer fixed: resizable
+    // No longer fixed: resizable. On a phone the screen decides.
+    if (!kMobile) m_shell->setMinimumWidth(Navigator::kShellMinWidth);
 
     // The shadow is set in applyAppModeChrome(): in app mode the window manager
     // draws it and there is no room for it here.
@@ -350,7 +361,8 @@ void Panel::buildShell() {
     m_palette = new CommandPalette(&m_theme, m_shell);
 
     installShortcuts();
-    setMinimumSize(Navigator::kShellMinWidth + shadowMargin() * 2, Navigator::kShellMinHeight);
+    if (!kMobile)
+        setMinimumSize(Navigator::kShellMinWidth + shadowMargin() * 2, Navigator::kShellMinHeight);
 }
 
 void Panel::installShortcuts() {
@@ -401,7 +413,7 @@ void Panel::installShortcuts() {
 QFrame *Panel::buildHeader() {
     auto *header = new DragBar;
     header->setObjectName("header");
-    header->setCursor(Qt::OpenHandCursor);
+    if (!kMobile) header->setCursor(Qt::OpenHandCursor);
     header->setFixedHeight(40);
     m_header = header;
 
@@ -912,7 +924,12 @@ QWidget *Panel::buildBadge() {
 }
 
 void Panel::applyTheme() {
-    setStyleSheet(m_theme.sheet());
+    // On a phone the panel is the screen: square, no border, and the window under
+    // it (the safe areas, where the system bars and the notch are) in its colour.
+    setStyleSheet(kMobile ? m_theme.sheet() + QStringLiteral(
+                                "QWidget#mobileWindow { background: rgb(19,22,27); }"
+                                "QFrame#shell { border: none; border-radius: 0; }")
+                          : m_theme.sheet());
 
     for (QToolButton *b : {m_backBtn, m_foldBtn, m_moreBtn, m_maxBtn, m_closeBtn, m_searchBtn,
                            m_timerAddBtn, m_bdayAddBtn, m_trackAddBtn})
@@ -1512,13 +1529,16 @@ void Panel::applyAppModeChrome() {
             row->insertWidget(appMode() ? more + 1 : more, m_foldBtn);
         }
     }
-    if (m_maxBtn) m_maxBtn->setVisible(appMode());
-    if (m_closeBtn) m_closeBtn->setVisible(appMode());
+    // A phone has its own ways to leave and switch apps: no window buttons and no
+    // folding to a dock.
+    if (m_maxBtn) m_maxBtn->setVisible(appMode() && !kMobile);
+    if (m_closeBtn) m_closeBtn->setVisible(appMode() && !kMobile);
+    if (m_foldBtn) m_foldBtn->setVisible(!kMobile);
     refreshMaxButton();
 }
 
 void Panel::toggleMaximized() {
-    if (!appMode()) return;
+    if (kMobile || !appMode()) return;
     if (isMaximized()) showNormal();
     else showMaximized();
 }
@@ -2618,7 +2638,7 @@ void Panel::dropMissingMarkdown() {
 void Panel::onStoreReloaded() {
     dropMissingMarkdown();
     m_theme.accent = m_store.prefs().accent;
-    m_theme.opacity = m_store.prefs().opacity;
+    m_theme.opacity = kMobile ? 100 : m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
     m_theme.compact = m_store.prefs().compact;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);

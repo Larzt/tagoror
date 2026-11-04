@@ -17,3 +17,11 @@
 #if defined(Q_OS_LINUX) && !defined(Q_OS_ANDROID)
 #define TAGOROR_LINUX_DESKTOP 1
 #endif
+
+/// The same as a constant, for plain `if (kMobile)`: the desktop path stays
+/// compiled (and checked) everywhere, and the compiler drops the dead branch.
+#ifdef TAGOROR_MOBILE
+inline constexpr bool kMobile = true;
+#else
+inline constexpr bool kMobile = false;
+#endif
