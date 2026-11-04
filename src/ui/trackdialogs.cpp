@@ -19,6 +19,7 @@
 #include <QVBoxLayout>
 
 #include "core/lang.hpp"
+#include "core/platform.hpp"
 #include "ui/keynav.hpp"
 #include "ui/overlay.hpp"
 #include "ui/popup.hpp"
@@ -401,16 +402,22 @@ void editProject(const Theme *theme, QWidget *host, const Project *project,
     }
     auto chosen = std::make_shared<int>(color);
     auto *swatches = new QWidget;
-    auto *row = new QHBoxLayout(swatches);
-    row->setContentsMargins(0, 0, 0, 0);
-    row->setSpacing(4);
+    // On a phone each swatch is a 44px target, and eight in a row do not fit:
+    // two rows of four.
+    QGridLayout *grid = mobileUi() ? new QGridLayout(swatches) : nullptr;
+    QHBoxLayout *row = grid ? nullptr : new QHBoxLayout(swatches);
+    QLayout *swatchLayout = grid ? static_cast<QLayout *>(grid) : row;
+    swatchLayout->setContentsMargins(0, 0, 0, 0);
+    swatchLayout->setSpacing(4);
     for (int i = 0; i < Project::kColors; ++i) {
         auto *s = new Swatch(Project::paletteColor(i));
         s->setChecked(i == color);
         QObject::connect(s, &QAbstractButton::clicked, ov, [chosen, i] { *chosen = i; });
-        row->addWidget(s);
+        if (grid) grid->addWidget(s, i / 4, i % 4);
+        else row->addWidget(s);
     }
-    row->addStretch();
+    if (grid) grid->setColumnStretch(4, 1);
+    else row->addStretch();
     col->addWidget(labelled(L("Color"), swatches));
 
     auto *client = new QLineEdit(project ? project->client : QString());

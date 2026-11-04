@@ -49,11 +49,11 @@ public:
     }
 
     QSize sizeHint() const override {
-        return rail ? QSize(60, 62) : QSize(70, NavBar::kBarHeight - 10);
+        return rail ? QSize(60, 62) : QSize(70, NavBar::barHeight() - 10);
     }
     QSize minimumSizeHint() const override {
         // Small on purpose: four labels must not widen the panel (see *Card widths*).
-        return rail ? QSize(60, 62) : QSize(40, NavBar::kBarHeight - 10);
+        return rail ? QSize(60, 62) : QSize(40, NavBar::barHeight() - 10);
     }
 
 protected:
@@ -162,6 +162,8 @@ private:
     bool m_hover = false;
 };
 
+int NavBar::barHeight() { return mobileUi() ? 58 : kBarHeight; }
+
 NavBar::NavBar(const Theme *theme, QWidget *parent) : QWidget(parent), m_theme(theme) {
     setObjectName("navBar");
     setAttribute(Qt::WA_StyledBackground, true);
@@ -198,7 +200,7 @@ void NavBar::setLayoutMode(Layout layout) {
         m_box->setSpacing(2);
         setMinimumWidth(0);
         setMaximumWidth(QWIDGETSIZE_MAX);
-        setFixedHeight(kBarHeight);
+        setFixedHeight(barHeight());
     } else {
         m_box = new QVBoxLayout(this);
         m_box->setContentsMargins(4, 8, 4, 8);

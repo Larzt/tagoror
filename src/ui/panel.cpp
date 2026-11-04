@@ -230,6 +230,10 @@ Panel::Panel() {
     refreshTracking();  // a session left running keeps counting
 
     qApp->installEventFilter(this);
+    // The filter catches buttons from now on (see fitForTouch()); these were
+    // already polished while the pages were built.
+    if (mobileUi())
+        for (QAbstractButton *b : findChildren<QAbstractButton *>()) fitForTouch(b);
     // A phone kills apps in the background without warning: whatever is on screen
     // is saved as soon as the app leaves it, not when the destructor would run.
     if (mobileUi())
@@ -443,7 +447,8 @@ QFrame *Panel::buildHeader() {
     auto *header = new DragBar;
     header->setObjectName("header");
     if (!mobileUi()) header->setCursor(Qt::OpenHandCursor);
-    header->setFixedHeight(40);
+    // On a phone its buttons are 44px targets (see fitForTouch()).
+    header->setFixedHeight(mobileUi() ? 52 : 40);
     m_header = header;
 
     auto *l = new QHBoxLayout(header);
@@ -520,7 +525,7 @@ QFrame *Panel::buildHeader() {
 QWidget *Panel::buildTools() {
     auto *row = new QFrame;
     row->setObjectName("toolsRow");
-    row->setFixedHeight(36);
+    row->setFixedHeight(mobileUi() ? 48 : 36);
     m_tools = row;
     auto *l = new QHBoxLayout(row);
     l->setContentsMargins(0, 0, 6, 0);
@@ -1594,6 +1599,23 @@ void Panel::changeEvent(QEvent *e) {
         refreshMaxButton();
         placeResizeGrips();   // none while maximised
     }
+}
+
+/// A finger needs about 44px; the desktop's buttons are drawn for a pointer
+/// (28px icons, 30px segments, 18px checkboxes). On a phone each one grows to
+/// 44px high, and a square icon button to 44x44 with the same icon: the target
+/// grows, the drawing does not. Done once per button, when Qt polishes it, so
+/// it reaches those built later (cards, menus, dialogs) without touching each.
+void Panel::fitForTouch(QAbstractButton *b) {
+    constexpr int kTouch = 44;
+    const QSize min = b->minimumSize(), max = b->maximumSize();
+    const bool fixedSquare = min == max && min.width() == min.height() && min.width() > 0;
+    if (fixedSquare && min.width() < kTouch) {
+        b->setFixedSize(kTouch, kTouch);
+        return;
+    }
+    if (max.height() < kTouch) b->setMaximumHeight(kTouch);
+    if (b->minimumHeight() < kTouch) b->setMinimumHeight(kTouch);
 }
 
 /// Opens a page. The bar marks where you are; leaving is another item, Escape,
@@ -3269,6 +3291,10 @@ void Panel::resizeEvent(QResizeEvent *e) {
 }
 
 bool Panel::eventFilter(QObject *watched, QEvent *event) {
+    // Every button, from any page or menu, as it is polished before its first
+    // show: on a phone it becomes a 44px target.
+    if (event->type() == QEvent::Polish && mobileUi())
+        if (auto *b = qobject_cast<QAbstractButton *>(watched)) fitForTouch(b);
     // Android's back button, seen here before any widget: the focused one would
     // ignore it and the system would close the app. The press decides; its
     // release goes the same way, or Android would act on the release instead.

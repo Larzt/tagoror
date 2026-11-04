@@ -30,6 +30,7 @@
 #include <functional>
 
 #include "core/lang.hpp"
+#include "core/platform.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
 #include "ui/popup.hpp"
@@ -1085,7 +1086,7 @@ TrackingView::TrackingView(const Theme &theme, QWidget *parent) : QWidget(parent
 QWidget *TrackingView::buildTabs() {
     auto *row = new QFrame;
     row->setObjectName("toolsRow");
-    row->setFixedHeight(36);
+    row->setFixedHeight(mobileUi() ? 48 : 36);   // on a phone its tabs are 44px targets
     auto *l = new QHBoxLayout(row);
     l->setContentsMargins(9, 0, 9, 0);
     l->setSpacing(4);

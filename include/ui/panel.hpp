@@ -404,6 +404,8 @@ private:
     /// a page) one step at a time. @return false on the notes with nothing open,
     /// which lets the system take the app away.
     bool handleBack();
+    /// On a phone, @p b becomes a 44px touch target (see the definition).
+    static void fitForTouch(class QAbstractButton *b);
     /// Whether the last back press was used, so its release is swallowed too.
     bool m_backHandled = false;
 };

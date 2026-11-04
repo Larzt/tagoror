@@ -1,5 +1,7 @@
 #include "ui/popup.hpp"
 
+#include "core/platform.hpp"
+
 #include <QApplication>
 #include <QEnterEvent>
 #include <QGuiApplication>
@@ -41,6 +43,8 @@ public:
     }
 
     QSize sizeHint() const override {
+        // A phone's finger needs 44px; the desktop's pointer, less.
+        if (mobileUi()) return QSize(kRowWidth, m_sub.isEmpty() ? 44 : 52);
         return QSize(kRowWidth, m_sub.isEmpty() ? 30 : 40);
     }
 
