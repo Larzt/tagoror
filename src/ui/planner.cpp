@@ -327,7 +327,18 @@ protected:
             }
             return;
         }
-        // An empty slot: a new event at that time, rounded to the half hour.
+        // A single click on an empty slot does nothing: creating takes a double click.
+    }
+
+    // Double click on an empty slot: a new event at that time, rounded to the half
+    // hour. On a block it behaves as a second press, as before.
+    void mouseDoubleClickEvent(QMouseEvent *e) override {
+        const QPoint at = e->position().toPoint();
+        if (e->button() != Qt::LeftButton || blockAt(at) >= 0) {
+            QWidget::mouseDoubleClickEvent(e);
+            return;
+        }
+        m_pressed = false;
         const int col = columnAt(at.x());
         if (col < 0) return;
         const qreal hours = qBound<qreal>(0, at.y() / qreal(kHour), 23.5);

@@ -93,7 +93,7 @@
 - Your reminders and birthdays appear on the same grid — reminders as a dashed
   block you can click to jump to the note, birthdays as an all-day tag — and the
   category list on the left hides any of them, reminders and birthdays included.
-- Click an empty hour to create something there, or use **+**. The form can
+- Double-click an empty hour to create something there, or use **+**. The form can
   also create a plain reminder note, which is what the old calendar did when you
   picked a day.
 - **Copy, paste and duplicate**: **Ctrl+C** copies the event, task or reminder
