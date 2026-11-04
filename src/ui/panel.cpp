@@ -381,6 +381,7 @@ void Panel::installShortcuts() {
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Space), [this] { toggleTrackingPause(); });
     key(QKeySequence(Qt::CTRL | Qt::Key_Comma), [this] { openPage(m_settings); });
     key(QKeySequence(Qt::CTRL | Qt::Key_M), [this] {
+        if (kMobile) return;   // a tablet keyboard: nothing to minimise or fold
         if (appMode()) showMinimized();
         else collapse();
     });
@@ -2833,13 +2834,17 @@ void Panel::snoozeNote(Note *n, int minutes) {
 void Panel::openMoreMenu(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
     menu->addShortcutItem("command", L("Paleta de comandos"), "Ctrl+K", [this] { openPalette(); });
-    menu->addShortcutItem("gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); });
-    menu->addShortcutItem(appMode() ? "check" : "window", L("Modo aplicación"), QString(),
-                          [this] { setAppMode(!appMode()); });
-    if (appMode())
-        menu->addShortcutItem("minus", L("Minimizar"), "Ctrl+M", [this] { showMinimized(); });
-    else
-        menu->addShortcutItem("dock", L("Plegar a icono"), "Ctrl+M", [this] { collapse(); });
+    // On a phone Ajustes is a tab of the bar, and the window has no modes, no
+    // minimising and no dock.
+    if (!kMobile) {
+        menu->addShortcutItem("gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); });
+        menu->addShortcutItem(appMode() ? "check" : "window", L("Modo aplicación"), QString(),
+                              [this] { setAppMode(!appMode()); });
+        if (appMode())
+            menu->addShortcutItem("minus", L("Minimizar"), "Ctrl+M", [this] { showMinimized(); });
+        else
+            menu->addShortcutItem("dock", L("Plegar a icono"), "Ctrl+M", [this] { collapse(); });
+    }
     menu->addSeparator();
     menu->addShortcutItem("info", L("Acerca de Tagoror"), QString(), [this, anchor] {
         QPointer<QWidget> at(anchor);

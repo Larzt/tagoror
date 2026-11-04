@@ -326,13 +326,16 @@ void SettingsView::refresh() {
     switch (m_tab) {
         case General:
             addLanguage();
-            addWindow();
+            // A phone has no window to configure (it is the screen), gets its
+            // updates from where it was installed, and leaving the app is the
+            // system's gesture, not a button.
+            if (!kMobile) addWindow();
             addData();
             addInputs();
 #ifndef TAGOROR_MOBILE
-            addUpdates();   // a phone gets its updates from where it was installed
+            addUpdates();
 #endif
-            addQuit();
+            if (!kMobile) addQuit();
             break;
         case Appearance:
             addAppearance();
@@ -425,8 +428,8 @@ void SettingsView::addAppearance() {
         b->addLayout(l);
     }
 
-    // Opacity
-    {
+    // Opacity: of the widget over the desktop. A phone's window is opaque.
+    if (!kMobile) {
         QVBoxLayout *b = addBlock();
         auto *hl = new QHBoxLayout;
         hl->setContentsMargins(0, 0, 0, 0);
@@ -602,10 +605,12 @@ void SettingsView::addWindow() {
 
 void SettingsView::addData() {
     beginGroup(L("DATOS"), "folder");
-    addAction(L("Carpeta de guardado"),
-              m_store->available() ? prettyPath(appDataDir())
-                                   : L("No disponible · %1").arg(prettyPath(appDataDir())),
-              L("Cambiar"), true, [this](QWidget *) { emit dataFolderRequested(); });
+    // Inside a phone's sandbox there is no other folder to pick.
+    if (!kMobile)
+        addAction(L("Carpeta de guardado"),
+                  m_store->available() ? prettyPath(appDataDir())
+                                       : L("No disponible · %1").arg(prettyPath(appDataDir())),
+                  L("Cambiar"), true, [this](QWidget *) { emit dataFolderRequested(); });
 
     const Store::Prefs &prefs = m_store->prefs();
     const int kept = int(m_store->backups().size());
@@ -969,6 +974,8 @@ void SettingsView::addShortcuts() {
         {"VENTANA", {{"Plegar a icono", "Ctrl+M"}}},
     };
     for (const auto &[title, rows] : groups) {
+        // A tablet keyboard has nothing to fold.
+        if (kMobile && qstrcmp(title, "VENTANA") == 0) continue;
         beginGroup(L(title), "command");
         for (const auto &[what, keys] : rows) {
             auto *row = new QWidget;
