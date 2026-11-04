@@ -96,6 +96,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.2.3" date="2026-11-04">
+      <description>
+        <p>In the planner, a new event is created with a double click on an
+           empty hour instead of a single click.</p>
+      </description>
+    </release>
     <release version="1.2.2" date="2026-11-03">
       <description>
         <p>Repeating events and tasks can end on a chosen day: the edit form
