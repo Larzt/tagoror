@@ -332,9 +332,7 @@ void SettingsView::refresh() {
             if (!mobileUi()) addWindow();
             addData();
             addInputs();
-#ifndef TAGOROR_MOBILE
-            addUpdates();
-#endif
+            if (!mobileUi()) addUpdates();
             if (!mobileUi()) addQuit();
             break;
         case Appearance:

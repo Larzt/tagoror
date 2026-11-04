@@ -2610,9 +2610,7 @@ bool Panel::updateAvailable() const {
 /// Once a day, on the same heartbeat as reminders and backups. Asking is an
 /// HTTP request, so the stored date sets the pace, not the timer.
 bool Panel::updateCheckDue() const {
-#ifdef TAGOROR_MOBILE
-    return false;   // installed from outside: the releases page offers nothing to it
-#endif
+    if (mobileUi()) return false;   // installed from outside: the releases page offers nothing to it
     if (!m_store.prefs().updateCheck || m_updater->busy()) return false;
 
     constexpr qint64 kDayMs = 24LL * 3600 * 1000;

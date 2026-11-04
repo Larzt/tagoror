@@ -324,7 +324,9 @@ void ScreenshotTour::report(const QString &, QWidget *root, QTextStream &out) co
     // down through whichever child reaches furthest right.
     int chains = 0;
     for (QWidget *w : root->findChildren<QWidget *>()) {
-        if (!overflows(w) || !w->isVisibleTo(root)) continue;
+        // Menus and pickers are windows of their own, reported apart (and their
+        // shadow margin may hang off the screen on purpose).
+        if (w->isWindow() || !overflows(w) || !w->isVisibleTo(root)) continue;
         if (w->parentWidget() && w->parentWidget() != root && overflows(w->parentWidget())) continue;
         if (++chains > 6) break;
         out << "  OVERFLOW " << describe(w, rectOf(w)) << "\n";
