@@ -108,14 +108,21 @@ jobs:
 
       # Sin firmar: el .ipa lo firma después quien lo instala (SideStore,
       # Sideloadly) con su propio Apple ID.
+      # Como en Android: si falla, los errores van a una anotación.
       - name: Compilar
         run: |
-          cmake --build build-ios --config Release --parallel -- \
-            -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGN_ENTITLEMENTS=""
+          set -o pipefail
+          if ! cmake --build build-ios --config Release --parallel -- \
+              -sdk iphoneos \
+              CODE_SIGNING_ALLOWED=NO \
+              CODE_SIGNING_REQUIRED=NO \
+              CODE_SIGN_IDENTITY="" \
+              CODE_SIGN_ENTITLEMENTS="" 2>&1 | tee "$RUNNER_TEMP/ios.log"; then
+            msg="$(grep -E -A2 "error:|\*\* BUILD FAILED|fatal|Undefined symbol|ld: " "$RUNNER_TEMP/ios.log" \
+              | grep -v '^--$' | head -n 60 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+            echo "::error title=iOS::${msg:-sin líneas de error reconocibles; ver el log}"
+            exit 1
+          fi
 
       # Un .ipa no es más que el .app dentro de Payload/, comprimido.
       - name: Empaquetar el .ipa
@@ -249,8 +256,18 @@ jobs:
             -DTAGOROR_ANDROID_OPENSSL_DIR="$RUNNER_TEMP/android_openssl"
 
       # Un APK Release sin firmar; la firma va en el paso siguiente.
+      # Si falla, las líneas de error de Gradle/androiddeployqt salen también como
+      # anotaciones: se ven en el resumen de la ejecución sin abrir el log.
       - name: Compilar el APK
-        run: cmake --build build-android --target apk --parallel
+        run: |
+          set -o pipefail
+          if ! cmake --build build-android --target apk --parallel 2>&1 | tee "$RUNNER_TEMP/apk.log"; then
+            # Una sola anotación con todo: GitHub solo guarda 10 por paso.
+            msg="$(grep -E -A3 "What went wrong|error:|ERROR|FAILURE|Exception|Cannot|failed" "$RUNNER_TEMP/apk.log" \
+              | grep -v '^--$' | head -n 60 | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+            echo "::error title=APK::${msg:-sin líneas de error reconocibles; ver el log}"
+            exit 1
+          fi
 
       # Con los cuatro secretos, firma de release: es la que permite actualizar
       # la app instalada y la única que se publica. Sin ellos, una clave debug
