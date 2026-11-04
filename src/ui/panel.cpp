@@ -3175,9 +3175,11 @@ bool Panel::handleBack() {
         m_palette->close();
         return true;
     }
-    // Seguimiento's forms (session, project, rate, export).
-    for (Overlay *o : m_shell->findChildren<Overlay *>())
-        if (o->isVisible()) {
+    // Seguimiento's forms (session, project, rate, export), laid over the shell.
+    // Overlay has no Q_OBJECT, so findChildren<Overlay *>() would not filter by
+    // type: it is looked for by hand among the shell's children.
+    for (QWidget *w : m_shell->findChildren<QWidget *>(Qt::FindDirectChildrenOnly))
+        if (auto *o = dynamic_cast<Overlay *>(w); o && o->isVisible()) {
             o->close();
             return true;
         }
