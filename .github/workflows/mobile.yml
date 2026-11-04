@@ -1,0 +1,142 @@
+# Compila Tagoror para iOS (.ipa sin firmar) y Android (.apk instalable).
+#
+# Se lanza a mano (workflow_dispatch), al empujar una etiqueta v* y desde
+# release.yml con workflow_call, igual que windows.yml: las etiquetas que crea
+# la release con GITHUB_TOKEN no disparan otros workflows. Ver
+# docs/mobile-builds.md.
+
+name: Mobile
+
+on:
+  # TEMPORAL: para probarlo en la rama antes de fusionar. workflow_dispatch solo
+  # aparece cuando el fichero ya está en main. Quitar antes del PR.
+  push:
+    branches: [mobile-builds]
+    tags: ['v*']
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Versión a compilar; si falta se deduce como en un push'
+        required: false
+        type: string
+
+# Igual que en windows.yml: el nombre del workflow en el grupo separa la
+# ejecución propia de la llamada desde release.yml, y solo se cancela la propia.
+concurrency:
+  group: mobile-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.workflow == 'Mobile' }}
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: '6.9.*'
+  # CFBundleIdentifier en iOS y nombre del paquete en Android.
+  BUNDLE_ID: org.appstride.tagoror
+
+jobs:
+  version:
+    name: Versión
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # La misma lógica que windows.yml: entrada, etiqueta o CMakeLists.txt.
+      - name: Averiguar la versión
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then
+            version="$INPUT_VERSION"
+          elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+          else
+            version="$(sed -n 's/^project(tagoror VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
+          fi
+
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Versión inválida: $version"
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Versión: $version"
+
+  ios:
+    name: iOS (.ipa sin firmar)
+    needs: version
+    runs-on: macos-latest
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # target ios: la action instala además la Qt de escritorio para macOS que
+      # hace falta como host (moc, rcc...) y deja su ruta en QT_HOST_PATH.
+      - name: Instalar Qt para iOS
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: ios
+          arch: ios
+          modules: qtmultimedia
+          cache: true
+
+      # Sin el cliente OAuth de Google: el redirect por 127.0.0.1 no sirve en
+      # iOS (ver docs/mobile-builds.md), así que Drive sale desactivado.
+      - name: Configurar
+        run: |
+          "$QT_ROOT_DIR/bin/qt-cmake" -S . -B build-ios -G Xcode \
+            -DQT_HOST_PATH="$QT_HOST_PATH" \
+            -DTAGOROR_VERSION="$VERSION" \
+            -DTAGOROR_BUNDLE_ID="$BUNDLE_ID"
+
+      # Sin firmar: el .ipa lo firma después quien lo instala (SideStore,
+      # Sideloadly) con su propio Apple ID.
+      - name: Compilar
+        run: |
+          cmake --build build-ios --config Release --parallel -- \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS=""
+
+      # Un .ipa no es más que el .app dentro de Payload/, comprimido.
+      - name: Empaquetar el .ipa
+        run: |
+          app="$(find build-ios -type d -name '*.app' -path '*Release-iphoneos*' | head -n 1)"
+          if [[ -z "$app" ]]; then
+            echo "::error::No se encontró el .app compilado"
+            find build-ios -maxdepth 3 -type d
+            exit 1
+          fi
+          echo "App: $app"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Info.plist"
+
+          rm -rf Payload Tagoror-unsigned.ipa
+          mkdir Payload
+          cp -R "$app" Payload/
+          zip -qry Tagoror-unsigned.ipa Payload
+          ls -lh Tagoror-unsigned.ipa
+
+      - name: Guardar el .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: tagoror-ios-${{ env.VERSION }}
+          path: Tagoror-unsigned.ipa
+          if-no-files-found: error
+
+      # Solo al empujar una etiqueta a mano. Desde release.yml (workflow_call)
+      # la ref es main y quien cuelga los ficheros es su job de publicar.
+      - name: Colgarlo de la release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: Tagoror-unsigned.ipa
