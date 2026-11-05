@@ -30,6 +30,7 @@
 #include <functional>
 
 #include "core/lang.hpp"
+#include "core/platform.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
 #include "ui/popup.hpp"
@@ -1085,7 +1086,7 @@ TrackingView::TrackingView(const Theme &theme, QWidget *parent) : QWidget(parent
 QWidget *TrackingView::buildTabs() {
     auto *row = new QFrame;
     row->setObjectName("toolsRow");
-    row->setFixedHeight(36);
+    row->setFixedHeight(mobileUi() ? 48 : 36);   // on a phone its tabs are 44px targets
     auto *l = new QHBoxLayout(row);
     l->setContentsMargins(9, 0, 9, 0);
     l->setSpacing(4);
@@ -1324,7 +1325,10 @@ QDate TrackingView::periodTo() const {
 
 void TrackingView::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
-    const bool wide = width() >= kWideFrom;
+    // On the desktop the rail takes 68px off the page before it gets here; a
+    // phone turned sideways has none, and at 640px the two panes (678px at least)
+    // did not fit. There they wait for a wider screen.
+    const bool wide = width() >= (mobileUi() ? kWideFrom + 80 : kWideFrom);
     if (wide != m_wide) {
         m_wide = wide;
         applyLayout();

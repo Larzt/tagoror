@@ -8,6 +8,8 @@
 #include <QWidget>
 #include <QWindow>
 
+#include "core/platform.hpp"
+
 /// @file
 /// Everything that moves or resizes the window delegates to the compositor:
 /// Wayland does not let a client position its own windows. Any new handle
@@ -20,7 +22,8 @@ public:
 
 protected:
     void mousePressEvent(QMouseEvent *e) override {
-        if (e->button() == Qt::LeftButton) {
+        // On a phone the window does not move: the press goes to whatever is under it.
+        if (e->button() == Qt::LeftButton && !mobileUi()) {
             if (QWindow *w = window()->windowHandle()) {
                 w->startSystemMove();
                 return;

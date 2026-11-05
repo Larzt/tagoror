@@ -7,6 +7,7 @@
 #include "core/syncengine.hpp"
 #include "core/webdavbackend.hpp"
 #include "core/lang.hpp"
+#include "core/platform.hpp"
 #include "core/updater.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
@@ -19,6 +20,7 @@
 #include <QUrl>
 #include <QEnterEvent>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -229,9 +231,14 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
     // The tabs, in a strip that scrolls sideways when the panel is narrow rather
     // than demanding the width of all five names (see *Card widths*).
     auto *tabs = new QWidget;
-    auto *tl = new QHBoxLayout(tabs);
-    tl->setContentsMargins(0, 0, 0, 0);
-    tl->setSpacing(2);
+    // On a phone there is no sideways scrolling: the five tabs go in two rows of
+    // a grid (three and two), each a third of the width, which fits the longest
+    // name at 360px.
+    QGridLayout *grid = mobileUi() ? new QGridLayout(tabs) : nullptr;
+    QHBoxLayout *tl = grid ? nullptr : new QHBoxLayout(tabs);
+    QLayout *tabLayout = grid ? static_cast<QLayout *>(grid) : tl;
+    tabLayout->setContentsMargins(0, 0, 0, 0);
+    tabLayout->setSpacing(2);
     const QList<QPair<Tab, const char *>> names{{General, "General"},
                                                 {Appearance, "Apariencia"},
                                                 {Sync, "Sincronización"},
@@ -244,10 +251,19 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
         b->setCursor(Qt::PointingHandCursor);
         b->setFocusPolicy(Qt::TabFocus);
         connect(b, &QToolButton::clicked, this, [this, tab = tab] { setTab(tab); });
-        tl->addWidget(b);
+        if (grid) {
+            b->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+            grid->addWidget(b, int(m_tabButtons.size()) / 3, int(m_tabButtons.size()) % 3);
+        } else {
+            tl->addWidget(b);
+        }
         m_tabButtons << b;
     }
-    tl->addStretch();
+    if (grid) {
+        for (int c = 0; c < 3; ++c) grid->setColumnStretch(c, 1);
+    } else {
+        tl->addStretch();
+    }
     auto *tabScroll = new QScrollArea;
     tabScroll->setObjectName("setTabs");
     tabScroll->setWidget(tabs);
@@ -259,7 +275,14 @@ SettingsView::SettingsView(const Theme &theme, QWidget *parent)
     tabScroll->viewport()->setAutoFillBackground(false);
     tabScroll->viewport()->setObjectName("scrollViewport");
     tabs->setObjectName("setTabsHost");
-    col->addWidget(tabScroll);
+    if (grid) {
+        // No strip to scroll: the grid itself, as tall as its two rows.
+        tabScroll->takeWidget();
+        delete tabScroll;
+        col->addWidget(tabs);
+    } else {
+        col->addWidget(tabScroll);
+    }
 
     auto *host = new QWidget;
     host->setObjectName("listHost");
@@ -325,11 +348,14 @@ void SettingsView::refresh() {
     switch (m_tab) {
         case General:
             addLanguage();
-            addWindow();
+            // A phone has no window to configure (it is the screen), gets its
+            // updates from where it was installed, and leaving the app is the
+            // system's gesture, not a button.
+            if (!mobileUi()) addWindow();
             addData();
             addInputs();
-            addUpdates();
-            addQuit();
+            if (!mobileUi()) addUpdates();
+            if (!mobileUi()) addQuit();
             break;
         case Appearance:
             addAppearance();
@@ -422,8 +448,8 @@ void SettingsView::addAppearance() {
         b->addLayout(l);
     }
 
-    // Opacity
-    {
+    // Opacity: of the widget over the desktop. A phone's window is opaque.
+    if (!mobileUi()) {
         QVBoxLayout *b = addBlock();
         auto *hl = new QHBoxLayout;
         hl->setContentsMargins(0, 0, 0, 0);
@@ -586,7 +612,7 @@ void SettingsView::addWindow() {
                                                : L("El mismo para todas"),
                   m_store->prefs().sizePerPage, [this](bool on) { emit sizePerPageToggled(on); });
 
-#ifdef Q_OS_LINUX
+#ifdef TAGOROR_LINUX_DESKTOP
     // See choosePlatform() in main.cpp: the panel's placement and "always on top"
     // depend on this. Outside Linux the choice does not exist.
     const bool nativeWayland = QSettings().value("platform").toString() == "wayland";
@@ -599,10 +625,12 @@ void SettingsView::addWindow() {
 
 void SettingsView::addData() {
     beginGroup(L("DATOS"), "folder");
-    addAction(L("Carpeta de guardado"),
-              m_store->available() ? prettyPath(appDataDir())
-                                   : L("No disponible · %1").arg(prettyPath(appDataDir())),
-              L("Cambiar"), true, [this](QWidget *) { emit dataFolderRequested(); });
+    // Inside a phone's sandbox there is no other folder to pick.
+    if (!mobileUi())
+        addAction(L("Carpeta de guardado"),
+                  m_store->available() ? prettyPath(appDataDir())
+                                       : L("No disponible · %1").arg(prettyPath(appDataDir())),
+                  L("Cambiar"), true, [this](QWidget *) { emit dataFolderRequested(); });
 
     const Store::Prefs &prefs = m_store->prefs();
     const int kept = int(m_store->backups().size());
@@ -966,6 +994,8 @@ void SettingsView::addShortcuts() {
         {"VENTANA", {{"Plegar a icono", "Ctrl+M"}}},
     };
     for (const auto &[title, rows] : groups) {
+        // A tablet keyboard has nothing to fold.
+        if (mobileUi() && qstrcmp(title, "VENTANA") == 0) continue;
         beginGroup(L(title), "command");
         for (const auto &[what, keys] : rows) {
             auto *row = new QWidget;

@@ -9,6 +9,7 @@
 #include <QSize>
 #include <QWidget>
 
+#include "core/platform.hpp"
 #include "core/store.hpp"
 #include "ui/theme.hpp"
 
@@ -52,6 +53,9 @@ class TrackingView;
 /// birthdays, Seguimiento and the settings.
 class Panel : public QWidget {
     Q_OBJECT
+    /// Development only (TAGOROR_DEV_TOOLS): drives the pages and dialogs to
+    /// photograph them.
+    friend class ScreenshotTour;
 
 public:
     Panel();
@@ -299,7 +303,9 @@ private:
     /// there is no shadow margin and no dock: "–" minimises.
     void setAppMode(bool on);
     void applyAppModeChrome();      ///< Margins, shadow, frame and the "–" button.
-    bool appMode() const { return m_store.prefs().appMode; }
+    /// On a phone always an app, whatever the synced preference says (it is the
+    /// desktop's): no shadow, no dock, the window the whole screen.
+    bool appMode() const { return mobileUi() || m_store.prefs().appMode; }
     int shadowMargin() const;
     /// From the tray or a second instance: also when minimised.
     void showRestored();
@@ -393,4 +399,13 @@ private:
     /// Brought to front from the tray: the widget is out of the desktop layer
     /// until sent back. Not saved, it does not survive a restart.
     bool m_lifted = false;
+
+    /// Android's back button: closes what is open (a menu, a dialog, the search,
+    /// a page) one step at a time. @return false on the notes with nothing open,
+    /// which lets the system take the app away.
+    bool handleBack();
+    /// On a phone, @p b becomes a 44px touch target (see the definition).
+    static void fitForTouch(class QAbstractButton *b);
+    /// Whether the last back press was used, so its release is swallowed too.
+    bool m_backHandled = false;
 };

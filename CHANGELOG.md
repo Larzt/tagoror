@@ -4,6 +4,15 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.3] — 2026-11-04
+
+### Changed
+
+- **New events take a double click** on an empty hour of the day and week
+  views. A single click there no longer opens the form, so clicking around the
+  planner does not start an event by accident. Enter, **+** and the right-click
+  menu work as before.
+
 ## [1.2.2] — 2026-11-03
 
 ### Added

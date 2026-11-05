@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 1.2.2 LANGUAGES CXX)
+project(tagoror VERSION 1.2.3 LANGUAGES CXX)
 
 # La versión que llega al binario (la que compara el aviso de actualizaciones)
 # y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de
@@ -33,9 +33,14 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia Network)
 # estar escrito en cuatro sitios. El binario se llama 'tagoror' pase lo que pase.
 set(TAGOROR_APP_ID "tagoror" CACHE STRING "Nombre del .desktop, de los iconos y del ID de AppStream")
 
+# Identificador del paquete en iOS (CFBundleIdentifier) y en Android (nombre
+# del paquete). Solo se usa en móvil; en escritorio manda TAGOROR_APP_ID.
+set(TAGOROR_BUNDLE_ID "org.appstride.tagoror" CACHE STRING
+    "Bundle ID de iOS y nombre del paquete de Android")
+
 # El código está por capas: core no sabe de interfaz, ui no sabe de disco y
 # audio solo del micrófono y de los WAV.
-add_executable(tagoror
+set(TAGOROR_SOURCES
     src/main.cpp
 
     src/core/store.cpp
@@ -121,7 +126,18 @@ add_executable(tagoror
     include/audio/recorder.hpp
     include/audio/alarm.hpp
     include/audio/wave.hpp
+    include/core/platform.hpp
 )
+
+# Android e iOS necesitan qt_add_executable: en Android el "ejecutable" es una
+# biblioteca que se mete en un APK, y en iOS hay que montar el bundle e importar
+# los plugins estáticos. En escritorio se queda el add_executable de siempre
+# para no cambiar nada de lo que ya se publica.
+if (ANDROID OR IOS)
+    qt_add_executable(tagoror ${TAGOROR_SOURCES})
+else()
+    add_executable(tagoror ${TAGOROR_SOURCES})
+endif()
 
 if (MSVC)
     # El código está en UTF-8 y va lleno de acentos: sin esto MSVC lo lee con
@@ -189,6 +205,15 @@ qt_add_resources(tagoror "fonts"
         fonts/plex/IBMPlexMono-Bold.ttf)
 
 target_include_directories(tagoror PRIVATE include)
+
+# Herramientas de desarrollo: el recorrido de capturas de la interfaz móvil
+# (scripts/mobile-shots.sh). Nunca en lo que se publica: es OFF por defecto y
+# solo existe en escritorio con GCC o Clang (usa su demangler).
+option(TAGOROR_DEV_TOOLS "Compilar el recorrido de capturas (solo desarrollo)" OFF)
+if (TAGOROR_DEV_TOOLS AND NOT MSVC AND NOT ANDROID AND NOT IOS)
+    target_sources(tagoror PRIVATE src/dev/screenshottour.cpp include/dev/screenshottour.hpp)
+    target_compile_definitions(tagoror PRIVATE TAGOROR_DEV_TOOLS)
+endif()
 target_compile_definitions(tagoror PRIVATE TAGOROR_APP_ID="${TAGOROR_APP_ID}")
 # Hasta ahora la versión solo llegaba al .rc de Windows y el binario no sabía
 # cuál era. El buscador de actualizaciones necesita compararla con la publicada,
@@ -217,7 +242,7 @@ target_link_libraries(tagoror PRIVATE Qt6::Widgets Qt6::Multimedia Qt6::Network)
 # En Windows no hay nada que buscar: allí Qt::Tool ya deja la ventana fuera de
 # la barra de tareas (WS_EX_TOOLWINDOW) y availableGeometry() sí es el área de
 # trabajo de verdad, así que workarea.cpp se compila entero como nop.
-if (UNIX AND NOT APPLE)
+if (UNIX AND NOT APPLE AND NOT ANDROID)
     find_library(TAGOROR_XCB_LIBRARY xcb)
     if (TAGOROR_XCB_LIBRARY)
         target_link_libraries(tagoror PRIVATE ${TAGOROR_XCB_LIBRARY})
@@ -225,6 +250,106 @@ if (UNIX AND NOT APPLE)
     else()
         message(STATUS "libxcb no encontrada: el panel se colocará solo con QScreen")
     endif()
+endif()
+
+# --- móvil ------------------------------------------------------------------
+# Lo de escritorio que no tiene sentido en un teléfono (bandeja, instancia única,
+# X11, buscador de actualizaciones) se aparta en el código con TAGOROR_MOBILE,
+# ver include/core/platform.hpp. Aquí solo va el empaquetado.
+
+# La versión como número para Android (versionCode), que tiene que crecer con
+# cada release: 1.2.3 -> 10203. Si TAGOROR_VERSION no es x.y.z, la del proyecto.
+if (TAGOROR_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+    math(EXPR TAGOROR_VERSION_CODE
+         "${CMAKE_MATCH_1} * 10000 + ${CMAKE_MATCH_2} * 100 + ${CMAKE_MATCH_3}")
+    set(TAGOROR_SHORT_VERSION "${TAGOROR_VERSION}")
+else()
+    math(EXPR TAGOROR_VERSION_CODE
+         "${PROJECT_VERSION_MAJOR} * 10000 + ${PROJECT_VERSION_MINOR} * 100 + ${PROJECT_VERSION_PATCH}")
+    set(TAGOROR_SHORT_VERSION "${PROJECT_VERSION}")
+endif()
+
+if (IOS)
+    # Info.plist propio solo para añadir la descripción del micrófono; lo demás
+    # es la plantilla de Qt. Qt lo pasa antes por configure_file(@ONLY) para
+    # poner su pantalla de inicio, y CMake después para los ${MACOSX_BUNDLE_*}.
+    set_target_properties(tagoror PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/packaging/ios/Info.plist.in"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "${TAGOROR_BUNDLE_ID}"
+        MACOSX_BUNDLE_BUNDLE_NAME "Tagoror"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${TAGOROR_VERSION_CODE}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${TAGOROR_SHORT_VERSION}"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${TAGOROR_BUNDLE_ID}"
+        # iPhone y iPad.
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
+
+    # En iOS Qt Multimedia trae dos backends como plugins estáticos: el nativo
+    # (AVFoundation) y el de FFmpeg, cuyas bibliotecas no vienen con el paquete
+    # de Qt y dejan el enlazado sin los símbolos av_*. La app solo graba con
+    # QAudioSource y reproduce WAV, y para eso basta el nativo.
+    qt_import_plugins(tagoror EXCLUDE Qt6::QFFmpegMediaPlugin)
+    return()
+endif()
+
+if (ANDROID)
+    # El directorio del paquete se monta en el árbol de compilación: así el
+    # manifiesto vive en packaging/android y los iconos salen de los PNG que ya
+    # hay en packaging/icons, sin duplicarlos en el repositorio. Android escala
+    # cada uno a la densidad que le falte.
+    set(TAGOROR_ANDROID_DIR "${CMAKE_CURRENT_BINARY_DIR}/android-package")
+    configure_file(packaging/android/AndroidManifest.xml
+                   "${TAGOROR_ANDROID_DIR}/AndroidManifest.xml" COPYONLY)
+    foreach(pair "mdpi:48x48" "hdpi:64x64" "xhdpi:128x128" "xxhdpi:256x256" "xxxhdpi:256x256")
+        string(REPLACE ":" ";" pair "${pair}")
+        list(GET pair 0 density)
+        list(GET pair 1 size)
+        configure_file(packaging/icons/${size}/tagoror.png
+                       "${TAGOROR_ANDROID_DIR}/res/mipmap-${density}/tagoror.png" COPYONLY)
+    endforeach()
+
+    set_target_properties(tagoror PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${TAGOROR_ANDROID_DIR}"
+        QT_ANDROID_PACKAGE_NAME "${TAGOROR_BUNDLE_ID}"
+        QT_ANDROID_APP_NAME "Tagoror"
+        QT_ANDROID_APP_ICON "@mipmap/tagoror"
+        QT_ANDROID_VERSION_NAME "${TAGOROR_SHORT_VERSION}"
+        QT_ANDROID_VERSION_CODE "${TAGOROR_VERSION_CODE}")
+
+    # Qué build-tools usa Gradle. Vacío, Qt elige los más nuevos instalados. Va
+    # como propiedad del target y no como -DQT_ANDROID_SDK_BUILD_TOOLS_REVISION:
+    # en Qt 6.9 la variable deja la versión vacía ("Invalid revision" en Gradle).
+    set(TAGOROR_ANDROID_BUILD_TOOLS "" CACHE STRING
+        "Versión de las Android SDK build-tools (vacío = la más nueva)")
+    if (TAGOROR_ANDROID_BUILD_TOOLS)
+        set_target_properties(tagoror PROPERTIES
+            QT_ANDROID_SDK_BUILD_TOOLS_REVISION "${TAGOROR_ANDROID_BUILD_TOOLS}")
+    endif()
+
+    # Los permisos van por Qt y no escritos a mano en el manifiesto: Qt los
+    # inserta en %%INSERT_PERMISSIONS junto a los de sus módulos (INTERNET, el
+    # de Multimedia...) sin repetir ninguno, y un permiso duplicado rompe el APK.
+    # Micrófono para las notas de voz; notificaciones (Android 13+) para los
+    # recordatorios, aunque todavía no se publican como notificación del sistema.
+    qt_add_android_permission(tagoror NAME android.permission.RECORD_AUDIO)
+    qt_add_android_permission(tagoror NAME android.permission.POST_NOTIFICATIONS)
+
+    # HTTPS (WebDAV, Drive, Calendar) necesita OpenSSL, que Android no trae y Qt
+    # no incluye. Se usan las bibliotecas ya compiladas de KDAB: la CI las clona y
+    # pasa la ruta; a mano, si no se da, se descargan.
+    set(TAGOROR_ANDROID_OPENSSL_DIR "" CACHE PATH
+        "Copia de github.com/KDAB/android_openssl (vacío = descargarla)")
+    if (NOT TAGOROR_ANDROID_OPENSSL_DIR)
+        include(FetchContent)
+        FetchContent_Declare(android_openssl
+            DOWNLOAD_EXTRACT_TIMESTAMP true
+            URL https://github.com/KDAB/android_openssl/archive/refs/heads/master.zip)
+        FetchContent_MakeAvailable(android_openssl)
+        set(TAGOROR_ANDROID_OPENSSL_DIR "${android_openssl_SOURCE_DIR}")
+    endif()
+    include("${TAGOROR_ANDROID_OPENSSL_DIR}/android_openssl.cmake")
+    add_android_openssl_libraries(tagoror)
+    return()
 endif()
 
 # --- instalación --------------------------------------------------------------

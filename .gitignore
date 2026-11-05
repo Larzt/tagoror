@@ -54,3 +54,6 @@ google-oauth.mk
 *.env
 .env*
 client_secret*.json
+
+# Capturas de scripts/mobile-shots.sh
+shots/

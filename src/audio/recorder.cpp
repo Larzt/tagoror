@@ -2,10 +2,15 @@
 #include "audio/wave.hpp"
 
 #include "core/lang.hpp"
+#include "core/platform.hpp"
 
 #include <QAudioDevice>
 #include <QAudioSource>
 #include <QMediaDevices>
+#ifdef TAGOROR_MOBILE
+#include <QCoreApplication>
+#include <QPermission>
+#endif
 
 namespace {
 constexpr int kWindowMs = 50;    // waveform resolution while recording
@@ -31,6 +36,26 @@ bool VoiceRecorder::start(const QString &path) {
     m_windowSeen = 0;
     m_windowPeak = 0;
     m_error.clear();
+
+#ifdef TAGOROR_MOBILE
+    // iOS and Android hand out silence (or nothing) until the user has said yes.
+    // The first time, the system asks; that attempt ends and the next tap records,
+    // so a "yes" given late never starts a recording nobody is watching.
+    const QMicrophonePermission mic;
+    switch (qApp->checkPermission(mic)) {
+        case Qt::PermissionStatus::Granted:
+            break;
+        case Qt::PermissionStatus::Undetermined:
+            qApp->requestPermission(mic, this, [](const QPermission &) {});
+            m_error = L("Permite el micrófono y vuelve a pulsar grabar");
+            emit finished(false);
+            return false;
+        case Qt::PermissionStatus::Denied:
+            m_error = L("Sin permiso para el micrófono: actívalo en los ajustes del sistema");
+            emit finished(false);
+            return false;
+    }
+#endif
 
     // If the saved device is gone (headphones unplugged), fall back to the
     // system default instead of failing.

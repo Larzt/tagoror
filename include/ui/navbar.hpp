@@ -23,6 +23,8 @@ class NavBar : public QWidget {
 public:
     enum Layout { Bar, Rail };
     static constexpr int kBarHeight = 52;
+    /// The bar's height: taller on a phone, so each item is a 44px+ target.
+    static int barHeight();
     static constexpr int kRailWidth = 68;
     static constexpr int kRailFrom = 480;   ///< Shell width at which it becomes a rail.
 

@@ -8,6 +8,7 @@
 #include <QStackedWidget>
 #include <QWidget>
 
+#include "core/platform.hpp"
 #include "core/store.hpp"
 #include "ui/workarea.hpp"
 
@@ -65,12 +66,15 @@ QString Navigator::keyOf(const QWidget *page) const {
     return {};
 }
 
-int Navigator::shadowMargin() const { return m_store->prefs().appMode ? 0 : kShadowMargin; }
+// On a phone the window is the screen: no shadow around it, no sizes of its own.
+int Navigator::shadowMargin() const {
+    return mobileUi() || m_store->prefs().appMode ? 0 : kShadowMargin;
+}
 
 /// Widget only: an ordinary window keeps the size and place the user gives it,
 /// whatever page is open. The preference is kept for when it goes back.
 bool Navigator::sizePerPage() const {
-    return !m_store->prefs().appMode && m_store->prefs().sizePerPage;
+    return !mobileUi() && !m_store->prefs().appMode && m_store->prefs().sizePerPage;
 }
 
 void Navigator::setSizePerPage(bool on) {
@@ -101,6 +105,12 @@ void Navigator::shiftSizes(int delta) {
 }
 
 void Navigator::start(const QSize &saved) {
+    if (mobileUi()) {
+        // The system decides the size (the whole screen); a desktop size from the
+        // synced preferences would leave the panel in a corner.
+        showPage(m_shell);
+        return;
+    }
     m_expandedSize = saved;
     if (!m_expandedSize.isValid())
         m_expandedSize = QSize(352 + shadowMargin() * 2, 560);
@@ -169,7 +179,7 @@ void Navigator::syncPageHome(QWidget *from) {
 
 void Navigator::open(QWidget *page) {
     QWidget *from = current();
-    if (m_window->isMaximized()) {
+    if (mobileUi() || m_window->isMaximized()) {
         // Maximised (app mode), the window's size belongs to the system: no page
         // resizes it, and none records the maximised size as its own.
         showBodyPage(page);
@@ -241,7 +251,7 @@ void Navigator::showPage(QWidget *page) {
     // The Ignored policy is not enough: an explicit minimumSize still adds to the
     // QStackedLayout's minimum, and the folded panel kept an invisible 300px
     // strip next to the dock that swallowed clicks.
-    m_shell->setMinimumWidth(page == m_shell ? kShellMinWidth : 0);
+    m_shell->setMinimumWidth(page == m_shell && !mobileUi() ? kShellMinWidth : 0);
     m_outer->setCurrentWidget(page);
 }
 
@@ -294,7 +304,8 @@ int Navigator::shellMinimumHeight() const {
 /// page that needs more height grows the window downwards, and upwards only
 /// as far as the work area forces it (the same rule as anchoredTopLeft()).
 void Navigator::syncShellMinimum() {
-    if (!m_shell || !m_outer || folded()) return;
+    // On a phone the screen is the size: a minimum would only cut the panel.
+    if (mobileUi() || !m_shell || !m_outer || folded()) return;
 
     // setMinimumSize() already stretches the window when short, keeping the
     // top-left corner: it grows downwards, as wanted. What is left is to record
@@ -332,6 +343,7 @@ void Navigator::syncShellMinimum() {
 }
 
 void Navigator::collapse() {
+    if (mobileUi()) return;   // there is no dock on a phone
     // The saved size is the normal one, not widened for the planner, or unfolding
     // would open wide for any page. With size per page the dock comes out of the
     // list, not the open page: if that opened leftwards or upwards, its corner is
@@ -365,6 +377,7 @@ void Navigator::collapse() {
 }
 
 void Navigator::expand() {
+    if (mobileUi()) return;
     // The dock's geometry before touching anything: setMinimumSize() below
     // already stretches the window, after which this corner is no longer the
     // dock's.
@@ -459,6 +472,7 @@ QPoint Navigator::anchoredTopLeft(const QRect &before, const QSize &after) const
 /// restored size or a screen change may leave it hanging out. On Wayland
 /// move() may do nothing.
 void Navigator::keepOnScreen() {
+    if (mobileUi()) return;
     const QRect area = placementArea();
     if (!area.isValid()) return;
 
@@ -472,6 +486,7 @@ void Navigator::keepOnScreen() {
 /// (and rebooting is a start) lets the window manager decide. On Wayland this
 /// does nothing; on X11 it applies.
 void Navigator::restoreWindowPos() {
+    if (mobileUi()) return;   // the system places the window
     if (!m_store->prefs().hasWindowPos) return;
     const QPoint saved = m_store->prefs().windowPos;
 
@@ -496,6 +511,9 @@ void Navigator::mapped() {
 }
 
 void Navigator::syncPrefs() {
+    // Nothing of the phone's window goes into the preferences: they are synced,
+    // and the desktop would open with the screen size of a phone.
+    if (mobileUi()) return;
     // Maximised, what is kept is the size and place it will be restored to.
     if (m_window->isMaximized()) return;
     // Folded, the size that counts is the expanded one.

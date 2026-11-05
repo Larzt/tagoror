@@ -1,7 +1,10 @@
 #include "ui/overlay.hpp"
 
+#include "core/platform.hpp"
+
 #include <QApplication>
 #include <QHBoxLayout>
+#include <QScrollArea>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
@@ -34,7 +37,21 @@ Overlay::Overlay(const Theme *, QWidget *host, const QString &title) : QWidget(h
 
 void Overlay::setContent(QWidget *content) {
     m_content = content;
-    m_col->addWidget(content);
+    if (!mobileUi()) {
+        m_col->addWidget(content);
+        return;
+    }
+    // On a phone turned sideways the form is taller than the screen: place()
+    // caps the dialog, and the form scrolls inside it instead of being squeezed.
+    auto *scroll = new QScrollArea;
+    scroll->setWidget(content);
+    content->setAutoFillBackground(false);   // setWidget() turns on a light fill
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->viewport()->setAutoFillBackground(false);
+    scroll->viewport()->setObjectName("scrollViewport");
+    m_col->addWidget(scroll);
 }
 
 void Overlay::open(QWidget *focus) {

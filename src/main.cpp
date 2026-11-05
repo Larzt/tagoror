@@ -1,14 +1,21 @@
+#include "core/platform.hpp"
+
 #include <QApplication>
 #include <QDir>
 #include <QFontDatabase>
 #include <QIcon>
+#include <QSettings>
+#ifndef TAGOROR_MOBILE
 #include <QLocalServer>
-#include <QSystemTrayIcon>
 #include <QLocalSocket>
 #include <QLockFile>
-#include <QSettings>
+#include <QSystemTrayIcon>
+#endif
 
 #include "ui/panel.hpp"
+#ifdef TAGOROR_DEV_TOOLS
+#include "dev/screenshottour.hpp"
+#endif
 
 // Set by CMake (see TAGOROR_APP_ID); a hand build gets the default.
 #ifndef TAGOROR_APP_ID
@@ -17,7 +24,7 @@
 
 namespace {
 
-#ifdef Q_OS_LINUX
+#ifdef TAGOROR_LINUX_DESKTOP
 
 /// Under a Wayland session, asks for XWayland. On Wayland a window can neither
 /// place itself nor know where it is (Qt always reports 0,0), and the widget
@@ -34,12 +41,12 @@ void choosePlatform() {
         qputenv("QT_QPA_PLATFORM", "xcb");
 }
 
-#endif  // Q_OS_LINUX
+#endif  // TAGOROR_LINUX_DESKTOP
 
 }  // namespace
 
 int main(int argc, char *argv[]) {
-#ifdef Q_OS_LINUX
+#ifdef TAGOROR_LINUX_DESKTOP
     choosePlatform();       // before QApplication: afterwards it cannot be chosen
 #endif
 
@@ -79,6 +86,40 @@ int main(int argc, char *argv[]) {
 
     // The icon theme wins (so an icon pack can override); otherwise the embedded one.
     app.setWindowIcon(QIcon::fromTheme(TAGOROR_APP_ID, embedded));
+#ifdef TAGOROR_MOBILE
+    // On a phone the system already guarantees one instance, there is no tray to
+    // hide in and the window is the whole screen.
+    Panel panel;
+    panel.showMaximized();
+    panel.startUp(true);
+#else
+    if (mobileUi()) {
+        // TAGOROR_FORCE_MOBILE=1: the phone layout in a window the size of a phone
+        // (TAGOROR_MOBILE_SIZE=WxH, 412x915 by default). A preview, not a second
+        // Tagoror: no single instance (it would hand over to the real one) and no
+        // tray.
+        QSize size(412, 915);
+        const QStringList wh = qEnvironmentVariable("TAGOROR_MOBILE_SIZE").split('x');
+        if (wh.size() == 2 && wh.at(0).toInt() > 0 && wh.at(1).toInt() > 0)
+            size = QSize(wh.at(0).toInt(), wh.at(1).toInt());
+        Panel panel;
+        // As on a phone: the window is asked for the screen's size, and if the
+        // layout's minimum is larger the widget grows past the screen, which a
+        // phone then cuts (the screenshot tour crops to the screen to show it).
+        panel.resize(size);
+        panel.show();
+#ifdef TAGOROR_DEV_TOOLS
+        // scripts/mobile-shots.sh: photograph every page and quit. No startUp():
+        // its splash and update check would get in the pictures.
+        if (const QString dir = qEnvironmentVariable("TAGOROR_SHOTS_DIR"); !dir.isEmpty()) {
+            new ScreenshotTour(&panel, dir);
+            return app.exec();
+        }
+#endif
+        panel.startUp(true);
+        return app.exec();
+    }
+
     // The panel hides in the tray and comes back from there, so having no visible
     // window is no reason to quit. Without a tray, Panel::closeEvent quits itself.
     app.setQuitOnLastWindowClosed(false);
@@ -128,5 +169,6 @@ int main(int argc, char *argv[]) {
     const bool toTray = app.arguments().contains("--tray") && QSystemTrayIcon::isSystemTrayAvailable();
     if (!toTray) panel.show();
     panel.startUp(!toTray);
+#endif
     return app.exec();
 }

@@ -18,6 +18,9 @@ const QHash<QString, QString> &table() {
         {"Cumpleaños", "Birthdays"},
         {"Ver notas", "Back to notes"},
         {"Ajustes", "Settings"},
+        // Short tab labels of the phone's bar (six tabs in ~360px).
+        {"Cumples", "Birthdays"},
+        {"Tiempo", "Tracking"},
         {"Plegar a icono", "Fold to icon"},
         {"Filtrar notas…", "Filter notes…"},
         {"Todavía no hay notas", "No notes yet"},
@@ -447,6 +450,9 @@ const QHash<QString, QString> &table() {
         {"VOZ · SIN SEÑAL, REVISA EL MICRÓFONO", "VOICE · NO SIGNAL, CHECK THE MICROPHONE"},
         {"No hay micrófono disponible", "No microphone available"},
         {"El micrófono no admite PCM 16 bits", "The microphone does not support 16-bit PCM"},
+        {"Permite el micrófono y vuelve a pulsar grabar", "Allow the microphone and tap record again"},
+        {"Sin permiso para el micrófono: actívalo en los ajustes del sistema",
+         "No microphone permission: turn it on in the system settings"},
         {"No se pudo escribir ", "Could not write "},
         {"No se pudo abrir el micrófono", "Could not open the microphone"},
 
