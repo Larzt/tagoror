@@ -899,7 +899,26 @@ QWidget *Panel::buildBody() {
     m_bodyHost = new QWidget;
     auto *hl = new QVBoxLayout(m_bodyHost);
     hl->setContentsMargins(0, 0, 0, 0);
-    hl->addWidget(m_body);
+    if (mobileUi()) {
+        // A phone turned sideways leaves ~250px for the page: one that needs more
+        // (Seguimiento, the planner) was squeezed until its parts overlapped. Here
+        // it scrolls instead, vertically only. Pages that scroll on their own ask
+        // for little height and never notice.
+        auto *scroll = new QScrollArea;
+        scroll->setObjectName("bodyScroll");
+        scroll->setWidget(m_body);
+        // setWidget() turns the fill on, with Qt's light palette: the panel's
+        // colour comes from the shell behind it.
+        m_body->setAutoFillBackground(false);
+        scroll->setWidgetResizable(true);
+        scroll->setFrameShape(QFrame::NoFrame);
+        scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        scroll->viewport()->setAutoFillBackground(false);
+        scroll->viewport()->setObjectName("scrollViewport");
+        hl->addWidget(scroll);
+    } else {
+        hl->addWidget(m_body);
+    }
     m_alertZone = new AlertZone(&m_theme, m_bodyHost);
     m_alertZone->changed = [this] { placeAlertZone(); };
     return m_bodyHost;
