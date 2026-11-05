@@ -1325,7 +1325,10 @@ QDate TrackingView::periodTo() const {
 
 void TrackingView::resizeEvent(QResizeEvent *e) {
     QWidget::resizeEvent(e);
-    const bool wide = width() >= kWideFrom;
+    // On the desktop the rail takes 68px off the page before it gets here; a
+    // phone turned sideways has none, and at 640px the two panes (678px at least)
+    // did not fit. There they wait for a wider screen.
+    const bool wide = width() >= (mobileUi() ? kWideFrom + 80 : kWideFrom);
     if (wide != m_wide) {
         m_wide = wide;
         applyLayout();
