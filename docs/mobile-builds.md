@@ -222,8 +222,15 @@ cualquiera de los cuatro, firma con clave debug y avisa con un *warning*.
 - Ajustes es la sexta pestaña de la barra inferior. Para que las seis etiquetas
   quepan enteras, «Cumpleaños» y «Seguimiento» se acortan a «Cumples» y «Tiempo»
   (el título de la página mantiene el nombre largo), y la letra es 1 px menor.
-- En horizontal la barra sigue abajo si el carril lateral no cabe a lo alto. La
-  rotación es libre.
+- La barra de navegación está siempre abajo, también en horizontal. La rotación
+  es libre.
+- La ventana nunca es más ancha que la pantalla. Si una página o un formulario
+  no cabe a lo alto (en horizontal quedan unos 250 px), se desplaza en vertical;
+  nunca hay scroll horizontal. Las pestañas de Ajustes van en dos filas, y
+  Registro y Resumen de Seguimiento solo se ponen lado a lado desde 720 px.
+- Todos los botones miden al menos 44 px de alto, y los de icono 44×44: crece la
+  zona que se toca, no el dibujo. Para que quepan crecen la cabecera, la fila de
+  herramientas, la barra de navegación y las filas de los menús.
 - El botón atrás de Android cierra, por orden, el menú, el diálogo, la paleta,
   el formulario de Seguimiento, la búsqueda o el campo que se está escribiendo.
   Si no hay nada abierto, vuelve a Notas. Solo desde Notas sale de la app.
@@ -238,6 +245,30 @@ cualquiera de los cuatro, firma con clave debug y avisa con un *warning*.
 - En escritorio (Linux, Windows) el comportamiento no cambia.
 - El ID de la app (`org.appstride.tagoror`) se cambia con
   `-DTAGOROR_BUNDLE_ID=...`, o con la variable `BUNDLE_ID` de `mobile.yml`.
+
+## Ver la interfaz móvil sin teléfono
+
+Para revisar la interfaz no hace falta pasar por la CI:
+
+- **A mano:** `TAGOROR_FORCE_MOBILE=1 ./tagoror` abre la interfaz móvil en una
+  ventana de 412×915; otro tamaño con `TAGOROR_MOBILE_SIZE=360x640`. Activa lo
+  mismo que en el teléfono, salvo lo que es de la plataforma (bandeja, permiso
+  del micrófono). No usa la instancia única, así que convive con el Tagoror
+  normal, pero sí **usa tus datos**.
+- **Capturas:** `scripts/mobile-shots.sh [carpeta] [tamaños…]`. Compila con
+  `-DTAGOROR_DEV_TOOLS=ON` en `build-shots/` y, sin pantalla
+  (`QT_QPA_PLATFORM=offscreen`), recorre cada pestaña y los diálogos principales
+  con datos de ejemplo, en una carpeta temporal y nunca con tus notas. Por
+  defecto lo hace a 360×640 y 412×915; en horizontal, por ejemplo
+  `scripts/mobile-shots.sh shots 640x360 915x412`. Deja un PNG por captura y un
+  `report.txt` con:
+  - lo que se sale por la derecha;
+  - si la barra de navegación está pegada abajo;
+  - los botones de menos de 44 px;
+  - los botones que su contenedor corta.
+
+  Necesita Qt 6 de escritorio con Multimedia en `CMAKE_PREFIX_PATH`.
+  `TAGOROR_CMAKE_ARGS` se pasa tal cual a cmake.
 
 ## Limitaciones
 
