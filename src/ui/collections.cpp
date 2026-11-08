@@ -26,6 +26,9 @@
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QHash>
+#include <QVariant>
+#include <algorithm>
 #include <functional>
 
 namespace {
@@ -218,7 +221,8 @@ public:
         auto *l = new QHBoxLayout(this);
         l->setContentsMargins(9, 0, 9, 0);
         l->setSpacing(6);
-        m_name = new QLabel;
+        // Elided: three tabs, the sort and the search share 300px.
+        m_name = new ElidedLabel(QString(), QColor(Theme::muted()));
         m_name->setObjectName("collTabName");
         m_count = new QLabel;
         m_count->setObjectName("collTabCount");
@@ -230,6 +234,7 @@ public:
 
     void set(const QString &name, int count, bool chosen) {
         m_name->setText(name);
+        m_name->setColor(QColor(chosen ? Theme::fg() : Theme::muted()));
         m_count->setText(QString::number(count));
         setToolTip(name);
         setProperty("chosen", chosen);
@@ -240,13 +245,14 @@ public:
     }
 
     QSize sizeHint() const override {
-        return QSize(m_name->sizeHint().width() + m_count->sizeHint().width() + 6 + 18, 26);
+        const int name = QFontMetrics(m_name->font()).horizontalAdvance(m_name->text());
+        return QSize(name + m_count->sizeHint().width() + 6 + 18 + 2, 26);
     }
     /// Narrow, the name gives way first: the count is what tells tabs apart.
     QSize minimumSizeHint() const override { return QSize(m_count->sizeHint().width() + 30, 26); }
 
 private:
-    QLabel *m_name;
+    ElidedLabel *m_name;
     QLabel *m_count;
 };
 
@@ -333,6 +339,156 @@ protected:
     void contextMenuEvent(QContextMenuEvent *e) override {
         if (menu) menu(e->globalPos());
     }
+};
+
+/// A tile of the wide grid: the cover at 2:3 with the year, the title and the
+/// author on it, a progress strip while in progress, and under it the state
+/// and the priority.
+class Tile : public QWidget {
+public:
+    CollectionItem *item;
+    QString state;
+    QColor stateColor;
+    int percent = -1;
+    bool priority = true;
+    bool selected = false;
+    std::function<void()> select;
+    std::function<void()> open;
+    std::function<void(const QPoint &)> menu;
+    const Theme *theme;
+
+    Tile(CollectionItem *item, const Theme *theme, QWidget *parent = nullptr)
+        : QWidget(parent), item(item), theme(theme) {
+        setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_Hover, true);
+        setMinimumWidth(90);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        keynav::activatable(this, [this] { if (open) open(); });
+    }
+    bool hasHeightForWidth() const override { return true; }
+    int heightForWidth(int w) const override { return (w - 12) * 3 / 2 + 12 + 22; }
+    QSize sizeHint() const override { return QSize(130, heightForWidth(130)); }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        const QRectF frame = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        if (selected || underMouse() || keynav::showsFocus(this)) {
+            QColor fill = selected ? theme->accent : QColor(255, 255, 255);
+            fill.setAlpha(selected ? 26 : 12);
+            QColor edge = selected || keynav::showsFocus(this) ? theme->accent : QColor(255, 255, 255, 30);
+            if (selected) edge.setAlpha(115);
+            p.setPen(QPen(edge, 1));
+            p.setBrush(fill);
+            p.drawRoundedRect(frame, 10, 10);
+        }
+        const QRectF cover(6, 6, width() - 12, (width() - 12) * 1.5);
+        QPainterPath path;
+        path.addRoundedRect(cover, 4, 4);
+        p.fillPath(path, CollectionItem::coverColor(item->color));
+        p.save();
+        p.setClipPath(path);
+        p.fillRect(QRectF(cover.left(), cover.top(), 5, cover.height()), QColor(0, 0, 0, 72));
+        if (percent >= 0) {
+            const QRectF strip(cover.left(), cover.bottom() - 3, cover.width(), 3);
+            p.fillRect(strip, QColor(0, 0, 0, 90));
+            p.fillRect(QRectF(strip.left(), strip.top(), strip.width() * percent / 100.0, 3), theme->accent);
+        }
+        p.restore();
+
+        const QRectF text = cover.adjusted(13, 10, -8, -10);
+        QFont mono = font();
+        mono.setFamily("IBM Plex Mono");
+        mono.setPixelSize(9);
+        p.setFont(mono);
+        p.setPen(QColor(255, 255, 255, 178));
+        if (item->year > 0) p.drawText(text, Qt::AlignLeft | Qt::AlignTop, QString::number(item->year));
+        QFont small = font();
+        small.setPixelSize(10);
+        const QFontMetrics sm(small);
+        const QString author = sm.elidedText(item->author, Qt::ElideRight, int(text.width()));
+        QFont big = font();
+        big.setPixelSize(12);
+        big.setWeight(QFont::DemiBold);
+        const QRectF authorBox(text.left(), text.bottom() - sm.height(), text.width(), sm.height());
+        const qreal titleH = QFontMetrics(big).height() * 3;
+        const QRectF titleBox(text.left(), authorBox.top() - 3 - titleH, text.width(), titleH);
+        p.setFont(big);
+        p.setPen(QColor(255, 255, 255, 235));
+        p.drawText(titleBox, Qt::AlignLeft | Qt::AlignBottom | Qt::TextWordWrap, item->title);
+        p.setFont(small);
+        p.setPen(QColor(255, 255, 255, 178));
+        p.drawText(authorBox, Qt::AlignLeft | Qt::AlignVCenter, author);
+
+        const QRectF foot(8, cover.bottom() + 4, width() - 16, 16);
+        p.setFont(mono);
+        mono.setPixelSize(10);
+        p.setFont(mono);
+        p.setPen(stateColor);
+        p.drawText(foot, Qt::AlignLeft | Qt::AlignVCenter, state);
+        if (priority) {
+            static const qreal sizes[3] = {5, 5, 5};
+            qreal x = foot.right() - 3 * 5 - 2 * 2;
+            p.setPen(Qt::NoPen);
+            for (int i = 0; i < 3; ++i) {
+                p.setBrush(i < item->priority ? QColor(Theme::fg()) : kStoneOff);
+                p.drawEllipse(QRectF(x, foot.center().y() - sizes[i] / 2, sizes[i], sizes[i]));
+                x += sizes[i] + 2;
+            }
+        }
+    }
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton && rect().contains(e->position().toPoint()) && select) select();
+    }
+    void mouseDoubleClickEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton && open) open();
+    }
+    void contextMenuEvent(QContextMenuEvent *e) override {
+        if (menu) menu(e->globalPos());
+    }
+};
+
+/// A row of the wide sidebar: icon or dot, name, count.
+class SideRow : public QToolButton {
+public:
+    SideRow(const QString &text, const QString &count, QWidget *parent = nullptr) : QToolButton(parent) {
+        setObjectName("collSide");
+        setCursor(Qt::PointingHandCursor);
+        setFocusPolicy(Qt::TabFocus);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setFixedHeight(30);
+        auto *l = new QHBoxLayout(this);
+        l->setContentsMargins(8, 0, 8, 0);
+        l->setSpacing(8);
+        m_mark = new QLabel;
+        m_mark->setFixedSize(16, 16);
+        m_mark->setAlignment(Qt::AlignCenter);
+        m_mark->setAttribute(Qt::WA_TransparentForMouseEvents);
+        l->addWidget(m_mark);
+        m_name = new ElidedLabel(text, QColor(Theme::fg()));
+        m_name->setObjectName("setRowText");
+        m_name->setAttribute(Qt::WA_TransparentForMouseEvents);
+        l->addWidget(m_name, 1);
+        auto *n = new QLabel(count);
+        n->setObjectName("collTabCount");
+        n->setAttribute(Qt::WA_TransparentForMouseEvents);
+        l->addWidget(n);
+        setToolTip(text);
+    }
+    void setMark(const QPixmap &pm) { m_mark->setPixmap(pm); }
+    void setChosen(bool chosen) {
+        setProperty("chosen", chosen);
+        QFont f = m_name->font();
+        f.setWeight(chosen ? QFont::DemiBold : QFont::Normal);
+        m_name->setFont(f);
+        repolish(this);
+    }
+    void setMuted() { m_name->setColor(QColor(Theme::muted())); }
+
+private:
+    QLabel *m_mark;
+    ElidedLabel *m_name;
 };
 
 }  // namespace coll
@@ -430,7 +586,24 @@ CollectionsView::CollectionsView(const Theme &theme, QWidget *parent)
     m_scroll->setWidget(m_listHost);
     m_scroll->viewport()->setAutoFillBackground(false);
     m_scroll->viewport()->setObjectName("scrollViewport");
+
+    // Wide: the collections on the left and the detail on the right, each
+    // behind a hairline.
+    const auto divider = [] {
+        auto *d = new QFrame;
+        d->setObjectName("collDivider");
+        d->setFixedWidth(1);
+        return d;
+    };
+    pageRow->addWidget(buildSide());
+    auto *leftRule = divider();
+    pageRow->addWidget(leftRule);
     pageRow->addWidget(m_scroll, 1);
+    auto *rightRule = divider();
+    pageRow->addWidget(rightRule);
+    pageRow->addWidget(buildDetail());
+    m_side->setProperty("rule", QVariant::fromValue<QObject *>(leftRule));
+    m_detailScroll->setProperty("rule", QVariant::fromValue<QObject *>(rightRule));
 
     m_stack->addWidget(m_page);
     root->addWidget(m_stack, 1);
@@ -476,6 +649,35 @@ QWidget *CollectionsView::buildTools() {
     connect(m_sortBtn, &QToolButton::clicked, this, [this] { openSortMenu(m_sortBtn); });
     l->addWidget(m_sortBtn);
 
+    // Wide only: tiles or rows, and "+" right here (the header is far away).
+    m_viewToggle = new QFrame;
+    m_viewToggle->setObjectName("segTrack");
+    auto *vt = new QHBoxLayout(m_viewToggle);
+    vt->setContentsMargins(2, 2, 2, 2);
+    vt->setSpacing(2);
+    m_gridBtn = textButton("segOption", QString());
+    m_gridBtn->setIcon(paintIcon("grid", QColor(Theme::muted()), 14));
+    m_gridBtn->setToolTip(L("Cuadrícula"));
+    m_listBtn = textButton("segOption", QString());
+    m_listBtn->setIcon(paintIcon("list", QColor(Theme::muted()), 14));
+    m_listBtn->setToolTip(L("Lista"));
+    for (QToolButton *b : {m_gridBtn, m_listBtn}) {
+        b->setFixedSize(28, 22);
+        vt->addWidget(b);
+    }
+    connect(m_gridBtn, &QToolButton::clicked, this, [this] {
+        m_grid = true;
+        refreshTabs();
+        refreshBody();
+    });
+    connect(m_listBtn, &QToolButton::clicked, this, [this] {
+        m_grid = false;
+        refreshTabs();
+        refreshBody();
+    });
+    m_viewToggle->hide();
+    l->addWidget(m_viewToggle);
+
     m_searchBtn = iconButton("search", L("Buscar · Ctrl+F"));
     connect(m_searchBtn, &QToolButton::clicked, this, [this] {
         if (m_searchField->isVisible()) {
@@ -487,6 +689,12 @@ QWidget *CollectionsView::buildTools() {
         }
     });
     l->addWidget(m_searchBtn);
+
+    m_wideAdd = textButton("pickSave", QStringLiteral("+"));
+    m_wideAdd->setFixedSize(28, 28);
+    connect(m_wideAdd, &QToolButton::clicked, this, [this] { emit addRequested(); });
+    m_wideAdd->hide();
+    l->addWidget(m_wideAdd);
     return row;
 }
 
@@ -617,9 +825,29 @@ void CollectionsView::refresh() {
     applyLayout();
     refreshTabs();
     refreshBody();
+    if (m_wide) {
+        refreshSide();
+        refreshDetail();
+    }
 }
 
-void CollectionsView::applyLayout() {}
+void CollectionsView::setLinks(bool planner, bool tracking) {
+    m_planner = planner;
+    m_tracking = tracking;
+    if (m_wide) refreshDetail();
+}
+
+void CollectionsView::applyLayout() {
+    m_side->setVisible(m_wide);
+    m_detailScroll->setVisible(m_wide);
+    if (auto *rule = qobject_cast<QWidget *>(m_side->property("rule").value<QObject *>()))
+        rule->setVisible(m_wide);
+    if (auto *rule = qobject_cast<QWidget *>(m_detailScroll->property("rule").value<QObject *>()))
+        rule->setVisible(m_wide);
+    m_viewToggle->setVisible(m_wide);
+    m_wideAdd->setVisible(m_wide);
+    m_list->setContentsMargins(m_wide ? 12 : 8, m_wide ? 12 : 8, m_wide ? 12 : 8, 12);
+}
 
 void CollectionsView::refreshTabs() {
     const Collection *c = current();
@@ -627,6 +855,7 @@ void CollectionsView::refreshTabs() {
     // Rebuilt only when the states change; otherwise relabelled, so the focus
     // stays on the tab it was on.
     QStringList ids;
+    if (m_wide) ids << QString();   // Todos
     for (const CollectionState &s : c->states) ids << s.id;
     QStringList have;
     for (const CountTab *t : m_tabs) have << t->stateId;
@@ -650,8 +879,12 @@ void CollectionsView::refreshTabs() {
     }
     for (CountTab *t : m_tabs) {
         const CollectionState *s = c->state(t->stateId);
-        t->set(L(s->name.toUtf8().constData()), int(visible(*c, s->id).size()), t->stateId == m_tab);
+        t->set(s ? L(s->name) : L("Todos"), int(visible(*c, t->stateId).size()), t->stateId == m_tab);
     }
+    m_gridBtn->setProperty("chosen", m_grid);
+    m_listBtn->setProperty("chosen", !m_grid);
+    repolish(m_gridBtn);
+    repolish(m_listBtn);
 
     // The sort button says what and which way: "Prioridad ↓".
     const bool finished = c->isFinal(m_tab);
@@ -687,7 +920,8 @@ void CollectionsView::refreshBody() {
     m_queueRows.clear();
     clearLayout(m_list);
     if (!c) return;
-    if (c->isInProgress(m_tab)) fillInProgress(m_list, *c, m_tab);
+    if (m_wide) fillGrid(m_list, *c, visible(*c, m_tab));
+    else if (c->isInProgress(m_tab)) fillInProgress(m_list, *c, m_tab);
     else if (c->isFinal(m_tab)) fillFinished(m_list, *c, m_tab);
     else fillList(m_list, *c, m_tab);
     m_list->addStretch();
@@ -1133,13 +1367,32 @@ void CollectionsView::endRowDrag(Row *dragged) {
 }
 
 void CollectionsView::select(CollectionItem *item) {
-    m_selected = item ? item->id : QString();
+    const QString id = item ? item->id : QString();
+    if (id == m_selected || !m_wide) {
+        m_selected = id;
+        return;
+    }
+    m_selected = id;
+    // The tiles show which one; repainting them is enough.
+    for (coll::Tile *t : m_listHost->findChildren<coll::Tile *>()) {
+        t->selected = t->item->id == m_selected;
+        t->update();
+    }
+    for (Row *r : m_listHost->findChildren<Row *>()) {
+        r->setProperty("chosen", r->item->id == m_selected);
+        repolish(r);
+    }
+    refreshDetail();
 }
 
 void CollectionsView::edited() {
     emit changed();
     refreshTabs();
     refreshBody();
+    if (m_wide) {
+        refreshSide();
+        refreshDetail();
+    }
 }
 
 void CollectionsView::moveTo(CollectionItem *item, const QString &stateId) {
@@ -1169,4 +1422,362 @@ void CollectionsView::openItemMenu(CollectionItem *item, const QPoint &globalPos
         edited();
     });
     menu->showAt(globalPos);
+}
+
+// ---------------------------------------------------------------------------
+// Wide mode
+
+QWidget *CollectionsView::buildSide() {
+    m_side = new QWidget;
+    m_side->setObjectName("collPane");
+    m_side->setFixedWidth(210);
+    m_sideLayout = new QVBoxLayout(m_side);
+    m_sideLayout->setContentsMargins(8, 10, 8, 10);
+    m_sideLayout->setSpacing(2);
+    m_side->hide();
+    return m_side;
+}
+
+QWidget *CollectionsView::buildDetail() {
+    m_detailScroll = new QScrollArea;
+    m_detailScroll->setFixedWidth(300);
+    m_detailScroll->setWidgetResizable(true);
+    m_detailScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_detailScroll->setFrameShape(QFrame::NoFrame);
+    m_detailHost = new QWidget;
+    m_detailHost->setObjectName("listHost");
+    m_detail = new QVBoxLayout(m_detailHost);
+    m_detail->setContentsMargins(16, 16, 16, 16);
+    m_detail->setSpacing(14);
+    m_detailScroll->setWidget(m_detailHost);
+    m_detailScroll->viewport()->setAutoFillBackground(false);
+    m_detailScroll->viewport()->setObjectName("scrollViewport");
+    m_detailScroll->hide();
+    return m_detailScroll;
+}
+
+/// The collections with their counts, the current one's tags (a click filters
+/// by one) and, if it has one, the yearly goal.
+void CollectionsView::refreshSide() {
+    clearLayout(m_sideLayout);
+    const Collection *shown = current();
+    if (!m_store || !shown) return;
+    m_sideLayout->addWidget(section(L("Colecciones")));
+    for (Collection *c : m_store->collections()) {
+        auto *r = new coll::SideRow(c->name, QString::number(Coll::countIn(m_store->collectionItems(), c->id)));
+        r->setMark(paintIcon(c->icon(), c == shown ? m_theme.accent : QColor(Theme::muted()), 16).pixmap(16, 16));
+        r->setChosen(c == shown);
+        const QString id = c->id;
+        connect(r, &QToolButton::clicked, this, [this, id] { setCurrent(id); });
+        m_sideLayout->addWidget(r);
+    }
+    auto *add = new coll::SideRow(L("Nueva colección"), QString());
+    add->setMark(paintIcon("plus", QColor(Theme::muted()), 14).pixmap(14, 14));
+    add->setMuted();
+    connect(add, &QToolButton::clicked, this, [this] { emit newCollectionRequested(); });
+    m_sideLayout->addWidget(add);
+
+    // Tags, by how many items carry them.
+    QHash<QString, int> counts;
+    for (const CollectionItem *i : m_store->collectionItems())
+        if (i->collection == shown->id)
+            for (const QString &t : i->tags) ++counts[t];
+    if (!counts.isEmpty()) {
+        QStringList tags = counts.keys();
+        std::sort(tags.begin(), tags.end(), [&counts](const QString &a, const QString &b) {
+            return counts.value(a) != counts.value(b) ? counts.value(a) > counts.value(b) : a < b;
+        });
+        auto *head = section(L("Etiquetas"));
+        head->setContentsMargins(0, 12, 0, 0);
+        m_sideLayout->addWidget(head);
+        static const QColor dots[] = {QColor(), kAmber, QColor(Theme::muted()), QColor("#4fc99a"),
+                                      QColor("#b98cff"), QColor("#ff7a6b")};
+        for (int i = 0; i < tags.size() && i < 8; ++i) {
+            const QString tag = tags.at(i);
+            auto *r = new coll::SideRow(tag, QString::number(counts.value(tag)));
+            QPixmap dot(16, 16);
+            dot.fill(Qt::transparent);
+            QPainter p(&dot);
+            p.setRenderHint(QPainter::Antialiasing);
+            p.setPen(Qt::NoPen);
+            p.setBrush(i == 0 ? m_theme.accent : dots[i % 6]);
+            p.drawEllipse(QRectF(4, 4, 8, 8));
+            p.end();
+            r->setMark(dot);
+            r->setChosen(tag == m_tag);
+            r->setToolTip(tag == m_tag ? L("Quitar el filtro") : L("Ver solo «%1»").arg(tag));
+            connect(r, &QToolButton::clicked, this, [this, tag] {
+                m_tag = m_tag == tag ? QString() : tag;
+                refreshTabs();
+                refreshBody();
+                refreshSide();
+            });
+            m_sideLayout->addWidget(r);
+        }
+    }
+    m_sideLayout->addStretch();
+
+    // RETO: finished this year against the goal.
+    if (shown->goal > 0) {
+        const int year = QDate::currentDate().year();
+        int done = 0;
+        for (const CollectionItem *i : m_store->collectionItems())
+            if (i->collection == shown->id && shown->isFinal(i->state) && i->finishedMs > 0 &&
+                QDateTime::fromMSecsSinceEpoch(i->finishedMs).date().year() == year)
+                ++done;
+        auto *card = new QFrame;
+        card->setObjectName("timerHero");
+        auto *v = new QVBoxLayout(card);
+        v->setContentsMargins(10, 10, 10, 10);
+        v->setSpacing(6);
+        auto *k = new QLabel(L("RETO %1").arg(year));
+        k->setObjectName("meta");
+        v->addWidget(k);
+        auto *nums = new QHBoxLayout;
+        nums->setSpacing(4);
+        auto *n = new QLabel(QString::number(done));
+        n->setObjectName("trackTileValue");
+        nums->addWidget(n, 0, Qt::AlignBottom);
+        auto *of = new ElidedLabel(QString("/ %1").arg(shown->goal), QColor(Theme::muted()));
+        of->setObjectName("timerSub");
+        nums->addWidget(of, 1, Qt::AlignBottom);
+        v->addLayout(nums);
+        v->addWidget(new coll::Bar(qMin(100, done * 100 / shown->goal), m_theme.accent));
+        m_sideLayout->addWidget(card);
+    }
+}
+
+/// The centre: tiles in as many columns as fit, or the rows.
+void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QList<CollectionItem *> &items) {
+    if (items.isEmpty()) {
+        auto *none = new QLabel(m_search.isEmpty() && m_tag.isEmpty() ? L("Nada por aquí todavía.")
+                                                                       : L("Nada coincide con la búsqueda."));
+        none->setObjectName("popupText");
+        none->setContentsMargins(6, 4, 6, 4);
+        col->addWidget(none);
+        return;
+    }
+    if (m_selected.isEmpty() || !std::any_of(items.begin(), items.end(),
+                                             [this](const CollectionItem *i) { return i->id == m_selected; }))
+        m_selected = items.first()->id;
+
+    if (!m_grid) {
+        for (int i = 0; i < items.size(); ++i) {
+            CollectionItem *item = items.at(i);
+            Row *r = row(c, item, 0, metaFor(c, item), false, c.isFinal(item->state));
+            r->setProperty("chosen", item->id == m_selected);
+            col->addWidget(r);
+        }
+        return;
+    }
+    auto *host = new QWidget;
+    auto *grid = new QGridLayout(host);
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setSpacing(8);
+    const int avail = m_scroll->viewport()->width() - 24;
+    const int columns = qBound(2, avail / 130, 8);
+    for (int i = 0; i < items.size(); ++i) {
+        CollectionItem *item = items.at(i);
+        auto *t = new coll::Tile(item, &m_theme);
+        const CollectionState *s = c.state(item->state);
+        t->state = s ? L(s->name).toLower() : QString();
+        t->stateColor = c.isInProgress(item->state) ? m_theme.accent
+                        : c.isFinal(item->state)     ? QColor(Theme::muted())
+                                                     : kAmber;
+        t->percent = c.isInProgress(item->state) && c.has(Collection::kProgress) ? item->percent() : -1;
+        t->priority = c.has(Collection::kPriority);
+        t->selected = item->id == m_selected;
+        t->setToolTip(item->title);
+        t->select = [this, item] { select(item); };
+        t->open = [this, item] { emit editRequested(item); };
+        t->menu = [this, item](const QPoint &at) { openItemMenu(item, at); };
+        grid->addWidget(t, i / columns, i % columns);
+    }
+    for (int i = 0; i < columns; ++i) grid->setColumnStretch(i, 1);
+    col->addWidget(host);
+}
+
+/// The selected item: cover and kicker, its figures, priority and tags, the
+/// links to the Planner and Seguimiento, Editar and the next step.
+void CollectionsView::refreshDetail() {
+    clearLayout(m_detail);
+    Collection *c = current();
+    CollectionItem *item = m_store ? m_store->collectionItem(m_selected) : nullptr;
+    if (!c || !item || item->collection != c->id) {
+        auto *none = new QLabel(L("Elige uno para ver su ficha."));
+        none->setObjectName("popupText");
+        none->setWordWrap(true);
+        none->setMinimumWidth(24);
+        m_detail->addWidget(none);
+        m_detail->addStretch();
+        return;
+    }
+
+    auto *top = new QHBoxLayout;
+    top->setSpacing(12);
+    top->addWidget(new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(70, 104)),
+                   0, Qt::AlignTop);
+    auto *texts = new QVBoxLayout;
+    texts->setSpacing(4);
+    const CollectionState *s = c->state(item->state);
+    QString kicker = s ? L(s->name).toUpper() : QString();
+    QString tone;
+    if (c->isInProgress(item->state)) {
+        if (item->startedMs > 0) kicker += " · " + L("DESDE %1").arg(Coll::shortDate(item->startedMs).toUpper());
+    } else if (c->isFinal(item->state)) {
+        tone = "muted";
+        if (item->finishedMs > 0) kicker += " · " + Coll::shortDate(item->finishedMs).toUpper();
+    } else {
+        tone = "amber";
+        if (item->state == c->firstState()) {
+            const int at = int(Coll::queue(m_store->collectionItems(), *c).indexOf(item)) + 1;
+            kicker += " · " + L("%1 EN LA COLA").arg(at, 2, 10, QChar('0'));
+        }
+    }
+    auto *k = new QLabel(kicker);
+    k->setObjectName("collKicker");
+    k->setProperty("tone", tone);
+    k->setWordWrap(true);
+    k->setMinimumWidth(24);
+    texts->addWidget(k);
+    auto *title = new QLabel(item->title);
+    title->setObjectName("heroName");
+    title->setWordWrap(true);
+    title->setMinimumWidth(24);
+    texts->addWidget(title);
+    if (c->has(Collection::kAuthor) && !item->author.isEmpty())
+        texts->addWidget(elided(item->author, "collSub", QColor(Theme::muted())));
+    texts->addStretch();
+    top->addLayout(texts, 1);
+    m_detail->addLayout(top);
+
+    // AÑO · PÁGINAS · AÑADIDO
+    auto *tiles = new QGridLayout;
+    tiles->setSpacing(6);
+    int column = 0;
+    const auto tile = [&](const QString &label, const QString &value) {
+        auto *f = new QFrame;
+        f->setObjectName("timerHero");
+        auto *v = new QVBoxLayout(f);
+        v->setContentsMargins(8, 7, 8, 7);
+        v->setSpacing(2);
+        auto *l = new ElidedLabel(label, QColor(Theme::muted()));
+        l->setObjectName("meta");
+        v->addWidget(l);
+        auto *n = new QLabel(value);
+        n->setObjectName("timerSub");
+        v->addWidget(n);
+        tiles->addWidget(f, 0, column, 1, 1);
+        tiles->setColumnStretch(column++, 1);
+    };
+    if (c->has(Collection::kYear) && item->year > 0) tile(L("AÑO"), QString::number(item->year));
+    if (c->has(Collection::kProgress) && item->total > 0) {
+        QString value = Coll::number(item->total);
+        if (c->isInProgress(item->state) && item->progress > 0)
+            value = QString("%1 / %2").arg(Coll::number(item->progress), value);
+        tile(L(c->unitName()).toUpper(), value);
+    }
+    tile(L("AÑADIDO"), Coll::shortDate(item->addedMs));
+    m_detail->addLayout(tiles);
+
+    // Priority, changed right here.
+    if (c->has(Collection::kPriority) && !c->isFinal(item->state)) {
+        auto *pb = new QVBoxLayout;
+        pb->setSpacing(6);
+        auto *label = new QLabel(L("Prioridad"));
+        label->setObjectName("setFieldLabel");
+        pb->addWidget(label);
+        auto *track = new QFrame;
+        track->setObjectName("segTrack");
+        auto *tl = new QHBoxLayout(track);
+        tl->setContentsMargins(3, 3, 3, 3);
+        tl->setSpacing(2);
+        const QStringList names{L("Baja"), L("Media"), L("Alta")};
+        for (int p = 1; p <= 3; ++p) {
+            auto *b = textButton("segOption", names.at(p - 1));
+            b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            b->setProperty("chosen", item->priority == p);
+            connect(b, &QToolButton::clicked, this, [this, item, p] {
+                item->priority = p;
+                edited();
+            });
+            tl->addWidget(b, 1);
+        }
+        pb->addWidget(track);
+        m_detail->addLayout(pb);
+    } else if (c->has(Collection::kRating) && c->isFinal(item->state)) {
+        auto *s5 = new coll::Stones(5, item->rating, m_theme.accent);
+        s5->setToolTip(L("Valoración %1 de 5").arg(item->rating));
+        m_detail->addWidget(s5);
+    }
+
+    if (!item->tags.isEmpty()) {
+        auto *tagBox = new QWidget;
+        auto *tg = new QGridLayout(tagBox);
+        tg->setContentsMargins(0, 0, 0, 0);
+        tg->setSpacing(5);
+        for (int i = 0; i < item->tags.size(); ++i) {
+            const QString tag = item->tags.at(i);
+            auto *chip = textButton("trackChip", tag);
+            chip->setToolTip(L("Ver solo «%1»").arg(tag));
+            connect(chip, &QToolButton::clicked, this, [this, tag] {
+                m_tag = tag;
+                refreshTabs();
+                refreshBody();
+                refreshSide();
+            });
+            tg->addWidget(chip, i / 2, i % 2, Qt::AlignLeft);
+        }
+        tg->setColumnStretch(2, 1);
+        m_detail->addWidget(tagBox);
+    }
+
+    // Planificar: a reading block in the Planner, the clock in Seguimiento.
+    if ((m_planner || m_tracking) && !c->isFinal(item->state)) {
+        auto *pv = new QVBoxLayout;
+        pv->setSpacing(6);
+        auto *label = new QLabel(L("Planificar"));
+        label->setObjectName("setFieldLabel");
+        pv->addWidget(label);
+        const auto link = [&](const QString &icon, const QString &text, std::function<void()> fn) {
+            auto *b = textButton("trackRecent", text);
+            b->setIcon(paintIcon(icon, QColor(Theme::muted()), 14));
+            b->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+            b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            b->setMinimumWidth(24);
+            connect(b, &QToolButton::clicked, this, std::move(fn));
+            pv->addWidget(b);
+        };
+        if (m_planner)
+            link("calendar", L("Bloque de lectura en el Planner"), [this, item] { emit planRequested(item); });
+        if (m_tracking)
+            link("bars", L("Medir tiempo con Seguimiento"), [this, item] { emit trackRequested(item); });
+        m_detail->addLayout(pv);
+    }
+    m_detail->addStretch();
+
+    // Editar, and the next step for its state.
+    auto *actions = new QHBoxLayout;
+    actions->setSpacing(6);
+    auto *editBtn = textButton("pickCancel", L("Editar"));
+    connect(editBtn, &QToolButton::clicked, this, [this, item] { emit editRequested(item); });
+    actions->addWidget(editBtn);
+    QString nextState, nextText;
+    if (c->isInProgress(item->state)) {
+        nextState = c->finalState();
+        nextText = L("Terminado");
+    } else if (!c->isFinal(item->state)) {
+        const QString inProgress = c->inProgressState();
+        nextState = inProgress.isEmpty() ? c->finalState() : inProgress;
+        nextText = inProgress.isEmpty() ? L("Terminado") : L("Empezar");
+    }
+    if (!nextState.isEmpty()) {
+        auto *next = textButton("pickSave", nextText);
+        next->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        connect(next, &QToolButton::clicked, this, [this, item, nextState] { moveTo(item, nextState); });
+        actions->addWidget(next, 1);
+    } else {
+        actions->addStretch();
+    }
+    m_detail->addLayout(actions);
 }

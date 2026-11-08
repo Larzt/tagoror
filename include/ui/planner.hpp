@@ -66,6 +66,9 @@ public:
     void refresh();
     void retranslate();
     void goTo(const QDate &day);
+    /// The form for a new event titled @p title, at the next full hour: a
+    /// reading block from Colecciones (1.3.0).
+    void planBlock(const QString &title);
     /// Closes the form if open.
     /// @return Whether it was: Escape closes the form first, and only a second
     ///         press leaves the page.

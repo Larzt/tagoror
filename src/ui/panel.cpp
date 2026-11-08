@@ -762,6 +762,11 @@ QWidget *Panel::buildBody() {
             [this] { openCollectionEditor(nullptr); });
     connect(m_collections, &CollectionsView::editCollectionRequested, this, &Panel::openCollectionEditor);
     connect(m_collections, &CollectionsView::noteRequested, this, &Panel::openItemNote);
+    connect(m_collections, &CollectionsView::planRequested, this, [this](CollectionItem *item) {
+        if (!has(Features::Planner)) return;
+        openPage(m_planner);
+        m_planner->planBlock(L("Leer «%1»").arg(item->title));
+    });
     connect(m_collections, &CollectionsView::trackRequested, this, [this](CollectionItem *item) {
         if (!has(Features::Tracking)) return;
         startTracking(L("Leer «%1»").arg(item->title), QString());
@@ -1655,6 +1660,7 @@ void Panel::applyFeatures() {
             m_navBar->setItemVisible(page, has(Features::Id(featureOf(page))));
 
     if (m_planner) m_planner->setRemindersEnabled(hasNoteType(Note::Reminder));
+    if (m_collections) m_collections->setLinks(has(Features::Planner), has(Features::Tracking));
     // Birthdays also show on the planner, as all-day tags.
     if (m_planner)
         m_planner->setSources(&m_store.events(), &m_store.notes(),

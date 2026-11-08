@@ -77,6 +77,9 @@ public:
     void setCurrent(const QString &id);
     /// Ctrl+F on this page.
     void focusSearch();
+    /// Whether the wide detail offers the Planner and Seguimiento (parts of the
+    /// app that may be left out).
+    void setLinks(bool planner, bool tracking);
 
 signals:
     /// Something was edited here: save, and repaint what shows it elsewhere.
@@ -146,6 +149,8 @@ private:
     QString m_selected;         ///< Item id shown in the wide detail.
     bool m_wide = false;
     bool m_grid = true;         ///< Wide centre: tiles or rows.
+    bool m_planner = true;
+    bool m_tracking = true;
 
     QWidget *m_tools = nullptr;
     QHBoxLayout *m_tabsLayout = nullptr;

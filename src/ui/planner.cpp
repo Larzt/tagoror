@@ -2348,7 +2348,8 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
     m_fDuplicate->setVisible(e != nullptr);
     // An existing event does not turn into a reminder: that would be deleting one
     // and creating something else.
-    m_kindButtons.at(2)->setVisible(e == nullptr);
+    // Nor is it offered when reminders are left out (core/features.hpp).
+    m_kindButtons.at(2)->setVisible(e == nullptr && m_remindersOn);
 
     if (e) {
         m_fTitle->setText(e->title);
@@ -2387,6 +2388,21 @@ void PlannerView::openEditor(Event *e, const QDate &day, qreal hour) {
     setEditorKind(m_fKind);
     m_stack->setCurrentWidget(m_editor);
     QTimer::singleShot(0, m_fTitle, [this] { m_fTitle->setFocus(Qt::OtherFocusReason); });
+}
+
+void PlannerView::planBlock(const QString &title) {
+    // The next full hour today, or tomorrow morning if the day is over.
+    const QTime now = QTime::currentTime();
+    QDate day = QDate::currentDate();
+    int hour = now.hour() + 1;
+    if (hour > 22) {
+        day = day.addDays(1);
+        hour = 9;
+    }
+    goTo(day);
+    openEditor(nullptr, day, hour);
+    m_fTitle->setText(title);
+    m_fTitle->selectAll();
 }
 
 bool PlannerView::closeEditor() {
