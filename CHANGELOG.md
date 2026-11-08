@@ -4,6 +4,17 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.5] — 2026-11-08
+
+### Fixed
+
+- **Markdown: a list or a quote no longer swallows the text after it.** A
+  plain line right under `- item` or `> quote` was taken, as CommonMark does,
+  as more of that item, so everything written after a list ended up inside its
+  last point. Now that line starts a paragraph of its own; to carry on an item
+  on the next line, indent it (`  more of the item`). This applies to the
+  Markdown note's preview and to its card.
+
 ## [1.2.4] — 2026-11-08
 
 ### Added

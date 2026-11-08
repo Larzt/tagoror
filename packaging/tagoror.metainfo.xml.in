@@ -96,6 +96,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.2.5" date="2026-11-08">
+      <description>
+        <p>Markdown notes: the text written after a list or a quote no longer
+           stays inside its last item.</p>
+      </description>
+    </release>
     <release version="1.2.4" date="2026-11-08">
       <description>
         <p>Planner categories can take any colour, not only the default

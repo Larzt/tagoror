@@ -36,7 +36,7 @@
 | | |
 |---|---|
 | **Text** | Plain text, whose editor grows with the content: what you type is what you see. **Enter** finishes, **Shift+Enter** starts a new line. |
-| **Markdown** | Shown formatted on its card — headings, `**bold**`, `*italic*`, `` `code` ``, lists, quotes and `[links](…)`. Click it and it opens on its own page: the raw text with the syntax dimmed and line numbers, or the preview (**Ctrl+E**), with a formatting bar while you edit. Text notes you wrote in Markdown before 1.0 became Markdown notes on their own. |
+| **Markdown** | Shown formatted on its card — headings, `**bold**`, `*italic*`, `` `code` ``, lists, quotes and `[links](…)`. Every line is a line, and a plain line after a list or a quote leaves it; indent it to carry on the item. Click it and it opens on its own page: the raw text with the syntax dimmed and line numbers, or the preview (**Ctrl+E**), with a formatting bar while you edit. Text notes you wrote in Markdown before 1.0 became Markdown notes on their own. |
 | **Checklist** | Items you can tick off (done ones get struck through), rename in place and drag into a new order, a progress bar, and an add row that reads as a pending task rather than a form. |
 | **Reminder** | A real date, not just a label: when the time comes it rings until you stop it, or for a minute — after that it goes quiet but stays red until you acknowledge it. |
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
