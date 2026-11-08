@@ -28,6 +28,8 @@ constexpr auto kBirthdayBackupPrefix = "birthdays-";
 constexpr auto kEventBackupPrefix = "events-";
 /// And Seguimiento, the fourth.
 constexpr auto kTrackingBackupPrefix = "tracking-";
+/// And Colecciones, the fifth.
+constexpr auto kCollectionsBackupPrefix = "collections-";
 
 /// Names the data was stored under by earlier releases, newest first. A
 /// rename must never strand anyone's notes, so both the folder and the
@@ -81,6 +83,8 @@ inline QString keyOf(const Event::Category *c) { return "c:" + c->id; }
 inline QString keyOf(const Area *a) { return "a:" + a->id; }
 inline QString keyOf(const Project *p) { return "p:" + p->id; }
 inline QString keyOf(const Session *s) { return "s:" + s->id; }
+inline QString keyOf(const Collection *c) { return "k:" + c->id; }
+inline QString keyOf(const CollectionItem *i) { return "i:" + i->id; }
 
 /// What an element says without its timestamp: if this does not change, the
 /// element did not change.
@@ -113,6 +117,8 @@ void adopt(Event::Category *local, const Event::Category *remote) { *local = *re
 void adopt(Area *local, const Area *remote) { *local = *remote; }
 void adopt(Project *local, const Project *remote) { *local = *remote; }
 void adopt(Session *local, const Session *remote) { *local = *remote; }
+void adopt(Collection *local, const Collection *remote) { *local = *remote; }
+void adopt(CollectionItem *local, const CollectionItem *remote) { *local = *remote; }
 
 /// Projects and sessions of a tracking.json (or of its backup).
 template <typename T>
@@ -155,6 +161,8 @@ Store::~Store() {
     qDeleteAll(m_categories);
     qDeleteAll(m_projects);
     qDeleteAll(m_sessions);
+    qDeleteAll(m_collections);
+    qDeleteAll(m_collectionItems);
 }
 
 void Store::resolveDataDir() {
@@ -377,6 +385,50 @@ QString Store::path() const { return appDataDir() + "/notes.json"; }
 QString Store::birthdaysPath() const { return appDataDir() + "/birthdays.json"; }
 QString Store::eventsPath() const { return appDataDir() + "/events.json"; }
 QString Store::trackingPath() const { return appDataDir() + "/tracking.json"; }
+QString Store::collectionsPath() const { return appDataDir() + "/collections.json"; }
+
+Collection *Store::collection(const QString &id) const {
+    for (Collection *c : m_collections)
+        if (c->id == id) return c;
+    return nullptr;
+}
+
+void Store::addCollection(Collection *c) {
+    c->pos = m_collections.isEmpty() ? 0 : m_collections.last()->pos + 1;
+    m_collections.append(c);
+    save();
+}
+
+void Store::removeCollection(Collection *c) {
+    for (int i = int(m_collectionItems.size()) - 1; i >= 0; --i)
+        if (m_collectionItems.at(i)->collection == c->id) delete m_collectionItems.takeAt(i);
+    m_collections.removeOne(c);
+    delete c;
+    save();
+}
+
+CollectionItem *Store::collectionItem(const QString &id) const {
+    for (CollectionItem *i : m_collectionItems)
+        if (i->id == id) return i;
+    return nullptr;
+}
+
+void Store::addCollectionItem(CollectionItem *i) {
+    if (i->addedMs == 0) i->addedMs = QDateTime::currentMSecsSinceEpoch();
+    m_collectionItems.append(i);
+    save();
+}
+
+void Store::removeCollectionItem(CollectionItem *i) {
+    m_collectionItems.removeOne(i);
+    delete i;
+    save();
+}
+
+void Store::sortCollections() {
+    std::stable_sort(m_collections.begin(), m_collections.end(),
+                     [](const Collection *a, const Collection *b) { return a->pos < b->pos; });
+}
 
 void Store::scheduleSave() { m_saveTimer->start(); }
 
@@ -450,6 +502,7 @@ void Store::save() {
     saveBirthdays();
     saveEvents();
     saveTracking();
+    saveCollections();
     emit saved();
 }
 
@@ -529,6 +582,47 @@ void Store::loadTracking() {
     m_sessions = readList<Session>(root, "sessions");
 }
 
+void Store::saveCollections() {
+    if (!m_available || !m_collectionsReadable) return;
+    // Nothing to keep and no file yet: none is written, so a machine that never
+    // used Colecciones has no collections.json to sync.
+    if (m_collections.isEmpty() && m_collectionItems.isEmpty() && !QFile::exists(collectionsPath()))
+        return;
+
+    QJsonArray collections;
+    for (Collection *c : m_collections) collections.append(c->toJson());
+    QJsonArray items;
+    for (CollectionItem *i : m_collectionItems) items.append(i->toJson());
+
+    QJsonObject root;
+    root["collections"] = collections;
+    root["items"] = items;
+    writeAtomic(collectionsPath(), QJsonDocument(root).toJson(QJsonDocument::Indented));
+}
+
+/// Like tracking.json: a missing file just means no collections yet.
+void Store::loadCollections() {
+    m_collectionsReadable = true;
+    if (!m_available) return;
+
+    QFile f(collectionsPath());
+    if (!f.exists()) return;
+    if (!f.open(QIODevice::ReadOnly)) {
+        m_collectionsReadable = false;
+        return;
+    }
+    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+    if (!root.contains("collections")) {
+        m_collectionsReadable = false;   // never overwrite what could not be read
+        return;
+    }
+    qDeleteAll(m_collections);
+    m_collections = readList<Collection>(root, "collections");
+    sortCollections();
+    qDeleteAll(m_collectionItems);
+    m_collectionItems = readList<CollectionItem>(root, "items");
+}
+
 /// Separate from save() so it can be skipped: an unreadable birthdays.json is
 /// never overwritten.
 void Store::saveBirthdays() {
@@ -604,6 +698,8 @@ bool Store::copyToBackup(const QString &name) {
         QFile::copy(eventsPath(), dir + "/" + kEventBackupPrefix + stamp);
     if (QFile::exists(trackingPath()))
         QFile::copy(trackingPath(), dir + "/" + kTrackingBackupPrefix + stamp);
+    if (QFile::exists(collectionsPath()))
+        QFile::copy(collectionsPath(), dir + "/" + kCollectionsBackupPrefix + stamp);
 
     pruneBackups();
     return true;
@@ -673,7 +769,8 @@ void Store::pruneBackups() {
     // pruned separately with the same limit; they share timestamps and so go
     // together.
     for (const char *prefix :
-         {kBackupPrefix, kBirthdayBackupPrefix, kEventBackupPrefix, kTrackingBackupPrefix}) {
+         {kBackupPrefix, kBirthdayBackupPrefix, kEventBackupPrefix, kTrackingBackupPrefix,
+          kCollectionsBackupPrefix}) {
         QStringList files = QDir(dir).entryList({QString(prefix) + "*.json"}, QDir::Files);
         files.sort();
         while (files.size() > Store::kBackupsKept) QFile::remove(dir + "/" + files.takeFirst());
@@ -778,6 +875,13 @@ bool Store::restoreBackup(const QString &file) {
             qDeleteAll(m_sessions);
             m_sessions = readList<Session>(mate, "sessions");
         }
+        if (readMate(kCollectionsBackupPrefix, "collections", &mate)) {
+            qDeleteAll(m_collections);
+            m_collections = readList<Collection>(mate, "collections");
+            sortCollections();
+            qDeleteAll(m_collectionItems);
+            m_collectionItems = readList<CollectionItem>(mate, "items");
+        }
     }
     // readObject() brought the backup's old lastBackupMs; keeping it would ask for
     // another backup immediately.
@@ -787,6 +891,7 @@ bool Store::restoreBackup(const QString &file) {
     m_birthdaysReadable = true;
     m_eventsReadable = true;
     m_trackingReadable = true;
+    m_collectionsReadable = true;
     save();
     emit reloaded();
     return true;
@@ -823,6 +928,7 @@ void Store::load() {
         loadBirthdays();
         loadEvents();
         loadTracking();
+        loadCollections();
         resetSnapshots();
         return;
     }
@@ -837,6 +943,7 @@ void Store::load() {
         loadBirthdays();
         loadEvents();
         loadTracking();
+        loadCollections();
         resetSnapshots();   // what was read is not a change
         // Here and not only after a copy: copyToBackup() returns early when the
         // target exists, so hung only off it the folder could grow without limit.
@@ -960,8 +1067,12 @@ bool Store::retryLoad() {
         const QList<Area *> pendingAreas = m_areas;
         const QList<Project *> pendingProjects = m_projects;
         const QList<Session *> pendingSessions = m_sessions;
+        const QList<Collection *> pendingCollections = m_collections;
+        const QList<CollectionItem *> pendingCollItems = m_collectionItems;
         m_projects.clear();
         m_sessions.clear();
+        m_collections.clear();
+        m_collectionItems.clear();
         m_areas.clear();
         m_notes.clear();
         m_birthdays.clear();
@@ -977,6 +1088,8 @@ bool Store::retryLoad() {
             m_areas = pendingAreas;
             m_projects = pendingProjects;
             m_sessions = pendingSessions;
+            m_collections = pendingCollections;
+            m_collectionItems = pendingCollItems;
             return false;
         }
         // Areas created meanwhile are kept, except those the file already has (the
@@ -1006,6 +1119,9 @@ bool Store::retryLoad() {
         loadTracking();
         m_projects += pendingProjects;
         m_sessions += pendingSessions;
+        loadCollections();
+        m_collections += pendingCollections;
+        m_collectionItems += pendingCollItems;
         // What was read is the baseline; what was written meanwhile is a change, so
         // it gets no snapshot and will be stamped.
         resetSnapshots();
@@ -1017,6 +1133,8 @@ bool Store::retryLoad() {
         for (Area *a : newAreas) m_snap.remove(keyOf(a));
         for (Project *p : pendingProjects) m_snap.remove(keyOf(p));
         for (Session *x : pendingSessions) m_snap.remove(keyOf(x));
+        for (Collection *c : pendingCollections) m_snap.remove(keyOf(c));
+        for (CollectionItem *i : pendingCollItems) m_snap.remove(keyOf(i));
     }
     // The folder appeared without a file: keep what is in memory. Seeding the
     // demo notes now would put them over what the user just wrote.
@@ -1048,7 +1166,8 @@ void Store::changeDataDir(const QString &raw) {
     // The backup history moves too.
     QDir().mkpath(to + "/backups");
     for (const char *prefix :
-         {kBackupPrefix, kBirthdayBackupPrefix, kEventBackupPrefix, kTrackingBackupPrefix})
+         {kBackupPrefix, kBirthdayBackupPrefix, kEventBackupPrefix, kTrackingBackupPrefix,
+          kCollectionsBackupPrefix})
         for (const QString &name : QDir(from + "/backups")
                                        .entryList({QString(prefix) + "*.json"}, QDir::Files))
             QFile::copy(from + "/backups/" + name, to + "/backups/" + name);
@@ -1062,6 +1181,7 @@ void Store::changeDataDir(const QString &raw) {
     m_birthdaysReadable = true;
     m_eventsReadable = true;
     m_trackingReadable = true;
+    m_collectionsReadable = true;
     save();
 }
 
@@ -1088,6 +1208,10 @@ void Store::adoptDataDir(const QString &raw) {
     m_projects.clear();
     qDeleteAll(m_sessions);
     m_sessions.clear();
+    qDeleteAll(m_collections);
+    m_collections.clear();
+    qDeleteAll(m_collectionItems);
+    m_collectionItems.clear();
     m_prefs = Prefs{};
     // Other notes, other history: these tombstones do not belong there.
     m_deleted.clear();
@@ -1109,6 +1233,8 @@ void Store::resetSnapshots() {
     for (Area *a : m_areas) m_snap[keyOf(a)] = snapshotOf(a);
     for (Project *p : m_projects) m_snap[keyOf(p)] = snapshotOf(p);
     for (Session *x : m_sessions) m_snap[keyOf(x)] = snapshotOf(x);
+    for (Collection *c : m_collections) m_snap[keyOf(c)] = snapshotOf(c);
+    for (CollectionItem *i : m_collectionItems) m_snap[keyOf(i)] = snapshotOf(i);
     m_orderSnap.clear();
     for (Note *n : m_notes) m_orderSnap << n->id;
 }
@@ -1139,6 +1265,10 @@ void Store::stampChanges() {
     if (m_trackingReadable) {
         for (Project *p : m_projects) stamp(p);
         for (Session *x : m_sessions) stamp(x);
+    }
+    if (m_collectionsReadable) {
+        for (Collection *c : m_collections) stamp(c);
+        for (CollectionItem *i : m_collectionItems) stamp(i);
     }
 
     for (auto it = m_snap.begin(); it != m_snap.end();) {
@@ -1234,7 +1364,8 @@ bool applyTombstones(QList<T *> &local, QHash<QString, qint64> &deleted,
 Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
                                       const QJsonObject &birthdaysRoot,
                                       const QJsonObject &eventsRoot,
-                                      const QJsonObject &trackingRoot) {
+                                      const QJsonObject &trackingRoot,
+                                      const QJsonObject &collectionsRoot) {
     MergeResult result;
     if (!m_available) return result;   // never merge over what was not read
 
@@ -1311,6 +1442,13 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
         result.changed |= mergeList<Session>(m_sessions, trackingRoot["sessions"].toArray(),
                                              m_deleted, false, nothing);
     }
+    if (m_collectionsReadable && collectionsRoot.contains("collections")) {
+        result.changed |= mergeList<Collection>(m_collections,
+                                                collectionsRoot["collections"].toArray(),
+                                                m_deleted, false, nothing);
+        result.changed |= mergeList<CollectionItem>(
+            m_collectionItems, collectionsRoot["items"].toArray(), m_deleted, false, nothing);
+    }
 
     // Notes deleted elsewhere take their attachments with them here too.
     result.changed |= applyTombstones<Note>(m_notes, m_deleted, [](Note *n) {
@@ -1328,6 +1466,11 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
     if (m_trackingReadable) {
         result.changed |= applyTombstones<Project>(m_projects, m_deleted);
         result.changed |= applyTombstones<Session>(m_sessions, m_deleted);
+    }
+    if (m_collectionsReadable) {
+        result.changed |= applyTombstones<Collection>(m_collections, m_deleted);
+        result.changed |= applyTombstones<CollectionItem>(m_collectionItems, m_deleted);
+        sortCollections();
     }
 
     // What just arrived is not a local change: stamping it would give it "now"
@@ -1387,6 +1530,9 @@ QByteArray Store::syncPayload(const QString &name) const {
     } else if (name == "tracking.json") {
         root["projects"] = sortedById(m_projects);
         root["sessions"] = sortedById(m_sessions);
+    } else if (name == "collections.json") {
+        root["collections"] = sortedById(m_collections);
+        root["items"] = sortedById(m_collectionItems);
     } else {
         return {};
     }
@@ -1398,5 +1544,10 @@ QStringList Store::syncableFiles() const {
     if (m_birthdaysReadable) out << "birthdays.json";
     if (m_eventsReadable) out << "events.json";
     if (m_trackingReadable) out << "tracking.json";
+    // Only once there is something: a machine that never used Colecciones does
+    // not upload an empty file over the other's.
+    if (m_collectionsReadable && (!m_collections.isEmpty() || !m_collectionItems.isEmpty() ||
+                                  QFile::exists(collectionsPath())))
+        out << "collections.json";
     return out;
 }

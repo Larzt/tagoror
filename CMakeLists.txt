@@ -48,6 +48,7 @@ add_executable(tagoror
     src/core/folderbackend.cpp
     src/core/calendarsync.cpp
     src/core/tracking.cpp
+    src/core/collection.cpp
     include/core/birthday.hpp
     include/core/drivesync.hpp
     include/core/synccontroller.hpp
@@ -65,6 +66,7 @@ add_executable(tagoror
     include/core/store.hpp
     include/core/timer.hpp
     include/core/tracking.hpp
+    include/core/collection.hpp
     include/core/updater.hpp
 
     src/ui/panel.cpp
