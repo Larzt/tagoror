@@ -1755,7 +1755,7 @@ void Panel::openCollectionMenu(QWidget *anchor) {
     menu->addSeparator();
     if (shown) {
         Collection *editing = m_collections->current();
-        menu->addItem("pencil", L("Editar colección…"), L("Nombre, estados y campos"),
+        menu->addItem("pencil", L("Editar colección…"), L("Nombre, estados, campos y reto"),
                       [this, editing] { openCollectionEditor(editing); });
     }
     menu->addItem("plus", L("Nueva colección…"), QString(), [this] { openCollectionEditor(nullptr); });

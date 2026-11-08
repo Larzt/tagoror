@@ -383,6 +383,15 @@ bool adoptSynopsisField(Collection &c, const QList<CollectionItem *> &items) {
     return false;
 }
 
+int finishedIn(const QList<CollectionItem *> &items, const Collection &c, int year) {
+    int n = 0;
+    for (const CollectionItem *i : items)
+        if (i->collection == c.id && c.isFinal(i->state) && i->finishedMs > 0 &&
+            QDateTime::fromMSecsSinceEpoch(i->finishedMs).date().year() == year)
+            ++n;
+    return n;
+}
+
 int countIn(const QList<CollectionItem *> &items, const QString &collectionId,
             const QString &stateId) {
     int n = 0;

@@ -251,6 +251,9 @@ bool adoptSynopsisField(Collection &c, const QList<CollectionItem *> &items);
 void moveInQueue(QList<CollectionItem *> order, CollectionItem *item, int index);
 /// Puts @p item in @p stateId, recording when it started or finished.
 void setState(CollectionItem *item, const Collection &c, const QString &stateId);
+/// How many of @p c's items were finished in @p year: the yearly goal's
+/// count. One finished without a date counts in no year.
+int finishedIn(const QList<CollectionItem *> &items, const Collection &c, int year);
 int countIn(const QList<CollectionItem *> &items, const QString &collectionId,
             const QString &stateId = QString());
 

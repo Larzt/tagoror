@@ -547,7 +547,6 @@ QToolButton#collSide[chosen="true"] {
 }
 QWidget#collPane { background: transparent; border: none; }
 QWidget#bdayRow[chosen="true"] { background: %8; }
-QFrame#collDivider { background: %2; border: none; }
 QToolButton#trackPicker {
     color: %3; background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px;
     padding: 5px 8px; font-size: 12px; text-align: left;

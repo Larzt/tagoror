@@ -23,6 +23,8 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSet>
+#include <QSettings>
+#include <QSplitter>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QTextLayout>
@@ -566,6 +568,51 @@ private:
     ElidedLabel *m_name;
 };
 
+/// The wide mode's column edges (1.3.7): the hairline they always were, a few
+/// pixels wide to grab, in the accent while hovered or dragged.
+class SplitHandle : public QSplitterHandle {
+public:
+    SplitHandle(Qt::Orientation o, QSplitter *parent, const Theme *theme)
+        : QSplitterHandle(o, parent), m_theme(theme) {
+        setAttribute(Qt::WA_Hover, true);
+        setToolTip(L("Arrastra para cambiar el ancho"));
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        const bool hot = underMouse() || m_dragging;
+        const qreal w = hot ? 2 : 1;
+        p.fillRect(QRectF((width() - w) / 2.0, 0, w, height()),
+                   hot ? m_theme->accent : QColor(255, 255, 255, 23));
+    }
+    bool event(QEvent *e) override {
+        switch (e->type()) {
+            case QEvent::MouseButtonPress: m_dragging = true; update(); break;
+            case QEvent::MouseButtonRelease: m_dragging = false; update(); break;
+            case QEvent::HoverEnter:
+            case QEvent::HoverLeave: update(); break;
+            default: break;
+        }
+        return QSplitterHandle::event(e);
+    }
+
+private:
+    const Theme *m_theme;
+    bool m_dragging = false;
+};
+
+class Split : public QSplitter {
+public:
+    Split(const Theme *theme, QWidget *parent = nullptr) : QSplitter(Qt::Horizontal, parent), m_theme(theme) {}
+
+protected:
+    QSplitterHandle *createHandle() override { return new SplitHandle(orientation(), this, m_theme); }
+
+private:
+    const Theme *m_theme;
+};
+
 }  // namespace coll
 
 using coll::CountTab;
@@ -664,22 +711,38 @@ CollectionsView::CollectionsView(const Theme &theme, QWidget *parent)
     m_scroll->installEventFilter(this);   // the grid's columns follow its width
 
     // Wide: the collections on the left and the detail on the right, each
-    // behind a hairline.
-    const auto divider = [] {
-        auto *d = new QFrame;
-        d->setObjectName("collDivider");
-        d->setFixedWidth(1);
-        return d;
-    };
-    pageRow->addWidget(buildSide());
-    auto *leftRule = divider();
-    pageRow->addWidget(leftRule);
-    pageRow->addWidget(m_scroll, 1);
-    auto *rightRule = divider();
-    pageRow->addWidget(rightRule);
-    pageRow->addWidget(buildDetail());
-    m_side->setProperty("rule", QVariant::fromValue<QObject *>(leftRule));
-    m_detailScroll->setProperty("rule", QVariant::fromValue<QObject *>(rightRule));
+    // behind a hairline that can be dragged (1.3.7), as Spotify's columns.
+    // The widths are remembered; the centre takes what is left.
+    m_split = new coll::Split(&m_theme);
+    m_split->setHandleWidth(5);
+    m_split->setChildrenCollapsible(false);
+    m_split->addWidget(buildSide());
+    m_split->addWidget(m_scroll);
+    m_split->addWidget(buildDetail());
+    m_split->setStretchFactor(0, 0);
+    m_split->setStretchFactor(1, 1);
+    m_split->setStretchFactor(2, 0);
+    m_scroll->setMinimumWidth(240);
+    {
+        QSettings settings;
+        m_sideWidth = qBound(kSideMin, settings.value("collections/sideWidth", 210).toInt(), kSideMax);
+        m_detailWidth = qBound(kDetailMin, settings.value("collections/detailWidth", 300).toInt(), kDetailMax);
+        m_detailHidden = settings.value("collections/detailHidden", false).toBool();
+    }
+    connect(m_split, &QSplitter::splitterMoved, this, [this] {
+        if (!m_wide) return;
+        const QList<int> sizes = m_split->sizes();
+        QSettings settings;
+        if (m_side->isVisible() && sizes.value(0) > 0) {
+            m_sideWidth = sizes.value(0);
+            settings.setValue("collections/sideWidth", m_sideWidth);
+        }
+        if (m_detailScroll->isVisible() && sizes.value(2) > 0) {
+            m_detailWidth = sizes.value(2);
+            settings.setValue("collections/detailWidth", m_detailWidth);
+        }
+    });
+    pageRow->addWidget(m_split, 1);
 
     m_stack->addWidget(m_page);
     root->addWidget(m_stack, 1);
@@ -760,6 +823,12 @@ QWidget *CollectionsView::buildTools() {
     });
     m_viewToggle->hide();
     l->addWidget(m_viewToggle);
+
+    // Wide only: the detail column shown or hidden, as Spotify's "now playing".
+    m_detailBtn = iconButton("info", L("Ocultar la ficha"));
+    connect(m_detailBtn, &QToolButton::clicked, this, [this] { setDetailHidden(!m_detailHidden); });
+    m_detailBtn->hide();
+    l->addWidget(m_detailBtn);
 
     m_searchBtn = iconButton("search", L("Buscar · Ctrl+F"));
     connect(m_searchBtn, &QToolButton::clicked, this, [this] {
@@ -940,13 +1009,25 @@ void CollectionsView::setLinks(bool planner, bool tracking) {
     if (m_wide) refreshDetail();
 }
 
+void CollectionsView::setDetailHidden(bool hidden) {
+    if (hidden == m_detailHidden) return;
+    m_detailHidden = hidden;
+    QSettings().setValue("collections/detailHidden", hidden);
+    applyLayout();
+    if (m_wide && !hidden) refreshDetail();
+}
+
 void CollectionsView::applyLayout() {
     m_side->setVisible(m_wide);
-    m_detailScroll->setVisible(m_wide);
-    if (auto *rule = qobject_cast<QWidget *>(m_side->property("rule").value<QObject *>()))
-        rule->setVisible(m_wide);
-    if (auto *rule = qobject_cast<QWidget *>(m_detailScroll->property("rule").value<QObject *>()))
-        rule->setVisible(m_wide);
+    m_detailScroll->setVisible(m_wide && !m_detailHidden);
+    if (m_wide) {
+        // The remembered widths; the centre, whatever is left.
+        const int detail = m_detailHidden ? 0 : m_detailWidth;
+        m_split->setSizes({m_sideWidth, qMax(240, m_split->width() - m_sideWidth - detail - 10), detail});
+    }
+    m_detailBtn->setVisible(m_wide);
+    m_detailBtn->setIcon(paintIcon("info", m_detailHidden ? QColor(Theme::muted()) : m_theme.accent));
+    m_detailBtn->setToolTip(m_detailHidden ? L("Mostrar la ficha") : L("Ocultar la ficha"));
     m_viewToggle->setVisible(m_wide);
     m_wideAdd->setVisible(m_wide);
     m_list->setContentsMargins(m_wide ? 12 : 8, m_wide ? 12 : 8, m_wide ? 12 : 8, 12);
@@ -1059,7 +1140,8 @@ QString CollectionsView::metaFor(const Collection &c, const CollectionItem *item
     const QString progress = progressText(c, item);
     if (!progress.isEmpty()) return progress;
     if (c.sortKey == Collection::kByAdded)
-        return c.isFinal(item->state) ? L("terminado %1").arg(Coll::shortDate(item->finishedMs))
+        return c.isFinal(item->state) ? (item->finishedMs > 0 ? L("terminado %1").arg(Coll::shortDate(item->finishedMs))
+                                                              : L("sin fecha de fin"))
                                       : L("añadido %1").arg(Coll::shortDate(item->addedMs));
     if (c.isFinal(item->state) && item->finishedMs > 0)
         return L("terminado %1").arg(Coll::shortDate(item->finishedMs));
@@ -1385,6 +1467,8 @@ void CollectionsView::fillFinished(QVBoxLayout *col, const Collection &c, const 
     grid->addWidget(tile(L("MEDIA/MES"), Lang::locale().toString(perMonth, 'f', 1)), 0, 2);
     for (int i = 0; i < 3; ++i) grid->setColumnStretch(i, 1);
     col->addWidget(tiles);
+    // The goal: narrow there is no sidebar, so it lives here.
+    col->addWidget(goalCard(c));
 
     QString caption;
     if (c.sortKey == Collection::kByPriority) caption = L("Por valoración");
@@ -1691,7 +1775,8 @@ void CollectionsView::openItemMenu(CollectionItem *item, const QPoint &globalPos
 QWidget *CollectionsView::buildSide() {
     m_side = new QWidget;
     m_side->setObjectName("collPane");
-    m_side->setFixedWidth(210);
+    m_side->setMinimumWidth(kSideMin);
+    m_side->setMaximumWidth(kSideMax);
     m_sideLayout = new QVBoxLayout(m_side);
     m_sideLayout->setContentsMargins(8, 10, 8, 10);
     m_sideLayout->setSpacing(2);
@@ -1701,7 +1786,8 @@ QWidget *CollectionsView::buildSide() {
 
 QWidget *CollectionsView::buildDetail() {
     m_detailScroll = new QScrollArea;
-    m_detailScroll->setFixedWidth(300);
+    m_detailScroll->setMinimumWidth(kDetailMin);
+    m_detailScroll->setMaximumWidth(kDetailMax);
     m_detailScroll->setWidgetResizable(true);
     m_detailScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_detailScroll->setFrameShape(QFrame::NoFrame);
@@ -1789,34 +1875,83 @@ void CollectionsView::refreshSide() {
     }
     m_sideLayout->addStretch();
 
-    // RETO: finished this year against the goal.
-    if (shown->goal > 0) {
-        const int year = QDate::currentDate().year();
-        int done = 0;
-        for (const CollectionItem *i : m_store->collectionItems())
-            if (i->collection == shown->id && shown->isFinal(i->state) && i->finishedMs > 0 &&
-                QDateTime::fromMSecsSinceEpoch(i->finishedMs).date().year() == year)
-                ++done;
-        auto *card = new QFrame;
-        card->setObjectName("timerHero");
-        auto *v = new QVBoxLayout(card);
-        v->setContentsMargins(10, 10, 10, 10);
-        v->setSpacing(6);
-        auto *k = new QLabel(L("RETO %1").arg(year));
-        k->setObjectName("meta");
-        v->addWidget(k);
-        auto *nums = new QHBoxLayout;
-        nums->setSpacing(4);
-        auto *n = new QLabel(QString::number(done));
-        n->setObjectName("trackTileValue");
-        nums->addWidget(n, 0, Qt::AlignBottom);
-        auto *of = new ElidedLabel(QString("/ %1").arg(shown->goal), QColor(Theme::muted()));
-        of->setObjectName("timerSub");
-        nums->addWidget(of, 1, Qt::AlignBottom);
-        v->addLayout(nums);
-        v->addWidget(new coll::Bar(qMin(100, done * 100 / shown->goal), m_theme.accent));
-        m_sideLayout->addWidget(card);
+    // RETO: finished this year against the goal, or the way to set one.
+    m_sideLayout->addWidget(goalCard(*shown));
+}
+
+/// The yearly goal: "RETO 2026 · 3 / 6" with its bar and *Cambiar*, or, with
+/// none, *Ponerse un reto*. The wide sidebar's and the narrow finished tab's.
+/// Before 1.3.6 it was only in the sidebar and only changed from Editar
+/// colección, which nothing pointed to.
+QWidget *CollectionsView::goalCard(const Collection &c) {
+    const int year = QDate::currentDate().year();
+    auto *edit = textButton("noticeAction", c.goal > 0 ? L("Cambiar") : L("Ponerse un reto"));
+    edit->setToolTip(L("Cuántos terminar este año"));
+    connect(edit, &QToolButton::clicked, this, [this, edit] { openGoalPrompt(edit); });
+    if (c.goal <= 0) {
+        auto *row = sectionRow(L("RETO %1").arg(year), edit);
+        row->setContentsMargins(0, 8, 0, 0);
+        return row;
     }
+    const int done = Coll::finishedIn(m_store->collectionItems(), c, year);
+    auto *card = new QFrame;
+    card->setObjectName("timerHero");
+    auto *v = new QVBoxLayout(card);
+    v->setContentsMargins(10, 8, 6, 10);
+    v->setSpacing(6);
+    auto *head = new QHBoxLayout;
+    auto *k = new QLabel(L("RETO %1").arg(year));
+    k->setObjectName("meta");
+    head->addWidget(k, 1, Qt::AlignVCenter);
+    head->addWidget(edit, 0, Qt::AlignVCenter);
+    v->addLayout(head);
+    auto *nums = new QHBoxLayout;
+    nums->setSpacing(4);
+    auto *n = new QLabel(QString::number(done));
+    n->setObjectName("trackTileValue");
+    nums->addWidget(n, 0, Qt::AlignBottom);
+    auto *of = new ElidedLabel(QString("/ %1").arg(c.goal), QColor(Theme::muted()));
+    of->setObjectName("timerSub");
+    nums->addWidget(of, 1, Qt::AlignBottom);
+    v->addLayout(nums);
+    v->addWidget(new coll::Bar(qMin(100, done * 100 / c.goal), m_theme.accent));
+    // Finished without a date count in no year: said, or "3 leídos" and "0 / 6"
+    // look like a bug.
+    int undated = 0;
+    for (const CollectionItem *i : m_store->collectionItems())
+        if (i->collection == c.id && c.isFinal(i->state) && i->finishedMs <= 0) ++undated;
+    if (undated > 0) {
+        auto *note = new QLabel(undated == 1 ? L("1 sin fecha de fin: no cuenta")
+                                             : L("%1 sin fecha de fin: no cuentan").arg(undated));
+        note->setObjectName("meta");
+        note->setWordWrap(true);
+        note->setMinimumWidth(24);
+        note->setToolTip(L("Ponles la fecha en Editar → Terminado el"));
+        v->addWidget(note);
+    }
+    return card;
+}
+
+/// The goal typed, as the page is: a number, empty or 0 for none.
+void CollectionsView::openGoalPrompt(QWidget *anchor) {
+    Collection *c = current();
+    if (!c) return;
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Reto %1 · cuántos terminar").arg(QDate::currentDate().year()));
+    QPointer<CollectionsView> self(this);
+    const QString id = c->id;
+    menu->addEditor(L("Sin reto"), c->goal > 0 ? QString::number(c->goal) : QString(),
+                    [self, id](const QString &text) {
+        if (!self || !self->m_store) return;
+        Collection *col = self->m_store->collection(id);
+        if (!col) return;
+        bool ok = false;
+        const int goal = text.trimmed().isEmpty() ? 0 : text.trimmed().toInt(&ok);
+        if (!text.trimmed().isEmpty() && (!ok || goal < 0)) return;
+        col->goal = qMin(goal, 9999);
+        self->edited();
+    });
+    menu->showUnder(anchor);
 }
 
 /// The width the grid has: the centre's, less its margins and a scroll bar's
