@@ -433,6 +433,8 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
 inline QString Theme::sheet() const {
     const QString acc = accent.name();
 
+    // In pieces (`)" R"(`): MSVC rejects a single string literal over 16,380
+    // bytes (C2026), which GCC and Clang accept. Keep each well under that.
     QString out = QString(R"(
 QFrame#shell {
     background: %1;
@@ -577,6 +579,7 @@ QLabel#syncStatus { font-size: 10.5px; font-family: "IBM Plex Mono", monospace; 
 /* Folding a card (1.0): the chevron and what stands in for the body. */
 QToolButton#foldBtn { background: transparent; border: none; border-radius: 5px; }
 QToolButton#foldBtn:hover { background: %7; }
+)" R"(
 /* A Markdown note's page: raw editor in mono, preview in the body font. */
 QPlainTextEdit#mdEditor, QTextBrowser#mdPreview {
     background: rgba(0,0,0,0.18); border: 1px solid %2; border-radius: 8px;
