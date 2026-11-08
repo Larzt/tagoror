@@ -3,6 +3,7 @@
 #include "audio/recorder.hpp"
 #include "core/calendarsync.hpp"
 #include "core/drivesync.hpp"
+#include "core/features.hpp"
 #include "core/folderbackend.hpp"
 #include "core/syncengine.hpp"
 #include "core/webdavbackend.hpp"
@@ -10,6 +11,7 @@
 #include "core/updater.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
+#include "ui/switch.hpp"
 
 #include <QApplication>
 #include <QAudioDevice>
@@ -93,53 +95,6 @@ private:
     const Theme *m_theme;
     std::function<void()> m_click;
     bool m_hover = false;
-};
-
-/// A sliding switch, painted by hand. A checkbox says "tick this one from a
-/// list"; a switch says "this is on or off", which is what these settings are.
-class Switch : public QWidget {
-public:
-    Switch(bool on, const Theme *theme, std::function<void(bool)> changed,
-           QWidget *parent = nullptr)
-        : QWidget(parent), m_on(on), m_theme(theme), m_changed(std::move(changed)) {
-        setFixedSize(38, 21);
-        setCursor(Qt::PointingHandCursor);
-        keynav::activatable(this, [this] { flip(); });
-    }
-
-protected:
-    void mouseReleaseEvent(QMouseEvent *e) override {
-        if (e->button() != Qt::LeftButton || !rect().contains(e->position().toPoint())) return;
-        flip();
-    }
-
-    void flip() {
-        m_on = !m_on;
-        update();
-        if (m_changed) m_changed(m_on);
-    }
-
-    void paintEvent(QPaintEvent *) override {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-
-        const QColor accent = m_theme ? m_theme->accent : QColor("#7c9cff");
-        p.setPen(keynav::showsFocus(this) ? QPen(QColor(Theme::fg()), 1.5) : QPen(Qt::NoPen));
-        p.setBrush(m_on ? accent : QColor(255, 255, 255, 28));
-        const QRectF track = QRectF(rect()).adjusted(0.75, 0.75, -0.75, -0.75);
-        p.drawRoundedRect(track, track.height() / 2.0, track.height() / 2.0);
-        p.setPen(Qt::NoPen);
-
-        const qreal r = height() / 2.0 - 3.0;
-        const qreal x = m_on ? width() - height() / 2.0 : height() / 2.0;
-        p.setBrush(m_on ? QColor("#0d1014") : QColor(Theme::muted()));
-        p.drawEllipse(QPointF(x, height() / 2.0), r, r);
-    }
-
-private:
-    bool m_on;
-    const Theme *m_theme;
-    std::function<void(bool)> m_changed;
 };
 
 /// A group row, with its own background on hover.
@@ -325,6 +280,7 @@ void SettingsView::refresh() {
     switch (m_tab) {
         case General:
             addLanguage();
+            addFeatures();
             addWindow();
             addData();
             addInputs();
@@ -564,6 +520,25 @@ QString fontDisplayName(const QString &pref) {
     if (pref.isEmpty()) return QStringLiteral("IBM Plex Sans");
     if (pref == "system") return L("La del sistema");
     return pref;
+}
+
+/// The parts of the app in use, as the first start asked (core/features.hpp).
+/// Off hides them and keeps their data.
+void SettingsView::addFeatures() {
+    beginGroup(L("FUNCIONES"), "checkdots");
+    auto *intro = new QLabel(L("Lo que apagues desaparece de la app; lo que tenía se guarda "
+                               "y vuelve al encenderlo."));
+    intro->setObjectName("meta");
+    intro->setWordWrap(true);
+    intro->setMinimumWidth(24);   // see *Card widths*
+    intro->setContentsMargins(8, 6, 8, 6);
+    addToGroup(intro);
+    const QStringList &off = m_store->prefs().featuresOff;
+    for (const Features::Info &f : Features::all()) {
+        const QString key = QString::fromLatin1(f.key);
+        addToggle(L(f.name), L(f.hint), !off.contains(key),
+                  [this, key](bool on) { emit featureToggled(key, on); });
+    }
 }
 
 void SettingsView::addLanguage() {

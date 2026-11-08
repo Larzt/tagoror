@@ -720,6 +720,7 @@ QSlider::handle:horizontal {
 QScrollArea { border: none; background: transparent; }
 QWidget#listHost { background: transparent; }
 QWidget#scrollViewport { background: transparent; }
+QWidget#welcomeList, QWidget#welcomeViewport { background: transparent; }
 QScrollBar:vertical {
     background: transparent; width: 6px; margin: 0;
 }
