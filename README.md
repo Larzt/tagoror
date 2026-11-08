@@ -80,6 +80,8 @@
 - **Day, week and month views.** Day and week lay things out by the hour, side
   by side when they overlap, with a red line at the current time; month writes
   each day's entries inside its cell, with `+N more` when they do not fit.
+  Titles too long for their space end in "…", or, with *Settings → Appearance
+  → Títulos del planificador* on *Varias líneas*, carry on to the next lines.
 - **Events and tasks** with a start and an end, a category (work, personal,
   studies, other, or **your own**, with a name and a colour — created from the
   side panel or the form, edited with the pencil next to it; deleting one moves

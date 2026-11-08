@@ -65,6 +65,7 @@ signals:
     void textScalePicked(int percent);
     void fontEditorRequested(QWidget *anchor);
     void compactPicked(bool compact);
+    void plannerWrapPicked(bool wrap);
     void alarmToneRequested(QWidget *anchor);   ///< The menu of tones.
     void alarmVolumeChanged(int percent);       ///< Live, while dragging.
     void alarmPreviewRequested();

@@ -507,6 +507,15 @@ void SettingsView::addAppearance() {
         b->addWidget(segments({L("Normal"), L("Compacta")}, m_store->prefs().compact ? 1 : 0,
                               [this](int i) { emit compactPicked(i == 1); }));
     }
+
+    // Planner titles too long for their block: cut or on several lines.
+    {
+        QVBoxLayout *b = addBlock();
+        b->addLayout(textColumn(L("Títulos del planificador"),
+                                L("Los que no caben se cortan con … o siguen en otra línea")));
+        b->addWidget(segments({L("Cortar"), L("Varias líneas")}, m_store->prefs().plannerWrap ? 1 : 0,
+                              [this](int i) { emit plannerWrapPicked(i == 1); }));
+    }
 }
 
 QString alarmToneName(const QString &id) {

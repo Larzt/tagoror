@@ -96,6 +96,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.2.3" date="2026-11-08">
+      <description>
+        <p>Planner titles that do not fit can break into several lines instead
+           of being cut: a new choice in the appearance settings.</p>
+      </description>
+    </release>
     <release version="1.2.2" date="2026-11-03">
       <description>
         <p>Repeating events and tasks can end on a chosen day: the edit form

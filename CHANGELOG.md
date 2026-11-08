@@ -4,6 +4,17 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.3] — 2026-11-08
+
+### Added
+
+- **Long planner titles can wrap**: *Settings → Appearance → Títulos del
+  planificador* chooses between *Cortar* (one line ending in "…", as before and
+  still the default) and *Varias líneas*. Wrapped, a block in the day and week
+  views uses every line it has room for, keeping the time underneath, and a
+  month chip grows to up to three lines; `+N more` counts whatever no longer
+  fits in the cell.
+
 ## [1.2.2] — 2026-11-03
 
 ### Added

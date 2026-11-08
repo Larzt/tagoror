@@ -796,6 +796,12 @@ const QHash<QString, QString> &table() {
         {"Sin fin · dd/mm/aaaa", "No end · dd/mm/yyyy"},
         {"La repetición tiene que acabar en dd/mm/aaaa, y no antes de la fecha.",
          "The repetition must end on dd/mm/yyyy, and not before the date."},
+        // 1.2.3: long planner titles, cut or wrapped.
+        {"Títulos del planificador", "Planner titles"},
+        {"Los que no caben se cortan con … o siguen en otra línea",
+         "Those that don't fit are cut with … or carry on to another line"},
+        {"Cortar", "Cut"},
+        {"Varias líneas", "Several lines"},
     };
     return t;
 }
