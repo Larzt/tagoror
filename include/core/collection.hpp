@@ -71,8 +71,9 @@ struct Collection {
     static constexpr const char *kPriority = "priority";
     static constexpr const char *kRating = "rating";
     static constexpr const char *kIsbn = "isbn";
+    static constexpr const char *kSynopsis = "synopsis";   ///< 1.3.3
     static QStringList builtinFields() {
-        return {kAuthor, kYear, kProgress, kPriority, kRating, kIsbn};
+        return {kAuthor, kYear, kProgress, kPriority, kRating, kIsbn, kSynopsis};
     }
 
     /// Sort keys. In the finished tab "priority" means the rating and "added"
@@ -95,6 +96,10 @@ struct Collection {
     QList<CollectionState> states;
     QStringList fields;                ///< Built-in keys turned on.
     QList<CollectionField> custom;     ///< The user's own, always on.
+    /// Built-in fields this collection has been offered: one added later
+    /// (Sinopsis in 1.3.3) turns on in collections whose template uses it,
+    /// once, and stays off if turned off afterwards.
+    QStringList known;
     QString sortKey = kByPriority;
     bool sortAscending = false;
     /// Yearly goal of finished items (the wide mode's "RETO"); 0: none.
@@ -181,15 +186,21 @@ struct CollectionItem {
     double queuePos = 0;
     int rating = 0;           ///< 0–5; 0: not rated.
     QStringList tags;
-    int color = 0;            ///< coverColor() index.
+    int color = 0;            ///< coverColor() index: the cover without an image.
+    /// 1.3.4: a picture for the cover, a file in images/ (as the notes' are),
+    /// synced like them. Empty: the colour.
+    QString cover;
     qint64 addedMs = 0;
     qint64 startedMs = 0;     ///< Entered the in-progress state.
     qint64 finishedMs = 0;    ///< Entered the final state.
     QString isbn;
+    QString synopsis;         ///< A few lines on what it is about.
     QString noteId;           ///< Linked Markdown note; empty: none.
     QJsonObject extra;        ///< Custom fields, by CollectionField::key.
     qint64 updatedMs = 0;
 
+    /// The cover image's file, or empty without one.
+    QString coverPath() const;
     /// authorSortKey, or the author's last word.
     QString sortAuthor() const;
     /// 0–100, or -1 without a total.
@@ -211,6 +222,29 @@ QList<CollectionItem *> sorted(const QList<CollectionItem *> &items, const Colle
                                const QString &stateId);
 /// The queue as Empezar reads it: highest priority first, then by hand.
 QList<CollectionItem *> queue(const QList<CollectionItem *> &items, const Collection &c);
+/// Copies the image at @p source into images/ as @p item's cover: scaled down
+/// to at most kCoverHeight tall and saved as JPEG, so a 4000 px photo does not
+/// travel with every sync. Returns the new file's name, or empty if
+/// @p source is not an image that can be read.
+constexpr int kCoverHeight = 720;
+QString importCover(const QString &source, const QString &itemId);
+/// Deletes @p name from images/ (a cover replaced or whose item is gone).
+void removeCover(const QString &name);
+
+/// Length bands of the page filter (1.3.3): up to 250, 251–500, over 500.
+/// Only for things counted in pages, that is, books.
+enum Length { AnyLength, Short, Medium, Long };
+constexpr int kShortUpTo = 250;
+constexpr int kMediumUpTo = 500;
+/// The band of @p item; AnyLength when its length is unknown.
+Length lengthOf(const CollectionItem *item);
+/// Whether @p c counts in pages, so its items can be filtered by length.
+bool filtersByLength(const Collection &c);
+/// 1.3.3: a field of the user's own called "Sinopsis" (what there was before
+/// the built-in one) becomes the built-in field: its text moves to
+/// CollectionItem::synopsis where that is empty, and the own field goes.
+/// Returns whether anything changed.
+bool adoptSynopsisField(Collection &c, const QList<CollectionItem *> &items);
 /// Moves @p item to @p index inside @p order (the queue as shown), giving it a
 /// queuePos between its new neighbours and, if it lands among another
 /// priority, that priority.

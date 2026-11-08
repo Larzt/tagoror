@@ -96,6 +96,38 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.3.5" date="2026-11-08">
+      <description>
+        <p>The pages after Notes can be put in any order from the settings, and
+           the Spanish interface calls the planner Planificador.</p>
+      </description>
+    </release>
+    <release version="1.3.4" date="2026-11-08">
+      <description>
+        <p>Collections: a picture can be the cover of a book, game, film,
+           series or record, chosen or dragged onto it, and synced with the
+           rest.</p>
+      </description>
+    </release>
+    <release version="1.3.3" date="2026-11-08">
+      <description>
+        <p>Collections: a synopsis for each book, a filter by number of pages,
+           and the page changed from the book's card or its menu, without
+           opening the editor.</p>
+      </description>
+    </release>
+    <release version="1.3.2" date="2026-11-08">
+      <description>
+        <p>Collections: the narrow panel shows the tag that filters and can
+           filter by tag too.</p>
+      </description>
+    </release>
+    <release version="1.3.1" date="2026-11-08">
+      <description>
+        <p>Collections: the grid no longer cuts information at some window sizes,
+           and the list shows the progress of what is being read.</p>
+      </description>
+    </release>
     <release version="1.3.0" date="2026-11-08">
       <description>
         <p>Collections, a new page: a library of books to read, being read and

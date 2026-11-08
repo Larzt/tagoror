@@ -35,7 +35,7 @@ struct Info {
 /// types, as in "+".
 inline const QList<Info> &all() {
     static const QList<Info> list{
-        {Planner, "planner", "calendar", "Planner",
+        {Planner, "planner", "calendar", "Planificador",
          "Eventos y tareas por día, semana y mes", true},
         {Timers, "timers", "timer", "Timers",
          "Cuentas atrás y Pomodoro que suenan al acabar", true},
@@ -64,6 +64,28 @@ inline QString key(Id id) {
 }
 
 inline bool enabled(const QStringList &off, Id id) { return !off.contains(key(id)); }
+
+/// The features that are pages of their own, in their default order.
+inline QList<Info> pages() {
+    QList<Info> out;
+    for (const Info &i : all())
+        if (i.page) out << i;
+    return out;
+}
+
+/// The pages' keys in the order the navigation shows them (1.3.5): the stored
+/// order, without what is unknown or repeated, then any page it does not name
+/// (one added in a later version) where its default order puts it last.
+inline QStringList pageOrder(const QStringList &stored) {
+    QStringList known;
+    for (const Info &i : pages()) known << QString::fromLatin1(i.key);
+    QStringList out;
+    for (const QString &k : stored)
+        if (known.contains(k) && !out.contains(k)) out << k;
+    for (const QString &k : known)
+        if (!out.contains(k)) out << k;
+    return out;
+}
 
 /// The feature a note type belongs to, or -1 for a text note, which is always on.
 inline int forNoteType(Note::Type type) {

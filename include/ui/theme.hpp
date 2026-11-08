@@ -180,6 +180,13 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawLine(QPointF(12 * s, 3 * s), QPointF(12 * s, 13 * s));
         p.drawPolyline(QPolygonF({QPointF(10 * s, 11 * s), QPointF(12 * s, 13 * s),
                                   QPointF(14 * s, 11 * s)}));
+    } else if (kind == "tag") {
+        // A label (1.3.2): pointed on the right, with its hole.
+        const qreal s = px / 16.0;
+        p.setBrush(Qt::NoBrush);
+        p.drawPolygon(QPolygonF({QPointF(2.5 * s, 4 * s), QPointF(10 * s, 4 * s), QPointF(14 * s, 8 * s),
+                                 QPointF(10 * s, 12 * s), QPointF(2.5 * s, 12 * s)}));
+        p.drawEllipse(QPointF(10 * s, 8 * s), 1.0 * s, 1.0 * s);
     } else if (kind == "grid") {
         const qreal s = px / 16.0;
         p.setBrush(Qt::NoBrush);
@@ -575,6 +582,12 @@ QLineEdit#setField {
     padding: 5px 8px; font-size: 11.5px; color: %3; font-family: "IBM Plex Mono", monospace;
 }
 QLineEdit#setField:focus { border: 1px solid %5; }
+/* Several lines in a form (1.3.3: a book's synopsis), in the body font. */
+QPlainTextEdit#setFieldArea {
+    background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px;
+    padding: 3px 4px; font-size: 11.5px; color: %3; selection-background-color: %9;
+}
+QPlainTextEdit#setFieldArea:focus { border: 1px solid %5; }
 QLabel#syncStatus { font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
 /* Folding a card (1.0): the chevron and what stands in for the body. */
 QToolButton#foldBtn { background: transparent; border: none; border-radius: 5px; }

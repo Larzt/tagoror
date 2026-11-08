@@ -2,6 +2,7 @@
 
 #include "core/lang.hpp"
 #include "core/store.hpp"
+#include "ui/coverimage.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
 #include "ui/popup.hpp"
@@ -9,6 +10,7 @@
 #include <QApplication>
 #include <QContextMenuEvent>
 #include <QEnterEvent>
+#include <QFontMetrics>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIntValidator>
@@ -23,6 +25,7 @@
 #include <QSet>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QTextLayout>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -104,6 +107,30 @@ QString coverText(const QString &title) {
     return title.simplified().split(' ', Qt::SkipEmptyParts).mid(0, 3).join(' ');
 }
 
+/// @p text wrapped to @p width in at most @p maxLines, the last one elided.
+/// A plain drawText() with a word wrap clips instead: aligned to the bottom,
+/// a long title lost its beginning ("joven Werther").
+QStringList wrapLines(const QString &text, const QFont &font, qreal width, int maxLines) {
+    QStringList lines;
+    if (text.isEmpty() || maxLines < 1 || width < 1) return lines;
+    const QFontMetricsF fm(font);
+    QTextLayout layout(text, font);
+    QTextOption option;
+    option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    layout.setTextOption(option);
+    layout.beginLayout();
+    for (QTextLine line = layout.createLine(); line.isValid(); line = layout.createLine()) {
+        line.setLineWidth(width);
+        if (lines.size() == maxLines - 1) {
+            lines << fm.elidedText(text.mid(line.textStart()).simplified(), Qt::ElideRight, width);
+            break;
+        }
+        lines << text.mid(line.textStart(), line.textLength()).trimmed();
+    }
+    layout.endLayout();
+    return lines;
+}
+
 }  // namespace
 
 namespace coll {
@@ -111,14 +138,19 @@ namespace coll {
 // ---------------------------------------------------------------------------
 // Painted pieces
 
-/// A cover: its colour, a darker band down the spine and, if big enough, the
-/// title's first words at the bottom.
+/// A cover: the item's picture or, without one, its colour, a darker band down
+/// the spine and, if big enough, the title's first words at the bottom.
 class Cover : public QWidget {
 public:
     Cover(const QColor &color, const QString &text, QSize size, QWidget *parent = nullptr)
         : QWidget(parent), m_color(color), m_text(text) {
         setFixedSize(size);
         setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+    /// The picture's file (CollectionItem::coverPath()); empty: the colour.
+    Cover *withImage(const QString &path) {
+        m_image = path;
+        return this;
     }
 
 protected:
@@ -129,6 +161,8 @@ protected:
         const qreal radius = width() >= 40 ? 4 : 3;
         QPainterPath path;
         path.addRoundedRect(r, radius, radius);
+        // The picture says it all: no spine, no words over it.
+        if (coverimage::draw(p, path, r, m_image)) return;
         p.fillPath(path, m_color);
         p.save();
         p.setClipPath(path);
@@ -147,6 +181,7 @@ protected:
 private:
     QColor m_color;
     QString m_text;
+    QString m_image;
 };
 
 /// Priority (3) or rating (5) as stones of slightly uneven size, as in the
@@ -351,6 +386,9 @@ public:
     QColor stateColor;
     int percent = -1;
     bool priority = true;
+    bool showYear = true;
+    bool showAuthor = true;
+    QString image;   ///< The cover picture's path, resolved once; empty: the colour.
     bool selected = false;
     std::function<void()> select;
     std::function<void()> open;
@@ -383,13 +421,30 @@ protected:
             p.setBrush(fill);
             p.drawRoundedRect(frame, 10, 10);
         }
-        const QRectF cover(6, 6, width() - 12, (width() - 12) * 1.5);
+        // 2:3, unless the tile was given less height than that: then the cover
+        // gives way, never the foot under it.
+        const qreal coverH = qMax<qreal>(40, qMin<qreal>((width() - 12) * 1.5, height() - 6 - 28));
+        const QRectF cover(6, 6, width() - 12, coverH);
         QPainterPath path;
         path.addRoundedRect(cover, 4, 4);
-        p.fillPath(path, CollectionItem::coverColor(item->color));
+        const bool picture = coverimage::draw(p, path, cover, image);
+        if (!picture) p.fillPath(path, CollectionItem::coverColor(item->color));
         p.save();
         p.setClipPath(path);
-        p.fillRect(QRectF(cover.left(), cover.top(), 5, cover.height()), QColor(0, 0, 0, 72));
+        if (picture) {
+            // Shade at the top and the bottom, so the year, the title and the
+            // author read over any picture.
+            QLinearGradient top(cover.topLeft(), QPointF(cover.left(), cover.top() + cover.height() * 0.25));
+            top.setColorAt(0, QColor(0, 0, 0, 150));
+            top.setColorAt(1, QColor(0, 0, 0, 0));
+            p.fillRect(cover, top);
+            QLinearGradient bottom(QPointF(cover.left(), cover.top() + cover.height() * 0.4), cover.bottomLeft());
+            bottom.setColorAt(0, QColor(0, 0, 0, 0));
+            bottom.setColorAt(1, QColor(0, 0, 0, 215));
+            p.fillRect(cover, bottom);
+        } else {
+            p.fillRect(QRectF(cover.left(), cover.top(), 5, cover.height()), QColor(0, 0, 0, 72));
+        }
         if (percent >= 0) {
             const QRectF strip(cover.left(), cover.bottom() - 3, cover.width(), 3);
             p.fillRect(strip, QColor(0, 0, 0, 90));
@@ -403,30 +458,50 @@ protected:
         mono.setPixelSize(9);
         p.setFont(mono);
         p.setPen(QColor(255, 255, 255, 178));
-        if (item->year > 0) p.drawText(text, Qt::AlignLeft | Qt::AlignTop, QString::number(item->year));
+        qreal top = text.top();
+        if (showYear && item->year > 0) {
+            p.drawText(text, Qt::AlignLeft | Qt::AlignTop, QString::number(item->year));
+            top += QFontMetricsF(mono).height() + 4;
+        }
         QFont small = font();
         small.setPixelSize(10);
-        const QFontMetrics sm(small);
-        const QString author = sm.elidedText(item->author, Qt::ElideRight, int(text.width()));
+        const QFontMetricsF sm(small);
+        qreal bottom = text.bottom();
+        if (showAuthor && !item->author.isEmpty()) {
+            const QRectF authorBox(text.left(), text.bottom() - sm.height(), text.width(), sm.height());
+            p.setFont(small);
+            p.drawText(authorBox, Qt::AlignLeft | Qt::AlignVCenter,
+                       sm.elidedText(item->author, Qt::ElideRight, text.width()));
+            bottom = authorBox.top() - 3;
+        }
+        // As many lines of title as the cover leaves room for, from the
+        // bottom up, the last one with "…". At least one, over the year if
+        // it must: the title is what tells tiles apart.
         QFont big = font();
         big.setPixelSize(12);
         big.setWeight(QFont::DemiBold);
-        const QRectF authorBox(text.left(), text.bottom() - sm.height(), text.width(), sm.height());
-        const qreal titleH = QFontMetrics(big).height() * 3;
-        const QRectF titleBox(text.left(), authorBox.top() - 3 - titleH, text.width(), titleH);
+        const qreal lineH = QFontMetricsF(big).height();
+        const int maxLines = qBound(1, int((bottom - top) / lineH), 4);
+        const QStringList lines = wrapLines(item->title.isEmpty() ? L("Sin título") : item->title, big,
+                                            text.width(), maxLines);
         p.setFont(big);
         p.setPen(QColor(255, 255, 255, 235));
-        p.drawText(titleBox, Qt::AlignLeft | Qt::AlignBottom | Qt::TextWordWrap, item->title);
-        p.setFont(small);
-        p.setPen(QColor(255, 255, 255, 178));
-        p.drawText(authorBox, Qt::AlignLeft | Qt::AlignVCenter, author);
+        qreal y = bottom - lines.size() * lineH;
+        for (const QString &line : lines) {
+            p.drawText(QRectF(text.left(), y, text.width(), lineH), Qt::AlignLeft | Qt::AlignVCenter, line);
+            y += lineH;
+        }
 
         const QRectF foot(8, cover.bottom() + 4, width() - 16, 16);
-        p.setFont(mono);
         mono.setPixelSize(10);
         p.setFont(mono);
         p.setPen(stateColor);
-        p.drawText(foot, Qt::AlignLeft | Qt::AlignVCenter, state);
+        // The state, and how far along while in progress; elided before it
+        // reaches the stones ("por escuchar" on a narrow tile).
+        const qreal stones = priority ? 3 * 5 + 2 * 2 + 6 : 0;
+        const QString footText = percent >= 0 ? QString("%1 · %2%").arg(state).arg(percent) : state;
+        p.drawText(foot.adjusted(0, 0, -stones, 0), Qt::AlignLeft | Qt::AlignVCenter,
+                   QFontMetricsF(mono).elidedText(footText, Qt::ElideRight, foot.width() - stones));
         if (priority) {
             static const qreal sizes[3] = {5, 5, 5};
             qreal x = foot.right() - 3 * 5 - 2 * 2;
@@ -586,6 +661,7 @@ CollectionsView::CollectionsView(const Theme &theme, QWidget *parent)
     m_scroll->setWidget(m_listHost);
     m_scroll->viewport()->setAutoFillBackground(false);
     m_scroll->viewport()->setObjectName("scrollViewport");
+    m_scroll->installEventFilter(this);   // the grid's columns follow its width
 
     // Wide: the collections on the left and the detail on the right, each
     // behind a hairline.
@@ -640,6 +716,13 @@ QWidget *CollectionsView::buildTools() {
     });
     l->addWidget(m_searchField, 1);
     l->addStretch();
+
+    // Narrow only: the tags the wide mode lists on its left, as a menu. Without
+    // it a filter chosen wide stayed on, unseen and impossible to clear.
+    m_tagBtn = iconButton("tag", L("Filtrar"));
+    connect(m_tagBtn, &QToolButton::clicked, this, [this] { openTagMenu(m_tagBtn); });
+    m_tagBtn->hide();
+    l->addWidget(m_tagBtn);
 
     m_sortBtn = textButton("quickChip", QString());
     m_sortBtn->setIcon(paintIcon("sort", QColor(Theme::muted()), 13));
@@ -763,6 +846,7 @@ void CollectionsView::setCurrent(const QString &id) {
     m_tab.clear();
     m_selected.clear();
     m_tag.clear();
+    m_length = Coll::AnyLength;
     refresh();
     emit currentChanged();
 }
@@ -776,6 +860,22 @@ void CollectionsView::focusSearch() {
 }
 
 bool CollectionsView::eventFilter(QObject *watched, QEvent *event) {
+    // Wider or narrower by a column: the tiles are rebuilt for the new count.
+    // Their height follows their width, so leaving them to the layout would
+    // stretch them past it and cut the state and stones under the cover.
+    // Within the same count, each tile just takes the height of its new width.
+    if (watched == m_scroll && event->type() == QEvent::Resize && m_wide && m_grid && m_gridColumns > 0) {
+        const int avail = gridWidth();
+        const int columns = gridColumns(avail);
+        if (columns != m_gridColumns) {
+            m_gridColumns = 0;   // one rebuild per change, however many resizes arrive
+            QTimer::singleShot(0, this, [this] { if (m_wide) refreshBody(); });
+        } else {
+            const int tileW = (avail - 8 * (columns - 1)) / columns;
+            for (QWidget *w : m_listHost->findChildren<QWidget *>())   // Tile has no Q_OBJECT
+                if (auto *t = dynamic_cast<coll::Tile *>(w)) t->setFixedHeight(t->heightForWidth(tileW));
+        }
+    }
     // A reading card or a tile: double click opens the item, as on a row.
     const QString itemId = watched->property("itemId").toString();
     if (!itemId.isEmpty() && m_store) {
@@ -889,6 +989,11 @@ void CollectionsView::refreshTabs() {
         const CollectionState *s = c->state(t->stateId);
         t->set(s ? L(s->name) : L("Todos"), int(visible(*c, t->stateId).size()), t->stateId == m_tab);
     }
+    // Wide, the sidebar has the filters; narrow, this button, in the accent
+    // while one is on.
+    m_tagBtn->setVisible(!m_wide && (filtering() || Coll::filtersByLength(*c) || !tagCounts(*c).isEmpty()));
+    m_tagBtn->setIcon(paintIcon("tag", filtering() ? m_theme.accent : QColor(Theme::muted())));
+    m_tagBtn->setToolTip(filtering() ? filterText(*c) : L("Filtrar"));
     m_gridBtn->setProperty("chosen", m_grid);
     m_listBtn->setProperty("chosen", !m_grid);
     repolish(m_gridBtn);
@@ -915,6 +1020,7 @@ QList<CollectionItem *> CollectionsView::visible(const Collection &c, const QStr
 
 bool CollectionsView::matches(const CollectionItem *item) const {
     if (!m_tag.isEmpty() && !item->tags.contains(m_tag)) return false;
+    if (m_length != Coll::AnyLength && Coll::lengthOf(item) != m_length) return false;
     if (m_search.isEmpty()) return true;
     if (item->title.contains(m_search, Qt::CaseInsensitive)) return true;
     if (item->author.contains(m_search, Qt::CaseInsensitive)) return true;
@@ -928,6 +1034,16 @@ void CollectionsView::refreshBody() {
     m_queueRows.clear();
     clearLayout(m_list);
     if (!c) return;
+    // Narrow there is no sidebar to show what filters: it goes on top, with
+    // the way out.
+    if (!m_wide && filtering()) {
+        auto *clear = textButton("noticeAction", L("Quitar el filtro"));
+        connect(clear, &QToolButton::clicked, this, [this] {
+            m_length = Coll::AnyLength;
+            setTag(QString());
+        });
+        m_list->addWidget(sectionRow(filterText(*c), clear));
+    }
     if (m_wide) fillGrid(m_list, *c, visible(*c, m_tab));
     else if (c->isInProgress(m_tab)) fillInProgress(m_list, *c, m_tab);
     else if (c->isFinal(m_tab)) fillFinished(m_list, *c, m_tab);
@@ -939,6 +1055,9 @@ void CollectionsView::refreshBody() {
 /// added, or year and length.
 QString CollectionsView::metaFor(const Collection &c, const CollectionItem *item) const {
     QStringList parts;
+    // In progress, how far along says more than any sort.
+    const QString progress = progressText(c, item);
+    if (!progress.isEmpty()) return progress;
     if (c.sortKey == Collection::kByAdded)
         return c.isFinal(item->state) ? L("terminado %1").arg(Coll::shortDate(item->finishedMs))
                                       : L("añadido %1").arg(Coll::shortDate(item->addedMs));
@@ -967,7 +1086,8 @@ Row *CollectionsView::row(const Collection &c, CollectionItem *item, int number,
         n->setFixedWidth(18);
         l->addWidget(n, 0, Qt::AlignVCenter);
     }
-    l->addWidget(new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(28, 40)));
+    l->addWidget((new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(28, 40)))
+                     ->withImage(item->coverPath()));
 
     auto *texts = new QVBoxLayout;
     texts->setContentsMargins(0, 0, 0, 0);
@@ -978,6 +1098,12 @@ Row *CollectionsView::row(const Collection &c, CollectionItem *item, int number,
     if (rating && c.has(Collection::kYear) && item->year > 0)
         sub = sub.isEmpty() ? QString::number(item->year) : sub + " · " + QString::number(item->year);
     if (!sub.isEmpty()) texts->addWidget(elided(sub, "collSub", QColor(Theme::muted())));
+    // In progress, its bar, as on the reading card: the wide list's rows are
+    // the only place the Todos and Leyendo tabs show it.
+    if (c.isInProgress(item->state) && c.has(Collection::kProgress) && item->total > 0) {
+        texts->addSpacing(2);
+        texts->addWidget(new coll::Bar(item->percent(), m_theme.accent));
+    }
     l->addLayout(texts, 1);
 
     auto *right = new QVBoxLayout;
@@ -1036,7 +1162,8 @@ void CollectionsView::fillList(QVBoxLayout *col, const Collection &c, const QStr
     }
     col->addWidget(sectionRow(caption, total));
     if (items.isEmpty()) {
-        auto *none = new QLabel(m_search.isEmpty() ? L("Nada por aquí todavía.") : L("Nada coincide con la búsqueda."));
+        auto *none = new QLabel(m_search.isEmpty() && !filtering() ? L("Nada por aquí todavía.")
+                                                                       : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
         none->setContentsMargins(6, 4, 6, 4);
         col->addWidget(none);
@@ -1045,7 +1172,7 @@ void CollectionsView::fillList(QVBoxLayout *col, const Collection &c, const QStr
     // By hand only where the order shown is the queue's own: by priority, high
     // first, and with nothing filtered out.
     const bool handOrder = queue && c.sortKey == Collection::kByPriority && !c.sortAscending &&
-                           m_search.isEmpty() && m_tag.isEmpty();
+                           m_search.isEmpty() && !filtering();
     for (int i = 0; i < items.size(); ++i) {
         Row *r = row(c, items.at(i), i + 1, metaFor(c, items.at(i)), queue, false);
         if (r->grip) {
@@ -1069,11 +1196,12 @@ void CollectionsView::fillInProgress(QVBoxLayout *col, const Collection &c, cons
         auto *v = new QVBoxLayout(box);
         v->setContentsMargins(16, 24, 16, 18);
         v->setSpacing(6);
-        auto *title = new QLabel(m_search.isEmpty() ? L("Nada en curso") : L("Nada coincide con la búsqueda."));
+        const bool filtered = !m_search.isEmpty() || filtering();
+        auto *title = new QLabel(!filtered ? L("Nada en curso") : L("Nada coincide con la búsqueda."));
         title->setObjectName("trackEmptyTitle");
         title->setAlignment(Qt::AlignCenter);
         v->addWidget(title);
-        if (m_search.isEmpty()) {
+        if (!filtered) {
             auto *text = new QLabel(L("Empieza el primero de la cola."));
             text->setObjectName("popupText");
             text->setAlignment(Qt::AlignCenter);
@@ -1085,7 +1213,8 @@ void CollectionsView::fillInProgress(QVBoxLayout *col, const Collection &c, cons
     }
 
     // A CONTINUACIÓN: the first three of the queue, each one click from starting.
-    if (!m_search.isEmpty()) return;
+    // Not while filtering: the queue would not be.
+    if (!m_search.isEmpty() || filtering()) return;
     const QList<CollectionItem *> next = Coll::queue(m_store->collectionItems(), c).mid(0, 3);
     if (next.isEmpty() || c.firstState() == stateId) return;
     auto *seeQueue = textButton("noticeAction", L("Ver cola"));
@@ -1127,8 +1256,9 @@ QWidget *CollectionsView::readingCard(const Collection &c, CollectionItem *item)
 
     auto *top = new QHBoxLayout;
     top->setSpacing(12);
-    top->addWidget(new coll::Cover(CollectionItem::coverColor(item->color), coverText(item->title),
-                                   QSize(46, 66)), 0, Qt::AlignTop);
+    top->addWidget((new coll::Cover(CollectionItem::coverColor(item->color), coverText(item->title),
+                                    QSize(46, 66)))->withImage(item->coverPath()),
+                   0, Qt::AlignTop);
     auto *texts = new QVBoxLayout;
     texts->setSpacing(3);
     const CollectionState *s = c.state(item->state);
@@ -1150,6 +1280,29 @@ QWidget *CollectionsView::readingCard(const Collection &c, CollectionItem *item)
     top->addLayout(texts, 1);
     v->addLayout(top);
 
+    auto *done = textButton("pickSave", L("Terminado"));
+    done->setToolTip(L("Pasa a %1 con la fecha de hoy").arg(L(c.states.last().name)));
+    const QString final = c.finalState();
+    connect(done, &QToolButton::clicked, this, [this, item, final] { moveTo(item, final); });
+    v->addLayout(progressBlock(c, item, done));
+
+    // The card opens the item too, as a row does.
+    card->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(card, &QWidget::customContextMenuRequested, this,
+            [this, item, card](const QPoint &p) { openItemMenu(item, card->mapToGlobal(p)); });
+    card->installEventFilter(this);
+    card->setProperty("itemId", item->id);
+    return card;
+}
+
+/// Where something in progress is and the ways to move it on: the bar, "p. 212
+/// / 496" and what is left, +10, +25 and the page typed. The reading card's,
+/// and the wide detail's, so the page changes without opening Editar.
+/// @p trailing, if any, closes the row of buttons (the card's Terminado).
+QVBoxLayout *CollectionsView::progressBlock(const Collection &c, CollectionItem *item, QWidget *trailing) {
+    auto *v = new QVBoxLayout;
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(10);
     const QString unit = L(c.unitShort());
     if (c.has(Collection::kProgress)) {
         if (item->total > 0) {
@@ -1190,21 +1343,11 @@ QWidget *CollectionsView::readingCard(const Collection &c, CollectionItem *item)
         actions->addWidget(write);
     }
     actions->addStretch();
-    auto *done = textButton("pickSave", L("Terminado"));
-    done->setToolTip(L("Pasa a %1 con la fecha de hoy").arg(L(c.states.last().name)));
-    const QString final = c.finalState();
-    connect(done, &QToolButton::clicked, this, [this, item, final] { moveTo(item, final); });
-    actions->addWidget(done);
+    if (trailing) actions->addWidget(trailing);
     v->addLayout(actions);
-
-    // The card opens the item too, as a row does.
-    card->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(card, &QWidget::customContextMenuRequested, this,
-            [this, item, card](const QPoint &p) { openItemMenu(item, card->mapToGlobal(p)); });
-    card->installEventFilter(this);
-    card->setProperty("itemId", item->id);
-    return card;
+    return v;
 }
+
 
 /// The finished tab: this year's figures, then the list with the rating.
 void CollectionsView::fillFinished(QVBoxLayout *col, const Collection &c, const QString &stateId) {
@@ -1251,7 +1394,8 @@ void CollectionsView::fillFinished(QVBoxLayout *col, const Collection &c, const 
     else caption = L("Por fecha de fin");
     col->addWidget(sectionRow(caption, nullptr));
     if (items.isEmpty()) {
-        auto *none = new QLabel(m_search.isEmpty() ? L("Nada terminado todavía.") : L("Nada coincide con la búsqueda."));
+        auto *none = new QLabel(m_search.isEmpty() && !filtering() ? L("Nada terminado todavía.")
+                                                                       : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
         none->setContentsMargins(6, 4, 6, 4);
         col->addWidget(none);
@@ -1268,7 +1412,7 @@ void CollectionsView::addPages(CollectionItem *item, int pages) {
 }
 
 /// "p. …": the page typed, as the timers' editor takes a time.
-void CollectionsView::openPagePrompt(CollectionItem *item, QWidget *anchor) {
+void CollectionsView::openPagePrompt(CollectionItem *item, QWidget *anchor, const QPoint &at) {
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(item->total > 0 ? L("Página (de %1)").arg(item->total) : L("Página"));
     QPointer<CollectionsView> self(this);
@@ -1283,6 +1427,104 @@ void CollectionsView::openPagePrompt(CollectionItem *item, QWidget *anchor) {
         i->progress = i->total > 0 ? qMin(page, i->total) : page;
         self->edited();
     });
+    if (anchor) menu->showUnder(anchor);
+    else menu->showAt(at);
+}
+
+/// The current collection's tags, most used first, with their counts.
+QList<QPair<QString, int>> CollectionsView::tagCounts(const Collection &c) const {
+    QHash<QString, int> counts;
+    if (m_store)
+        for (const CollectionItem *i : m_store->collectionItems())
+            if (i->collection == c.id)
+                for (const QString &t : i->tags) ++counts[t];
+    QList<QPair<QString, int>> out;
+    for (auto it = counts.cbegin(); it != counts.cend(); ++it) out.append({it.key(), it.value()});
+    std::sort(out.begin(), out.end(), [](const QPair<QString, int> &a, const QPair<QString, int> &b) {
+        return a.second != b.second ? a.second > b.second : a.first < b.first;
+    });
+    return out;
+}
+
+/// Filters by @p tag (empty: none), in both modes.
+void CollectionsView::setTag(const QString &tag) {
+    m_tag = tag;
+    refreshTabs();
+    refreshBody();
+    if (m_wide) refreshSide();
+}
+
+/// Filters by length (1.3.3), in both modes.
+void CollectionsView::setLength(Coll::Length length) {
+    m_length = length;
+    refreshTabs();
+    refreshBody();
+    if (m_wide) refreshSide();
+}
+
+bool CollectionsView::filtering() const { return !m_tag.isEmpty() || m_length != Coll::AnyLength; }
+
+/// "Hasta 250 p.", "251–500 p.", "Más de 500 p.".
+QString CollectionsView::lengthText(const Collection &c, Coll::Length length) {
+    const QString unit = L(c.unitShort());
+    switch (length) {
+        case Coll::Short:  return L("Hasta %1 %2").arg(Coll::kShortUpTo).arg(unit);
+        case Coll::Medium: return QString("%1–%2 %3").arg(Coll::kShortUpTo + 1).arg(Coll::kMediumUpTo).arg(unit);
+        case Coll::Long:   return L("Más de %1 %2").arg(Coll::kMediumUpTo).arg(unit);
+        default:           return L("Cualquiera");
+    }
+}
+
+/// What filters, in words: "Solo «Fantasía» · Hasta 250 p.".
+QString CollectionsView::filterText(const Collection &c) const {
+    QStringList parts;
+    if (!m_tag.isEmpty()) parts << L("Solo «%1»").arg(m_tag);
+    if (m_length != Coll::AnyLength) parts << lengthText(c, m_length);
+    return parts.join(" · ");
+}
+
+/// How many of @p c's items are in each length band.
+QHash<int, int> CollectionsView::lengthCounts(const Collection &c) const {
+    QHash<int, int> counts;
+    if (m_store)
+        for (const CollectionItem *i : m_store->collectionItems())
+            if (i->collection == c.id) ++counts[Coll::lengthOf(i)];
+    return counts;
+}
+
+/// Narrow: the filters as a menu — length for books, then every tag (the
+/// sidebar shows eight) — each with the way back to all.
+void CollectionsView::openTagMenu(QWidget *anchor) {
+    const Collection *c = current();
+    if (!c) return;
+    auto *menu = new Popup(m_theme, this);
+    QPointer<CollectionsView> self(this);
+    if (Coll::filtersByLength(*c)) {
+        menu->addHeader(L(c->unitName()).toUpper());
+        const QHash<int, int> counts = lengthCounts(*c);
+        for (Coll::Length band : {Coll::AnyLength, Coll::Short, Coll::Medium, Coll::Long}) {
+            const QString hint = band == Coll::AnyLength ? QString() : QString::number(counts.value(band));
+            menu->addShortcutItem(m_length == band ? "check" : "", lengthText(*c, band), hint, [self, band] {
+                if (self) self->setLength(band);
+            });
+        }
+        menu->addSeparator();
+    }
+    const QList<QPair<QString, int>> tags = tagCounts(*c);
+    if (tags.isEmpty() && m_tag.isEmpty()) {
+        menu->showUnder(anchor);
+        return;
+    }
+    menu->addHeader(L("ETIQUETAS"));
+    menu->addShortcutItem(m_tag.isEmpty() ? "check" : "", L("Todas"), QString(), [self] {
+        if (self) self->setTag(QString());
+    });
+    for (const auto &[tag, count] : tags) {
+        const QString t = tag;
+        menu->addShortcutItem(t == m_tag ? "check" : "", t, QString::number(count), [self, t] {
+            if (self) self->setTag(t);
+        });
+    }
     menu->showUnder(anchor);
 }
 
@@ -1418,6 +1660,15 @@ void CollectionsView::openItemMenu(CollectionItem *item, const QPoint &globalPos
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(item->title.isEmpty() ? L("Sin título") : item->title);
     menu->addItem("pencil", L("Editar…"), QString(), [this, item] { emit editRequested(item); });
+    // The page, from wherever it is shown (tile, row), without Editar.
+    if (c->isInProgress(item->state) && c->has(Collection::kProgress)) {
+        const QString unit = L(c->unitShort());
+        for (int step : {10, 25})
+            menu->addItem("plus", QString("+%1 %2").arg(step).arg(unit), QString(),
+                          [this, item, step] { addPages(item, step); });
+        menu->addItem("pencil", L("Escribir la página"), QString(),
+                      [this, item, globalPos] { openPagePrompt(item, nullptr, globalPos); });
+    }
     for (const CollectionState &s : c->states) {
         if (s.id == item->state) continue;
         const QString id = s.id;
@@ -1516,11 +1767,22 @@ void CollectionsView::refreshSide() {
             r->setMark(dot);
             r->setChosen(tag == m_tag);
             r->setToolTip(tag == m_tag ? L("Quitar el filtro") : L("Ver solo «%1»").arg(tag));
-            connect(r, &QToolButton::clicked, this, [this, tag] {
-                m_tag = m_tag == tag ? QString() : tag;
-                refreshTabs();
-                refreshBody();
-                refreshSide();
+            connect(r, &QToolButton::clicked, this, [this, tag] { setTag(m_tag == tag ? QString() : tag); });
+            m_sideLayout->addWidget(r);
+        }
+    }
+    // PÁGINAS: the length bands, for books; a click filters, again unfilters.
+    if (Coll::filtersByLength(*shown)) {
+        const QHash<int, int> counts = lengthCounts(*shown);
+        auto *head = section(L(shown->unitName()).left(1).toUpper() + L(shown->unitName()).mid(1));
+        head->setContentsMargins(0, 12, 0, 0);
+        m_sideLayout->addWidget(head);
+        for (Coll::Length band : {Coll::Short, Coll::Medium, Coll::Long}) {
+            auto *r = new coll::SideRow(lengthText(*shown, band), QString::number(counts.value(band)));
+            r->setChosen(m_length == band);
+            r->setToolTip(m_length == band ? L("Quitar el filtro") : L("Ver solo «%1»").arg(lengthText(*shown, band)));
+            connect(r, &QToolButton::clicked, this, [this, band] {
+                setLength(m_length == band ? Coll::AnyLength : band);
             });
             m_sideLayout->addWidget(r);
         }
@@ -1557,10 +1819,36 @@ void CollectionsView::refreshSide() {
     }
 }
 
+/// The width the grid has: the centre's, less its margins and a scroll bar's
+/// room, always, so the bar appearing does not change the columns and make
+/// it disappear again.
+int CollectionsView::gridWidth() const {
+    const int bar = m_scroll->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, m_scroll);
+    return qMax(110, m_scroll->width() - 24 - bar);
+}
+
+/// Tiles of 110 px or more, up to eight.
+int CollectionsView::gridColumns(int width) {
+    return qBound(1, (width + 8) / (110 + 8), 8);
+}
+
+/// "p. 212 / 496 · 43%", "ep. 3", or nothing: how far along something in
+/// progress is, for the rows and tiles of the wide mode.
+QString CollectionsView::progressText(const Collection &c, const CollectionItem *item) const {
+    if (!c.isInProgress(item->state) || !c.has(Collection::kProgress)) return QString();
+    const QString unit = L(c.unitShort());
+    if (item->total > 0)
+        return QString("%1 %2 / %3 · %4%")
+            .arg(unit, Coll::number(item->progress), Coll::number(item->total))
+            .arg(item->percent());
+    if (item->progress > 0) return QString("%1 %2").arg(unit, Coll::number(item->progress));
+    return QString();
+}
+
 /// The centre: tiles in as many columns as fit, or the rows.
 void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QList<CollectionItem *> &items) {
     if (items.isEmpty()) {
-        auto *none = new QLabel(m_search.isEmpty() && m_tag.isEmpty() ? L("Nada por aquí todavía.")
+        auto *none = new QLabel(m_search.isEmpty() && !filtering() ? L("Nada por aquí todavía.")
                                                                        : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
         none->setContentsMargins(6, 4, 6, 4);
@@ -1584,8 +1872,13 @@ void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QLis
     auto *grid = new QGridLayout(host);
     grid->setContentsMargins(0, 0, 0, 0);
     grid->setSpacing(8);
-    const int avail = m_scroll->viewport()->width() - 24;
-    const int columns = qBound(2, avail / 130, 8);
+    // The columns that fit now, each tile as tall as its width asks: the grid
+    // is rebuilt when the window changes how many fit (eventFilter), so a tile
+    // is never stretched past the height it was made for.
+    const int avail = gridWidth();
+    const int columns = gridColumns(avail);
+    m_gridColumns = columns;
+    const int tileW = (avail - 8 * (columns - 1)) / columns;
     for (int i = 0; i < items.size(); ++i) {
         CollectionItem *item = items.at(i);
         auto *t = new coll::Tile(item, &m_theme);
@@ -1596,8 +1889,17 @@ void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QLis
                                                      : kAmber;
         t->percent = c.isInProgress(item->state) && c.has(Collection::kProgress) ? item->percent() : -1;
         t->priority = c.has(Collection::kPriority);
+        t->showYear = c.has(Collection::kYear);
+        t->showAuthor = c.has(Collection::kAuthor);
+        t->image = item->coverPath();
         t->selected = item->id == m_selected;
-        t->setToolTip(item->title);
+        t->setFixedHeight(t->heightForWidth(tileW));
+        // Whole, whatever the tile had room for.
+        QStringList tip{item->title.isEmpty() ? L("Sin título") : item->title};
+        if (t->showAuthor && !item->author.isEmpty()) tip << item->author;
+        const QString figures = progressText(c, item);
+        if (!figures.isEmpty()) tip << figures;
+        t->setToolTip(tip.join('\n'));
         t->select = [this, item] { select(item); };
         t->open = [this, item] { emit editRequested(item); };
         t->menu = [this, item](const QPoint &at) { openItemMenu(item, at); };
@@ -1625,7 +1927,8 @@ void CollectionsView::refreshDetail() {
 
     auto *top = new QHBoxLayout;
     top->setSpacing(12);
-    top->addWidget(new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(70, 104)),
+    top->addWidget((new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(70, 104)))
+                       ->withImage(item->coverPath()),
                    0, Qt::AlignTop);
     auto *texts = new QVBoxLayout;
     texts->setSpacing(4);
@@ -1681,14 +1984,15 @@ void CollectionsView::refreshDetail() {
         tiles->setColumnStretch(column++, 1);
     };
     if (c->has(Collection::kYear) && item->year > 0) tile(L("AÑO"), QString::number(item->year));
-    if (c->has(Collection::kProgress) && item->total > 0) {
-        QString value = Coll::number(item->total);
-        if (c->isInProgress(item->state) && item->progress > 0)
-            value = QString("%1 / %2").arg(Coll::number(item->progress), value);
-        tile(L(c->unitName()).toUpper(), value);
-    }
+    // The length; the page reached is in the progress block below.
+    if (c->has(Collection::kProgress) && item->total > 0)
+        tile(L(c->unitName()).toUpper(), Coll::number(item->total));
     tile(L("AÑADIDO"), Coll::shortDate(item->addedMs));
     m_detail->addLayout(tiles);
+
+    // In progress: the page, moved on right here, as on the reading card.
+    if (c->isInProgress(item->state) && c->has(Collection::kProgress))
+        m_detail->addLayout(progressBlock(*c, item, nullptr));
 
     // Priority, changed right here.
     if (c->has(Collection::kPriority) && !c->isFinal(item->state)) {
@@ -1730,16 +2034,24 @@ void CollectionsView::refreshDetail() {
             const QString tag = item->tags.at(i);
             auto *chip = textButton("trackChip", tag);
             chip->setToolTip(L("Ver solo «%1»").arg(tag));
-            connect(chip, &QToolButton::clicked, this, [this, tag] {
-                m_tag = tag;
-                refreshTabs();
-                refreshBody();
-                refreshSide();
-            });
+            connect(chip, &QToolButton::clicked, this, [this, tag] { setTag(tag); });
             tg->addWidget(chip, i / 2, i % 2, Qt::AlignLeft);
         }
         tg->setColumnStretch(2, 1);
         m_detail->addWidget(tagBox);
+    }
+
+    if (c->has(Collection::kSynopsis) && !item->synopsis.isEmpty()) {
+        auto *label = new QLabel(L("Sinopsis"));
+        label->setObjectName("setFieldLabel");
+        m_detail->addWidget(label);
+        auto *text = new QLabel(item->synopsis);
+        text->setObjectName("popupText");
+        text->setTextFormat(Qt::PlainText);
+        text->setWordWrap(true);
+        text->setMinimumWidth(24);
+        text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_detail->addWidget(text);
     }
 
     // Planificar: a reading block in the Planner, the clock in Seguimiento.
@@ -1759,7 +2071,7 @@ void CollectionsView::refreshDetail() {
             pv->addWidget(b);
         };
         if (m_planner)
-            link("calendar", L("Bloque de lectura en el Planner"), [this, item] { emit planRequested(item); });
+            link("calendar", L("Bloque de lectura en el Planificador"), [this, item] { emit planRequested(item); });
         if (m_tracking)
             link("bars", L("Medir tiempo con Seguimiento"), [this, item] { emit trackRequested(item); });
         m_detail->addLayout(pv);

@@ -4,6 +4,91 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.5] — 2026-11-08
+
+### Added
+
+- **The pages' order in the navigation can be changed**: *Ajustes → General
+  → Orden de las páginas* moves each one up or down. *Notas* is the app
+  itself and stays first. Pages turned off keep their place for when they
+  come back, and the shortcuts stay with their page (Ctrl+2 is the planner
+  wherever it sits).
+
+### Changed
+
+- In Spanish the *Planner* is now the ***Planificador*** — in the
+  navigation, its page, the palette, the shortcuts, the features and
+  Colecciones' "Bloque de lectura en el Planificador". English keeps
+  *Planner*.
+
+## [1.3.4] — 2026-11-08
+
+### Added
+
+- **Colecciones: cover pictures.** A book, game, film, series or record can
+  have a picture as its cover instead of a colour. In its card, a click on the
+  cover offers *Elegir imagen…*, *Quitar imagen* (back to the colour) or
+  *Cambiar el color*; an image file dragged onto the cover does too. The
+  picture fills the cover wherever it shows — the rows, the reading card, the
+  grid (shaded so the year, title and author still read over it) and the
+  wide mode's card.
+  - It is copied into `images/`, next to the notes' pictures, scaled down to
+    720 px tall and saved as JPEG, and synced with them. Nothing is copied
+    until *Guardar*; replacing or removing a picture, or deleting the item,
+    deletes its file.
+
+## [1.3.3] — 2026-11-08
+
+### Added
+
+- **Colecciones: synopsis.** Books have a *Sinopsis* field — a few lines,
+  edited in a box that wraps — shown in the wide mode's card. It is on in the
+  Libros template and turns on by itself in existing libraries (it can be
+  switched off in the collection's fields like any other). A field of your
+  own called *Sinopsis* becomes the built-in one, text included.
+- **Colecciones: filter by length.** In a library, by pages: up to 250,
+  251–500 or over 500, each with its count. Wide, under the tags in the
+  sidebar; narrow, in the filter button's menu (the old tag button), which
+  has the tags too. It combines with the tag, and the narrow panel says what
+  filters on top — *Solo «Fantasía» · Hasta 250 p.*
+
+### Fixed
+
+- **Colecciones: changing the page no longer needs *Editar*.** The wide
+  mode's card has the reading card's progress — bar, "p. 212 / 496", what is
+  left, *+10 p.*, *+25 p.* and the page typed — and the right-click menu of a
+  book in progress has them too, from the grid or the list.
+
+## [1.3.2] — 2026-11-08
+
+### Fixed
+
+- **Colecciones, narrow panel**: a tag chosen in the wide mode stayed on when
+  the window was narrowed, where the tags are not shown, so only that tag's
+  items appeared with no way to tell why or to clear it. Now the narrow panel
+  says it on top — *Solo «Fantasía»* — with *Quitar el filtro*, and a tag
+  button next to the sort lists every tag with its count, to filter or go back
+  to all. The empty messages count the tag as a filter, and *A continuación*
+  is hidden while filtering.
+
+## [1.3.1] — 2026-11-08
+
+### Fixed
+
+- **Colecciones, wide mode**: the grid's tiles no longer lose information at
+  some window sizes. The columns follow the window as it is resized, each tile
+  keeps the height its width needs (the state and priority under the cover
+  were cut off), and a long title wraps into the lines the cover has room for
+  and ends in "…", instead of losing its beginning. The state under a tile is
+  elided before it reaches the priority stones ("por escuchar"), and the
+  tooltip has the whole title, author and progress.
+- **Colecciones, list mode**: what is in progress shows its progress — a bar
+  under the title and "p. 212 / 496 · 43%" on the right — in *Todos* and in
+  the in-progress tab. Tiles show the percentage next to the state too.
+- Every template is covered, not only Libros: tiles show the year and the
+  author only if the collection uses those fields, and the progress uses each
+  template's unit (episodes, etc.).
+
 ## [1.3.0] — 2026-11-08
 
 ### Added

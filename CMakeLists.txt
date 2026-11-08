@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 1.3.0 LANGUAGES CXX)
+project(tagoror VERSION 1.3.5 LANGUAGES CXX)
 
 # La versión que llega al binario (la que compara el aviso de actualizaciones)
 # y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de
@@ -102,6 +102,7 @@ add_executable(tagoror
     include/ui/birthdays.hpp
     include/ui/tracking.hpp
     include/ui/collections.hpp
+    include/ui/coverimage.hpp
     include/ui/collectiondialogs.hpp
     include/ui/trackdialogs.hpp
     include/ui/overlay.hpp

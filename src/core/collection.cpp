@@ -1,8 +1,13 @@
 #include "core/collection.hpp"
 
 #include "core/lang.hpp"
+#include "core/paths.hpp"
 
 #include <QCollator>
+#include <QFile>
+#include <QImage>
+#include <QImageReader>
+#include <QPainter>
 #include <algorithm>
 
 namespace {
@@ -64,7 +69,7 @@ Collection *Collection::fromTemplate(Template kind, const QString &name) {
     switch (kind) {
         case Books:
             c->states = {makeState("Pendiente"), makeState("Leyendo", true), makeState("Leído")};
-            c->fields = {kAuthor, kYear, kProgress, kPriority, kRating};
+            c->fields = {kAuthor, kYear, kProgress, kPriority, kRating, kSynopsis};
             break;
         case Movies:
             c->states = {makeState("Por ver"), makeState("Vista")};
@@ -87,6 +92,7 @@ Collection *Collection::fromTemplate(Template kind, const QString &name) {
             c->fields = {kPriority};
             break;
     }
+    c->known = builtinFields();
     c->sortKey = kByPriority;
     c->sortAscending = defaultAscending(kByPriority);
     return c;
@@ -101,6 +107,7 @@ QJsonObject Collection::toJson() const {
     for (const CollectionState &s : states) st.append(s.toJson());
     o["states"] = st;
     o["fields"] = QJsonArray::fromStringList(fields);
+    o["known"] = QJsonArray::fromStringList(known);
     QJsonArray cu;
     for (const CollectionField &f : custom) cu.append(f.toJson());
     o["custom"] = cu;
@@ -125,6 +132,18 @@ Collection *Collection::fromJson(const QJsonObject &o) {
         delete t;
     }
     for (const QJsonValue v : o["fields"].toArray()) c->fields << v.toString();
+    // Built-in fields added since this collection was saved: on if its
+    // template has them. Without "known" it is from 1.3.0, which knew these.
+    if (o.contains("known")) {
+        for (const QJsonValue v : o["known"].toArray()) c->known << v.toString();
+    } else {
+        c->known = {kAuthor, kYear, kProgress, kPriority, kRating, kIsbn};
+    }
+    Collection *t = fromTemplate(c->kind, QString());
+    for (const QString &f : builtinFields())
+        if (!c->known.contains(f) && t->fields.contains(f) && !c->fields.contains(f)) c->fields << f;
+    delete t;
+    c->known = builtinFields();
     for (const QJsonValue v : o["custom"].toArray()) c->custom.append(CollectionField::fromJson(v.toObject()));
     c->sortKey = o["sort"].toString(kByPriority);
     if (!sortKeys().contains(c->sortKey)) c->sortKey = kByPriority;
@@ -137,6 +156,10 @@ Collection *Collection::fromJson(const QJsonObject &o) {
 
 // ---------------------------------------------------------------------------
 // CollectionItem
+
+QString CollectionItem::coverPath() const {
+    return cover.isEmpty() ? QString() : imageDir() + "/" + cover;
+}
 
 QString CollectionItem::sortAuthor() const {
     if (!authorSortKey.trimmed().isEmpty()) return authorSortKey.trimmed();
@@ -160,10 +183,12 @@ QJsonObject CollectionItem::toJson() const {
     o["rating"] = rating;
     o["tags"] = QJsonArray::fromStringList(tags);
     o["color"] = color;
+    o["cover"] = cover;
     o["added"] = double(addedMs);
     o["started"] = double(startedMs);
     o["finished"] = double(finishedMs);
     o["isbn"] = isbn;
+    o["synopsis"] = synopsis;
     o["note"] = noteId;
     o["extra"] = extra;
     o["updated"] = double(updatedMs);
@@ -186,10 +211,14 @@ CollectionItem *CollectionItem::fromJson(const QJsonObject &o) {
     i->rating = qBound(0, o["rating"].toInt(), 5);
     for (const QJsonValue v : o["tags"].toArray()) i->tags << v.toString();
     i->color = qBound(0, o["color"].toInt(), kCovers - 1);
+    // A bare file name: nothing from a synced file reaches outside images/.
+    i->cover = o["cover"].toString();
+    if (i->cover.contains('/') || i->cover.contains('\\') || i->cover.startsWith('.')) i->cover.clear();
     i->addedMs = qint64(o["added"].toDouble());
     i->startedMs = qint64(o["started"].toDouble());
     i->finishedMs = qint64(o["finished"].toDouble());
     i->isbn = o["isbn"].toString();
+    i->synopsis = o["synopsis"].toString();
     i->noteId = o["note"].toString();
     i->extra = o["extra"].toObject();
     i->updatedMs = qint64(o["updated"].toDouble());
@@ -294,6 +323,64 @@ void setState(CollectionItem *item, const Collection &c, const QString &stateId)
     } else if (wasFinal) {
         item->finishedMs = 0;
     }
+}
+
+QString importCover(const QString &source, const QString &itemId) {
+    QImageReader reader(source);
+    reader.setAutoTransform(true);   // a phone photo stands the right way up
+    QImage image = reader.read();
+    if (image.isNull()) return QString();
+    if (image.height() > kCoverHeight)
+        image = image.scaledToHeight(kCoverHeight, Qt::SmoothTransformation);
+    // JPEG has no transparency: a PNG with it goes over white, not black.
+    if (image.hasAlphaChannel()) {
+        QImage flat(image.size(), QImage::Format_RGB32);
+        flat.fill(Qt::white);
+        QPainter p(&flat);
+        p.drawImage(0, 0, image);
+        p.end();
+        image = flat;
+    }
+    // The item and a timestamp: a new cover never overwrites the one a synced
+    // machine may still be showing.
+    const QString name = QString("cover-%1-%2.jpg").arg(itemId).arg(QDateTime::currentMSecsSinceEpoch());
+    if (!image.save(imageDir() + "/" + name, "JPG", 88)) return QString();
+    return name;
+}
+
+void removeCover(const QString &name) {
+    if (!name.isEmpty() && !name.contains('/') && !name.contains('\\')) QFile::remove(imageDir() + "/" + name);
+}
+
+Length lengthOf(const CollectionItem *item) {
+    if (item->total <= 0) return AnyLength;
+    if (item->total <= kShortUpTo) return Short;
+    if (item->total <= kMediumUpTo) return Medium;
+    return Long;
+}
+
+bool filtersByLength(const Collection &c) {
+    return c.kind == Collection::Books && c.has(Collection::kProgress);
+}
+
+bool adoptSynopsisField(Collection &c, const QList<CollectionItem *> &items) {
+    if (!c.has(Collection::kSynopsis)) return false;
+    static const QStringList names{"sinopsis", "sipnosis", "synopsis"};
+    for (int f = 0; f < c.custom.size(); ++f) {
+        if (!names.contains(c.custom.at(f).name.trimmed().toLower())) continue;
+        const QString key = c.custom.at(f).key;
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        for (CollectionItem *i : items) {
+            if (i->collection != c.id || !i->extra.contains(key)) continue;
+            if (i->synopsis.isEmpty()) i->synopsis = i->extra.value(key).toString().trimmed();
+            i->extra.remove(key);
+            i->updatedMs = now;
+        }
+        c.custom.removeAt(f);
+        c.updatedMs = now;
+        return true;
+    }
+    return false;
 }
 
 int countIn(const QList<CollectionItem *> &items, const QString &collectionId,

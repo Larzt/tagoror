@@ -85,7 +85,7 @@
   <img src="docs/v5-planner.png" alt="The planner in week view: the navigation as a rail, a mini month, today's tasks and the categories on the left, the week's events laid out by hour" width="720">
 </p>
 
-- *Planner* in the navigation (or **Ctrl+2**) opens it. The
+- *Planner* (*Planificador* in Spanish) in the navigation (or **Ctrl+2**) opens it. The
   panel **widens while it is open** — a week does not fit in 300 pixels — and
   returns to its size when you leave, unless you resized it in between.
 - **Day, week and month views.** Day and week lay things out by the hour, side
@@ -195,13 +195,18 @@
   each with its own direction, which a row turns round.
 - Each book has a card (double click, or right click → *Editar*): cover
   colour, author and what it sorts by, year, pages, state, progress, priority,
-  rating, tags and a **reading note**, a Markdown note opened on its page.
+  rating, tags, a **synopsis**, a **cover picture** (chosen or dragged onto
+  the cover; the colour otherwise) and a **reading note**, a Markdown note
+  opened on its page.
+- **Filter** by tag or, in a library, by length — up to 250 pages, 251–500 or
+  over 500 — from the sidebar when wide or the filter button when narrow.
 - New collections come from a template — Libros, Películas, Series, Juegos,
   Discos or En blanco — with states you can rename, reorder, add or remove,
   fields you switch on, fields of your own and a yearly goal.
 - Wide (app mode), three columns: collections, tags and the goal; a grid of
-  covers or a list with *Todos*; and the book's card, with a reading block in
-  the Planner and the clock in Seguimiento.
+  covers or a list with *Todos*; and the book's card, with its synopsis, the
+  page moved on right there (+10, +25 or typed; also from the right-click
+  menu), a reading block in the Planner and the clock in Seguimiento.
 - Kept in `collections.json`, backed up and synced like everything else.
 
 ### Birthdays
@@ -324,7 +329,9 @@
 - **The navigation stays put**: Notes, Planner, Timers, Birthdays and Seguimiento along the
   bottom, the open one marked, or as a rail on the left once the panel is wider
   than 480 px. A red dot on Notes says a reminder is ringing while you are
-  elsewhere.
+  elsewhere. Notes is always first; the other pages go in the order you set in
+  **Settings → General → Orden de las páginas** (their shortcuts stay with
+  them).
 - **One place for notices**: what rings, a missing data folder, a failed sync
   and a new version share a single card above the navigation, most urgent first,
   with *1 of N* for the rest. Nothing slides in pushing your notes down.
