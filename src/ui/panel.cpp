@@ -3,6 +3,7 @@
 #include "ui/alertcenter.hpp"
 #include "ui/welcome.hpp"
 #include "ui/collections.hpp"
+#include "ui/collectiondialogs.hpp"
 #include "ui/areatabs.hpp"
 #include "audio/recorder.hpp"
 #include "ui/birthdays.hpp"
@@ -1733,17 +1734,60 @@ void Panel::openCollectionMenu(QWidget *anchor) {
 }
 
 void Panel::openCollectionEditor(Collection *c) {
-    if (c) return;
-    // A library straight away; the editor with its templates comes next.
-    Collection *made = Collection::fromTemplate(Collection::Books, L("Biblioteca"));
-    m_store.addCollection(made);
-    m_collections->setCurrent(made->id);
-    refreshCollections();
+    if (m_body->currentWidget() != m_collections) openPage(m_collections);
+    colldlg::editCollection(
+        &m_theme, m_shell, &m_store, c,
+        [this](Collection *saved) {
+            save();
+            m_collections->setCurrent(saved->id);
+            refreshCollections();
+        },
+        [this] {
+            save();
+            refreshCollections();
+        });
 }
 
-void Panel::openItemEditor(CollectionItem *) {}
+void Panel::openItemEditor(CollectionItem *item) {
+    Collection *c = item ? m_store.collection(item->collection) : m_collections->current();
+    if (!c) return;
+    colldlg::ItemHooks hooks;
+    hooks.saved = [this] {
+        save();
+        refreshCollections();
+    };
+    // The reading notes are Markdown notes: without them, no section.
+    if (hasNoteType(Note::Markdown)) {
+        hooks.openNote = [this](CollectionItem *i) { openItemNote(i); };
+        hooks.noteTitle = [this](const QString &id) -> QString {
+            for (const Note *n : m_store.notes())
+                if (n->id == id) return n->title.isEmpty() ? L("Sin título") : n->title;
+            return QString();
+        };
+    }
+    colldlg::editItem(&m_theme, m_shell, &m_store, c, item, hooks);
+}
 
-void Panel::openItemNote(CollectionItem *) {}
+/// Its Markdown note, in the open area, titled after it; created the first
+/// time and opened on its page.
+void Panel::openItemNote(CollectionItem *item) {
+    if (!item || !m_store.collectionItems().contains(item)) return;
+    for (Note *n : m_store.notes())
+        if (n->id == item->noteId) {
+            openMarkdown(n);
+            return;
+        }
+    auto *n = new Note;
+    n->type = Note::Markdown;
+    n->title = L("%1 · notas").arg(item->title);
+    n->body = "# " + item->title + (item->author.isEmpty() ? QString() : "\n\n*" + item->author + "*") + "\n\n";
+    m_store.setNoteArea(n, currentArea());
+    m_store.add(n);
+    item->noteId = n->id;
+    save();
+    rebuildList();
+    openMarkdown(n);
+}
 
 /// Opens a page. The bar marks where you are; leaving is another item, Escape,
 /// or (from settings) the back arrow.

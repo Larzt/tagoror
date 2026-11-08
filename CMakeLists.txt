@@ -76,6 +76,7 @@ add_executable(tagoror
     src/ui/birthdays.cpp
     src/ui/tracking.cpp
     src/ui/collections.cpp
+    src/ui/collectiondialogs.cpp
     src/ui/trackdialogs.cpp
     src/ui/overlay.cpp
     src/ui/settings.cpp
@@ -101,6 +102,7 @@ add_executable(tagoror
     include/ui/birthdays.hpp
     include/ui/tracking.hpp
     include/ui/collections.hpp
+    include/ui/collectiondialogs.hpp
     include/ui/trackdialogs.hpp
     include/ui/overlay.hpp
     include/ui/settings.hpp
