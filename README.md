@@ -83,9 +83,10 @@
   Titles too long for their space end in "…", or, with *Settings → Appearance
   → Títulos del planificador* on *Varias líneas*, carry on to the next lines.
 - **Events and tasks** with a start and an end, a category (work, personal,
-  studies, other, or **your own**, with a name and a colour — created from the
-  side panel or the form, edited with the pencil next to it; deleting one moves
-  its events to *other*) and an optional repeat — every day, week, month or
+  studies, other, or **your own**, with a name and a colour — one of the
+  swatches or any other, typed as `#rrggbb` — created from the side panel or
+  the form, edited with the pencil next to it; deleting one moves its events to
+  *other*) and an optional repeat — every day, week, month or
   year — with no end or *until* a chosen day. A task has a box to tick, and a
   repeating task is ticked per day, not all at once.
 - They can **ring before they start** — at the start, or 5, 10, 15 or 30

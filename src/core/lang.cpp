@@ -802,6 +802,8 @@ const QHash<QString, QString> &table() {
          "Those that don't fit are cut with … or carry on to another line"},
         {"Cortar", "Cut"},
         {"Varias líneas", "Several lines"},
+        // 1.2.4: any colour for a planner category.
+        {"Otro color · #rrggbb", "Other colour · #rrggbb"},
     };
     return t;
 }

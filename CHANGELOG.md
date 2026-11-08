@@ -4,6 +4,16 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.4] — 2026-11-08
+
+### Added
+
+- **Any colour for a planner category**: under the ten default swatches, the
+  category editor has a field for another colour — `#rrggbb` or a name such as
+  `teal` — with a sample that follows what is typed; Enter saves it. Custom
+  colours already used by other categories show up as extra swatches (up to
+  five), so a colour typed once is one click away the next time.
+
 ## [1.2.3] — 2026-11-08
 
 ### Added

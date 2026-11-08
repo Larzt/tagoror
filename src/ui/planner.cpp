@@ -2160,14 +2160,26 @@ void PlannerView::rebuildCatButtons() {
 }
 
 void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool pickForForm) {
-    const QList<QColor> &palette = categoryPalette();
+    // The default colours, then the custom ones other categories already use, so
+    // a colour typed once can be picked again with a click. One row of them at
+    // most, the five first.
+    QList<QColor> palette = categoryPalette();
+    QList<QColor> used;
+    int customs = 0;
+    for (const CatInfo &info : allCategories()) {
+        used << info.color;
+        // Only colours someone chose: one standing in for the accent is not.
+        const QColor own = info.custom ? info.custom->color : QColor();
+        if (customs < 5 && own.isValid() && !palette.contains(own)) {
+            palette << own;
+            ++customs;
+        }
+    }
     int chosen = 0;
     if (c) {
         chosen = int(palette.indexOf(c->color));
     } else {
         // The first colour nobody uses, so two new categories do not look the same.
-        QList<QColor> used;
-        for (const CatInfo &info : allCategories()) used << info.color;
         for (int i = 0; i < palette.size(); ++i)
             if (!used.contains(palette.at(i))) {
                 chosen = i;
@@ -2180,9 +2192,9 @@ void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool p
     // Checked on return: the popup may close after a sync removed the category.
     QPointer<PlannerView> self(this);
     menu->addNameColor(L("Nombre"), c ? c->label : QString(), palette, chosen,
-                       [self, c, chosen, pickForForm](const QString &name, int color) {
+                       L("Otro color · #rrggbb"), c ? c->color : QColor(),
+                       [self, c, pickForForm](const QString &name, const QColor &picked) {
         if (!self) return;
-        const QColor picked = categoryPalette().value(color < 0 ? chosen : color);
         if (!c) {
             if (name.isEmpty()) return;   // nothing is created without a name
             auto *created = new Event::Category;
@@ -2197,7 +2209,7 @@ void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool p
         if (!self->m_categories || !self->m_categories->contains(c)) return;
         // An empty name deletes nothing: that is what Delete is for.
         if (!name.isEmpty()) c->label = name;
-        if (color >= 0 && picked.isValid()) c->color = picked;
+        if (picked.isValid()) c->color = picked;
         emit self->categoryChanged(c);
         self->refresh();
     });
