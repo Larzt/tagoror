@@ -400,8 +400,12 @@ void Store::addCollection(Collection *c) {
 }
 
 void Store::removeCollection(Collection *c) {
-    for (int i = int(m_collectionItems.size()) - 1; i >= 0; --i)
-        if (m_collectionItems.at(i)->collection == c->id) delete m_collectionItems.takeAt(i);
+    for (int i = int(m_collectionItems.size()) - 1; i >= 0; --i) {
+        if (m_collectionItems.at(i)->collection != c->id) continue;
+        CollectionItem *item = m_collectionItems.takeAt(i);
+        Coll::removeCover(item->cover);
+        delete item;
+    }
     m_collections.removeOne(c);
     delete c;
     save();
@@ -421,6 +425,7 @@ void Store::addCollectionItem(CollectionItem *i) {
 
 void Store::removeCollectionItem(CollectionItem *i) {
     m_collectionItems.removeOne(i);
+    Coll::removeCover(i->cover);
     delete i;
     save();
 }
@@ -1165,6 +1170,8 @@ void Store::changeDataDir(const QString &raw) {
         if (!n->audio.isEmpty()) copyAttachment("audio", n->audio);
         for (const QString &image : n->images) copyAttachment("images", image);
     }
+    for (const CollectionItem *i : m_collectionItems)
+        if (!i->cover.isEmpty()) copyAttachment("images", i->cover);
 
     // The backup history moves too.
     QDir().mkpath(to + "/backups");
@@ -1449,8 +1456,12 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
         result.changed |= mergeList<Collection>(m_collections,
                                                 collectionsRoot["collections"].toArray(),
                                                 m_deleted, false, nothing);
+        // A cover that came from elsewhere is downloaded like a note's image.
         result.changed |= mergeList<CollectionItem>(
-            m_collectionItems, collectionsRoot["items"].toArray(), m_deleted, false, nothing);
+            m_collectionItems, collectionsRoot["items"].toArray(), m_deleted, false,
+            [&result](CollectionItem *i) {
+                if (!i->cover.isEmpty()) result.pull.insert("images/" + i->cover);
+            });
     }
 
     // Notes deleted elsewhere take their attachments with them here too.
@@ -1472,7 +1483,9 @@ Store::MergeResult Store::mergeRemote(const QJsonObject &notesRoot,
     }
     if (m_collectionsReadable) {
         result.changed |= applyTombstones<Collection>(m_collections, m_deleted);
-        result.changed |= applyTombstones<CollectionItem>(m_collectionItems, m_deleted);
+        result.changed |= applyTombstones<CollectionItem>(m_collectionItems, m_deleted, [](CollectionItem *i) {
+            Coll::removeCover(i->cover);
+        });
         sortCollections();
     }
 
@@ -1493,6 +1506,8 @@ QStringList Store::attachments() const {
         if (!n->audio.isEmpty()) out << "audio/" + n->audio;
         for (const QString &image : n->images) out << "images/" + image;
     }
+    for (const CollectionItem *i : m_collectionItems)
+        if (!i->cover.isEmpty()) out << "images/" + i->cover;
     return out;
 }
 

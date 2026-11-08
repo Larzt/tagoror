@@ -2,6 +2,7 @@
 
 #include "core/lang.hpp"
 #include "core/store.hpp"
+#include "ui/coverimage.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
 #include "ui/popup.hpp"
@@ -137,14 +138,19 @@ namespace coll {
 // ---------------------------------------------------------------------------
 // Painted pieces
 
-/// A cover: its colour, a darker band down the spine and, if big enough, the
-/// title's first words at the bottom.
+/// A cover: the item's picture or, without one, its colour, a darker band down
+/// the spine and, if big enough, the title's first words at the bottom.
 class Cover : public QWidget {
 public:
     Cover(const QColor &color, const QString &text, QSize size, QWidget *parent = nullptr)
         : QWidget(parent), m_color(color), m_text(text) {
         setFixedSize(size);
         setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+    /// The picture's file (CollectionItem::coverPath()); empty: the colour.
+    Cover *withImage(const QString &path) {
+        m_image = path;
+        return this;
     }
 
 protected:
@@ -155,6 +161,8 @@ protected:
         const qreal radius = width() >= 40 ? 4 : 3;
         QPainterPath path;
         path.addRoundedRect(r, radius, radius);
+        // The picture says it all: no spine, no words over it.
+        if (coverimage::draw(p, path, r, m_image)) return;
         p.fillPath(path, m_color);
         p.save();
         p.setClipPath(path);
@@ -173,6 +181,7 @@ protected:
 private:
     QColor m_color;
     QString m_text;
+    QString m_image;
 };
 
 /// Priority (3) or rating (5) as stones of slightly uneven size, as in the
@@ -379,6 +388,7 @@ public:
     bool priority = true;
     bool showYear = true;
     bool showAuthor = true;
+    QString image;   ///< The cover picture's path, resolved once; empty: the colour.
     bool selected = false;
     std::function<void()> select;
     std::function<void()> open;
@@ -417,10 +427,24 @@ protected:
         const QRectF cover(6, 6, width() - 12, coverH);
         QPainterPath path;
         path.addRoundedRect(cover, 4, 4);
-        p.fillPath(path, CollectionItem::coverColor(item->color));
+        const bool picture = coverimage::draw(p, path, cover, image);
+        if (!picture) p.fillPath(path, CollectionItem::coverColor(item->color));
         p.save();
         p.setClipPath(path);
-        p.fillRect(QRectF(cover.left(), cover.top(), 5, cover.height()), QColor(0, 0, 0, 72));
+        if (picture) {
+            // Shade at the top and the bottom, so the year, the title and the
+            // author read over any picture.
+            QLinearGradient top(cover.topLeft(), QPointF(cover.left(), cover.top() + cover.height() * 0.25));
+            top.setColorAt(0, QColor(0, 0, 0, 150));
+            top.setColorAt(1, QColor(0, 0, 0, 0));
+            p.fillRect(cover, top);
+            QLinearGradient bottom(QPointF(cover.left(), cover.top() + cover.height() * 0.4), cover.bottomLeft());
+            bottom.setColorAt(0, QColor(0, 0, 0, 0));
+            bottom.setColorAt(1, QColor(0, 0, 0, 215));
+            p.fillRect(cover, bottom);
+        } else {
+            p.fillRect(QRectF(cover.left(), cover.top(), 5, cover.height()), QColor(0, 0, 0, 72));
+        }
         if (percent >= 0) {
             const QRectF strip(cover.left(), cover.bottom() - 3, cover.width(), 3);
             p.fillRect(strip, QColor(0, 0, 0, 90));
@@ -1062,7 +1086,8 @@ Row *CollectionsView::row(const Collection &c, CollectionItem *item, int number,
         n->setFixedWidth(18);
         l->addWidget(n, 0, Qt::AlignVCenter);
     }
-    l->addWidget(new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(28, 40)));
+    l->addWidget((new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(28, 40)))
+                     ->withImage(item->coverPath()));
 
     auto *texts = new QVBoxLayout;
     texts->setContentsMargins(0, 0, 0, 0);
@@ -1231,8 +1256,9 @@ QWidget *CollectionsView::readingCard(const Collection &c, CollectionItem *item)
 
     auto *top = new QHBoxLayout;
     top->setSpacing(12);
-    top->addWidget(new coll::Cover(CollectionItem::coverColor(item->color), coverText(item->title),
-                                   QSize(46, 66)), 0, Qt::AlignTop);
+    top->addWidget((new coll::Cover(CollectionItem::coverColor(item->color), coverText(item->title),
+                                    QSize(46, 66)))->withImage(item->coverPath()),
+                   0, Qt::AlignTop);
     auto *texts = new QVBoxLayout;
     texts->setSpacing(3);
     const CollectionState *s = c.state(item->state);
@@ -1865,6 +1891,7 @@ void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QLis
         t->priority = c.has(Collection::kPriority);
         t->showYear = c.has(Collection::kYear);
         t->showAuthor = c.has(Collection::kAuthor);
+        t->image = item->coverPath();
         t->selected = item->id == m_selected;
         t->setFixedHeight(t->heightForWidth(tileW));
         // Whole, whatever the tile had room for.
@@ -1900,7 +1927,8 @@ void CollectionsView::refreshDetail() {
 
     auto *top = new QHBoxLayout;
     top->setSpacing(12);
-    top->addWidget(new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(70, 104)),
+    top->addWidget((new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(70, 104)))
+                       ->withImage(item->coverPath()),
                    0, Qt::AlignTop);
     auto *texts = new QVBoxLayout;
     texts->setSpacing(4);

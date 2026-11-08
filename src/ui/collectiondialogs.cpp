@@ -2,12 +2,20 @@
 
 #include "core/lang.hpp"
 #include "core/store.hpp"
+#include "ui/coverimage.hpp"
 #include "ui/elidedlabel.hpp"
 #include "ui/keynav.hpp"
 #include "ui/overlay.hpp"
+#include "ui/popup.hpp"
 #include "ui/switch.hpp"
 
+#include <QDir>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QFileDialog>
 #include <QFrame>
+#include <QImageReader>
+#include <QMimeData>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIntValidator>
@@ -115,21 +123,36 @@ QFrame *segments(const QStringList &labels, QList<QToolButton *> *out) {
     return track;
 }
 
-/// The cover on the card: its colour; a click takes the next one.
+/// The cover on the card: its picture or its colour. A click opens what can be
+/// done with it — choose a picture, remove it, change the colour — and an
+/// image file dropped on it becomes the picture. Nothing is copied until
+/// Guardar: a picture chosen and then cancelled leaves no file behind.
 class CoverButton : public QToolButton {
 public:
     int color = 0;
     QString title;
+    QString current;   ///< The saved picture's path; empty: none.
+    QString picked;    ///< A picture chosen now, to import on saving.
+    bool cleared = false;
 
-    CoverButton() {
+    explicit CoverButton(const Theme *theme) : m_theme(theme) {
         setFixedSize(58, 84);
         setCursor(Qt::PointingHandCursor);
         setFocusPolicy(Qt::TabFocus);
-        setToolTip(L("Cambiar el color de la portada"));
-        connect(this, &QToolButton::clicked, this, [this] {
-            color = (color + 1) % CollectionItem::kCovers;
-            update();
-        });
+        setAcceptDrops(true);
+        setToolTip(L("Portada: elegir imagen o color"));
+        connect(this, &QToolButton::clicked, this, [this] { openMenu(); });
+    }
+
+    /// What is shown: the picture chosen now, the saved one, or none.
+    QString shown() const {
+        if (!picked.isEmpty()) return picked;
+        return cleared ? QString() : current;
+    }
+
+    /// Whether @p path is a picture Qt can read.
+    static bool readable(const QString &path) {
+        return !path.isEmpty() && QImageReader(path).canRead();
     }
 
 protected:
@@ -138,15 +161,20 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
         QPainterPath path;
         path.addRoundedRect(QRectF(rect()), 4, 4);
-        p.fillPath(path, CollectionItem::coverColor(color));
-        p.save();
-        p.setClipPath(path);
-        p.fillRect(QRectF(0, 0, 4, height()), QColor(0, 0, 0, 72));
-        p.restore();
-        if (keynav::showsFocus(this)) {
-            p.setPen(QPen(QColor(Theme::fg()), 1.5));
+        const bool picture = coverimage::draw(p, path, QRectF(rect()), shown());
+        if (!picture) {
+            p.fillPath(path, CollectionItem::coverColor(color));
+            p.save();
+            p.setClipPath(path);
+            p.fillRect(QRectF(0, 0, 4, height()), QColor(0, 0, 0, 72));
+            p.restore();
+        }
+        if (keynav::showsFocus(this) || m_dropping) {
+            p.setPen(QPen(m_dropping ? m_theme->accent : QColor(Theme::fg()), 1.5));
+            p.setBrush(Qt::NoBrush);
             p.drawRoundedRect(QRectF(rect()).adjusted(0.75, 0.75, -0.75, -0.75), 4, 4);
         }
+        if (picture) return;
         QFont f = font();
         f.setPixelSize(9);
         f.setWeight(QFont::DemiBold);
@@ -154,6 +182,72 @@ protected:
         p.setPen(QColor(255, 255, 255, 216));
         p.drawText(QRectF(rect()).adjusted(10, 7, -6, -7), Qt::AlignLeft | Qt::AlignBottom | Qt::TextWordWrap,
                    title.simplified().split(' ', Qt::SkipEmptyParts).mid(0, 3).join(' '));
+    }
+
+    void dragEnterEvent(QDragEnterEvent *e) override {
+        if (droppedFile(e->mimeData()).isEmpty()) return;
+        e->acceptProposedAction();
+        m_dropping = true;
+        update();
+    }
+    void dragLeaveEvent(QDragLeaveEvent *) override {
+        m_dropping = false;
+        update();
+    }
+    void dropEvent(QDropEvent *e) override {
+        m_dropping = false;
+        const QString file = droppedFile(e->mimeData());
+        if (!file.isEmpty()) {
+            pick(file);
+            e->acceptProposedAction();
+        }
+        update();
+    }
+
+private:
+    const Theme *m_theme;
+    bool m_dropping = false;
+
+    static QString droppedFile(const QMimeData *data) {
+        if (!data || !data->hasUrls()) return QString();
+        for (const QUrl &url : data->urls())
+            if (url.isLocalFile() && readable(url.toLocalFile())) return url.toLocalFile();
+        return QString();
+    }
+
+    void pick(const QString &file) {
+        picked = file;
+        cleared = false;
+        update();
+    }
+
+    void openMenu() {
+        auto *menu = new Popup(*m_theme, this);
+        menu->addHeader(L("Portada"));
+        QPointer<CoverButton> self(this);
+        menu->addItem("image", shown().isEmpty() ? L("Elegir imagen…") : L("Cambiar imagen…"),
+                      L("O arrástrala aquí"), [self] {
+            if (!self) return;
+            const QString file = QFileDialog::getOpenFileName(
+                self->window(), L("Elegir imagen"), QDir::homePath(),
+                L("Imágenes") + " (*.png *.jpg *.jpeg *.gif *.bmp *.webp)");
+            if (self && readable(file)) self->pick(file);
+        });
+        if (!shown().isEmpty()) {
+            menu->addItem("trash", L("Quitar imagen"), L("Vuelve al color"), [self] {
+                if (!self) return;
+                self->picked.clear();
+                self->cleared = true;
+                self->update();
+            });
+        } else {
+            menu->addItem("palette", L("Cambiar el color"), QString(), [self] {
+                if (!self) return;
+                self->color = (self->color + 1) % CollectionItem::kCovers;
+                self->update();
+            });
+        }
+        menu->showUnder(this);
     }
 };
 
@@ -214,8 +308,9 @@ void editItem(const Theme *theme, QWidget *host, Store *store, Collection *c, Co
     // Cover, title and author.
     auto *top = new QHBoxLayout;
     top->setSpacing(12);
-    auto *cover = new CoverButton;
+    auto *cover = new CoverButton(theme);
     cover->color = draft->color;
+    cover->current = draft->coverPath();
     cover->title = draft->title;
     top->addWidget(cover, 0, Qt::AlignTop);
     auto *names = new QVBoxLayout;
@@ -517,6 +612,19 @@ void editItem(const Theme *theme, QWidget *host, Store *store, Collection *c, Co
         if (total) target->total = total->text().toInt();
         if (isbn) target->isbn = isbn->text().trimmed();
         if (synopsis) target->synopsis = synopsis->toPlainText().trimmed();
+        // The picture: copied in now, the one it replaces deleted.
+        if (!cover->picked.isEmpty()) {
+            const QString imported = Coll::importCover(cover->picked, target->id);
+            if (!imported.isEmpty()) {
+                if (!fresh) Coll::removeCover(target->cover);
+                target->cover = imported;
+                cover->picked.clear();   // saved: a second commit does not import it again
+                cover->current = target->coverPath();
+            }
+        } else if (cover->cleared && !fresh) {
+            Coll::removeCover(target->cover);
+            target->cover.clear();
+        }
         for (const auto &[key, e] : customs) {
             if (e->text().trimmed().isEmpty()) target->extra.remove(key);
             else target->extra[key] = e->text().trimmed();

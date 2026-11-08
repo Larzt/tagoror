@@ -186,7 +186,10 @@ struct CollectionItem {
     double queuePos = 0;
     int rating = 0;           ///< 0–5; 0: not rated.
     QStringList tags;
-    int color = 0;            ///< coverColor() index.
+    int color = 0;            ///< coverColor() index: the cover without an image.
+    /// 1.3.4: a picture for the cover, a file in images/ (as the notes' are),
+    /// synced like them. Empty: the colour.
+    QString cover;
     qint64 addedMs = 0;
     qint64 startedMs = 0;     ///< Entered the in-progress state.
     qint64 finishedMs = 0;    ///< Entered the final state.
@@ -196,6 +199,8 @@ struct CollectionItem {
     QJsonObject extra;        ///< Custom fields, by CollectionField::key.
     qint64 updatedMs = 0;
 
+    /// The cover image's file, or empty without one.
+    QString coverPath() const;
     /// authorSortKey, or the author's last word.
     QString sortAuthor() const;
     /// 0–100, or -1 without a total.
@@ -217,6 +222,15 @@ QList<CollectionItem *> sorted(const QList<CollectionItem *> &items, const Colle
                                const QString &stateId);
 /// The queue as Empezar reads it: highest priority first, then by hand.
 QList<CollectionItem *> queue(const QList<CollectionItem *> &items, const Collection &c);
+/// Copies the image at @p source into images/ as @p item's cover: scaled down
+/// to at most kCoverHeight tall and saved as JPEG, so a 4000 px photo does not
+/// travel with every sync. Returns the new file's name, or empty if
+/// @p source is not an image that can be read.
+constexpr int kCoverHeight = 720;
+QString importCover(const QString &source, const QString &itemId);
+/// Deletes @p name from images/ (a cover replaced or whose item is gone).
+void removeCover(const QString &name);
+
 /// Length bands of the page filter (1.3.3): up to 250, 251–500, over 500.
 /// Only for things counted in pages, that is, books.
 enum Length { AnyLength, Short, Medium, Long };

@@ -1,8 +1,13 @@
 #include "core/collection.hpp"
 
 #include "core/lang.hpp"
+#include "core/paths.hpp"
 
 #include <QCollator>
+#include <QFile>
+#include <QImage>
+#include <QImageReader>
+#include <QPainter>
 #include <algorithm>
 
 namespace {
@@ -152,6 +157,10 @@ Collection *Collection::fromJson(const QJsonObject &o) {
 // ---------------------------------------------------------------------------
 // CollectionItem
 
+QString CollectionItem::coverPath() const {
+    return cover.isEmpty() ? QString() : imageDir() + "/" + cover;
+}
+
 QString CollectionItem::sortAuthor() const {
     if (!authorSortKey.trimmed().isEmpty()) return authorSortKey.trimmed();
     const QStringList words = author.simplified().split(' ', Qt::SkipEmptyParts);
@@ -174,6 +183,7 @@ QJsonObject CollectionItem::toJson() const {
     o["rating"] = rating;
     o["tags"] = QJsonArray::fromStringList(tags);
     o["color"] = color;
+    o["cover"] = cover;
     o["added"] = double(addedMs);
     o["started"] = double(startedMs);
     o["finished"] = double(finishedMs);
@@ -201,6 +211,9 @@ CollectionItem *CollectionItem::fromJson(const QJsonObject &o) {
     i->rating = qBound(0, o["rating"].toInt(), 5);
     for (const QJsonValue v : o["tags"].toArray()) i->tags << v.toString();
     i->color = qBound(0, o["color"].toInt(), kCovers - 1);
+    // A bare file name: nothing from a synced file reaches outside images/.
+    i->cover = o["cover"].toString();
+    if (i->cover.contains('/') || i->cover.contains('\\') || i->cover.startsWith('.')) i->cover.clear();
     i->addedMs = qint64(o["added"].toDouble());
     i->startedMs = qint64(o["started"].toDouble());
     i->finishedMs = qint64(o["finished"].toDouble());
@@ -310,6 +323,33 @@ void setState(CollectionItem *item, const Collection &c, const QString &stateId)
     } else if (wasFinal) {
         item->finishedMs = 0;
     }
+}
+
+QString importCover(const QString &source, const QString &itemId) {
+    QImageReader reader(source);
+    reader.setAutoTransform(true);   // a phone photo stands the right way up
+    QImage image = reader.read();
+    if (image.isNull()) return QString();
+    if (image.height() > kCoverHeight)
+        image = image.scaledToHeight(kCoverHeight, Qt::SmoothTransformation);
+    // JPEG has no transparency: a PNG with it goes over white, not black.
+    if (image.hasAlphaChannel()) {
+        QImage flat(image.size(), QImage::Format_RGB32);
+        flat.fill(Qt::white);
+        QPainter p(&flat);
+        p.drawImage(0, 0, image);
+        p.end();
+        image = flat;
+    }
+    // The item and a timestamp: a new cover never overwrites the one a synced
+    // machine may still be showing.
+    const QString name = QString("cover-%1-%2.jpg").arg(itemId).arg(QDateTime::currentMSecsSinceEpoch());
+    if (!image.save(imageDir() + "/" + name, "JPG", 88)) return QString();
+    return name;
+}
+
+void removeCover(const QString &name) {
+    if (!name.isEmpty() && !name.contains('/') && !name.contains('\\')) QFile::remove(imageDir() + "/" + name);
 }
 
 Length lengthOf(const CollectionItem *item) {

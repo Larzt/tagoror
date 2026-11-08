@@ -195,8 +195,9 @@
   each with its own direction, which a row turns round.
 - Each book has a card (double click, or right click → *Editar*): cover
   colour, author and what it sorts by, year, pages, state, progress, priority,
-  rating, tags, a **synopsis** and a **reading note**, a Markdown note opened
-  on its page.
+  rating, tags, a **synopsis**, a **cover picture** (chosen or dragged onto
+  the cover; the colour otherwise) and a **reading note**, a Markdown note
+  opened on its page.
 - **Filter** by tag or, in a library, by length — up to 250 pages, 251–500 or
   over 500 — from the sidebar when wide or the filter button when narrow.
 - New collections come from a template — Libros, Películas, Series, Juegos,

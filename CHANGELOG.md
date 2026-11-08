@@ -4,6 +4,22 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.4] — 2026-11-08
+
+### Added
+
+- **Colecciones: cover pictures.** A book, game, film, series or record can
+  have a picture as its cover instead of a colour. In its card, a click on the
+  cover offers *Elegir imagen…*, *Quitar imagen* (back to the colour) or
+  *Cambiar el color*; an image file dragged onto the cover does too. The
+  picture fills the cover wherever it shows — the rows, the reading card, the
+  grid (shaded so the year, title and author still read over it) and the
+  wide mode's card.
+  - It is copied into `images/`, next to the notes' pictures, scaled down to
+    720 px tall and saved as JPEG, and synced with them. Nothing is copied
+    until *Guardar*; replacing or removing a picture, or deleting the item,
+    deletes its file.
+
 ## [1.3.3] — 2026-11-08
 
 ### Added
