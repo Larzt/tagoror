@@ -999,6 +999,10 @@ const QHash<QString, QString> &table() {
         {"Sin fecha · dd/mm/aaaa", "No date · dd/mm/yyyy"},
         {"Terminado el", "Finished on"},
         {"La fecha de fin tiene que ser dd/mm/aaaa.", "The finish date must be dd/mm/yyyy."},
+        // 1.3.7: the wide mode's columns.
+        {"Arrastra para cambiar el ancho", "Drag to change the width"},
+        {"Mostrar la ficha", "Show the details"},
+        {"Ocultar la ficha", "Hide the details"},
         {"Viendo", "Watching"},
         {"Vista", "Watched"},
         {"Voy por la página", "I'm on page"},

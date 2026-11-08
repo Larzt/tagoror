@@ -4,6 +4,18 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.7] — 2026-11-08
+
+### Added
+
+- **Colecciones, wide mode: columns that can be resized and a detail that can
+  be hidden**, as in Spotify. The hairlines between the collections, the
+  centre and the item's card can be dragged (in the accent while hovered):
+  the sidebar from 160 to 360 px, the card from 240 to 520, the centre
+  taking what is left and the grid redoing its columns as it goes. An *ⓘ*
+  button next to the grid/list switch hides or shows the card. The widths
+  and whether the card is shown are remembered.
+
 ## [1.3.6] — 2026-11-08
 
 ### Fixed

@@ -13,6 +13,7 @@ class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QScrollArea;
+class QSplitter;
 class QStackedWidget;
 class QToolButton;
 class QVBoxLayout;
@@ -112,6 +113,8 @@ private:
     void refreshSide();
     void refreshDetail();
     void applyLayout();
+    /// The wide mode's detail column, hidden or shown (remembered).
+    void setDetailHidden(bool hidden);
 
     /// The tab's content, as the narrow panel shows it.
     void fillInProgress(QVBoxLayout *col, const Collection &c, const QString &stateId);
@@ -197,6 +200,14 @@ private:
     QWidget *m_listHost = nullptr;
     QVBoxLayout *m_list = nullptr;
     QScrollArea *m_detailScroll = nullptr;
+    /// Wide: sidebar | centre | detail, with edges that can be dragged.
+    QSplitter *m_split = nullptr;
+    QToolButton *m_detailBtn = nullptr;
+    static constexpr int kSideMin = 160, kSideMax = 360;
+    static constexpr int kDetailMin = 240, kDetailMax = 520;
+    int m_sideWidth = 210;
+    int m_detailWidth = 300;
+    bool m_detailHidden = false;
     QWidget *m_detailHost = nullptr;
     QVBoxLayout *m_detail = nullptr;
 

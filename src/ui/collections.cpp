@@ -23,6 +23,8 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSet>
+#include <QSettings>
+#include <QSplitter>
 #include <QStackedWidget>
 #include <QStyle>
 #include <QTextLayout>
@@ -566,6 +568,51 @@ private:
     ElidedLabel *m_name;
 };
 
+/// The wide mode's column edges (1.3.7): the hairline they always were, a few
+/// pixels wide to grab, in the accent while hovered or dragged.
+class SplitHandle : public QSplitterHandle {
+public:
+    SplitHandle(Qt::Orientation o, QSplitter *parent, const Theme *theme)
+        : QSplitterHandle(o, parent), m_theme(theme) {
+        setAttribute(Qt::WA_Hover, true);
+        setToolTip(L("Arrastra para cambiar el ancho"));
+    }
+
+protected:
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        const bool hot = underMouse() || m_dragging;
+        const qreal w = hot ? 2 : 1;
+        p.fillRect(QRectF((width() - w) / 2.0, 0, w, height()),
+                   hot ? m_theme->accent : QColor(255, 255, 255, 23));
+    }
+    bool event(QEvent *e) override {
+        switch (e->type()) {
+            case QEvent::MouseButtonPress: m_dragging = true; update(); break;
+            case QEvent::MouseButtonRelease: m_dragging = false; update(); break;
+            case QEvent::HoverEnter:
+            case QEvent::HoverLeave: update(); break;
+            default: break;
+        }
+        return QSplitterHandle::event(e);
+    }
+
+private:
+    const Theme *m_theme;
+    bool m_dragging = false;
+};
+
+class Split : public QSplitter {
+public:
+    Split(const Theme *theme, QWidget *parent = nullptr) : QSplitter(Qt::Horizontal, parent), m_theme(theme) {}
+
+protected:
+    QSplitterHandle *createHandle() override { return new SplitHandle(orientation(), this, m_theme); }
+
+private:
+    const Theme *m_theme;
+};
+
 }  // namespace coll
 
 using coll::CountTab;
@@ -664,22 +711,38 @@ CollectionsView::CollectionsView(const Theme &theme, QWidget *parent)
     m_scroll->installEventFilter(this);   // the grid's columns follow its width
 
     // Wide: the collections on the left and the detail on the right, each
-    // behind a hairline.
-    const auto divider = [] {
-        auto *d = new QFrame;
-        d->setObjectName("collDivider");
-        d->setFixedWidth(1);
-        return d;
-    };
-    pageRow->addWidget(buildSide());
-    auto *leftRule = divider();
-    pageRow->addWidget(leftRule);
-    pageRow->addWidget(m_scroll, 1);
-    auto *rightRule = divider();
-    pageRow->addWidget(rightRule);
-    pageRow->addWidget(buildDetail());
-    m_side->setProperty("rule", QVariant::fromValue<QObject *>(leftRule));
-    m_detailScroll->setProperty("rule", QVariant::fromValue<QObject *>(rightRule));
+    // behind a hairline that can be dragged (1.3.7), as Spotify's columns.
+    // The widths are remembered; the centre takes what is left.
+    m_split = new coll::Split(&m_theme);
+    m_split->setHandleWidth(5);
+    m_split->setChildrenCollapsible(false);
+    m_split->addWidget(buildSide());
+    m_split->addWidget(m_scroll);
+    m_split->addWidget(buildDetail());
+    m_split->setStretchFactor(0, 0);
+    m_split->setStretchFactor(1, 1);
+    m_split->setStretchFactor(2, 0);
+    m_scroll->setMinimumWidth(240);
+    {
+        QSettings settings;
+        m_sideWidth = qBound(kSideMin, settings.value("collections/sideWidth", 210).toInt(), kSideMax);
+        m_detailWidth = qBound(kDetailMin, settings.value("collections/detailWidth", 300).toInt(), kDetailMax);
+        m_detailHidden = settings.value("collections/detailHidden", false).toBool();
+    }
+    connect(m_split, &QSplitter::splitterMoved, this, [this] {
+        if (!m_wide) return;
+        const QList<int> sizes = m_split->sizes();
+        QSettings settings;
+        if (m_side->isVisible() && sizes.value(0) > 0) {
+            m_sideWidth = sizes.value(0);
+            settings.setValue("collections/sideWidth", m_sideWidth);
+        }
+        if (m_detailScroll->isVisible() && sizes.value(2) > 0) {
+            m_detailWidth = sizes.value(2);
+            settings.setValue("collections/detailWidth", m_detailWidth);
+        }
+    });
+    pageRow->addWidget(m_split, 1);
 
     m_stack->addWidget(m_page);
     root->addWidget(m_stack, 1);
@@ -760,6 +823,12 @@ QWidget *CollectionsView::buildTools() {
     });
     m_viewToggle->hide();
     l->addWidget(m_viewToggle);
+
+    // Wide only: the detail column shown or hidden, as Spotify's "now playing".
+    m_detailBtn = iconButton("info", L("Ocultar la ficha"));
+    connect(m_detailBtn, &QToolButton::clicked, this, [this] { setDetailHidden(!m_detailHidden); });
+    m_detailBtn->hide();
+    l->addWidget(m_detailBtn);
 
     m_searchBtn = iconButton("search", L("Buscar · Ctrl+F"));
     connect(m_searchBtn, &QToolButton::clicked, this, [this] {
@@ -940,13 +1009,25 @@ void CollectionsView::setLinks(bool planner, bool tracking) {
     if (m_wide) refreshDetail();
 }
 
+void CollectionsView::setDetailHidden(bool hidden) {
+    if (hidden == m_detailHidden) return;
+    m_detailHidden = hidden;
+    QSettings().setValue("collections/detailHidden", hidden);
+    applyLayout();
+    if (m_wide && !hidden) refreshDetail();
+}
+
 void CollectionsView::applyLayout() {
     m_side->setVisible(m_wide);
-    m_detailScroll->setVisible(m_wide);
-    if (auto *rule = qobject_cast<QWidget *>(m_side->property("rule").value<QObject *>()))
-        rule->setVisible(m_wide);
-    if (auto *rule = qobject_cast<QWidget *>(m_detailScroll->property("rule").value<QObject *>()))
-        rule->setVisible(m_wide);
+    m_detailScroll->setVisible(m_wide && !m_detailHidden);
+    if (m_wide) {
+        // The remembered widths; the centre, whatever is left.
+        const int detail = m_detailHidden ? 0 : m_detailWidth;
+        m_split->setSizes({m_sideWidth, qMax(240, m_split->width() - m_sideWidth - detail - 10), detail});
+    }
+    m_detailBtn->setVisible(m_wide);
+    m_detailBtn->setIcon(paintIcon("info", m_detailHidden ? QColor(Theme::muted()) : m_theme.accent));
+    m_detailBtn->setToolTip(m_detailHidden ? L("Mostrar la ficha") : L("Ocultar la ficha"));
     m_viewToggle->setVisible(m_wide);
     m_wideAdd->setVisible(m_wide);
     m_list->setContentsMargins(m_wide ? 12 : 8, m_wide ? 12 : 8, m_wide ? 12 : 8, 12);
@@ -1694,7 +1775,8 @@ void CollectionsView::openItemMenu(CollectionItem *item, const QPoint &globalPos
 QWidget *CollectionsView::buildSide() {
     m_side = new QWidget;
     m_side->setObjectName("collPane");
-    m_side->setFixedWidth(210);
+    m_side->setMinimumWidth(kSideMin);
+    m_side->setMaximumWidth(kSideMax);
     m_sideLayout = new QVBoxLayout(m_side);
     m_sideLayout->setContentsMargins(8, 10, 8, 10);
     m_sideLayout->setSpacing(2);
@@ -1704,7 +1786,8 @@ QWidget *CollectionsView::buildSide() {
 
 QWidget *CollectionsView::buildDetail() {
     m_detailScroll = new QScrollArea;
-    m_detailScroll->setFixedWidth(300);
+    m_detailScroll->setMinimumWidth(kDetailMin);
+    m_detailScroll->setMaximumWidth(kDetailMax);
     m_detailScroll->setWidgetResizable(true);
     m_detailScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_detailScroll->setFrameShape(QFrame::NoFrame);

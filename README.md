@@ -203,7 +203,8 @@
 - New collections come from a template — Libros, Películas, Series, Juegos,
   Discos or En blanco — with states you can rename, reorder, add or remove,
   fields you switch on, fields of your own and a yearly goal.
-- Wide (app mode), three columns: collections, tags and the goal; a grid of
+- Wide (app mode), three columns — their edges can be dragged and the card
+  hidden with the *ⓘ* button, as in Spotify: collections, tags and the goal; a grid of
   covers or a list with *Todos*; and the book's card, with its synopsis, the
   page moved on right there (+10, +25 or typed; also from the right-click
   menu), a reading block in the Planner and the clock in Seguimiento.
