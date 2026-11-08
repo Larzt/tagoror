@@ -136,6 +136,7 @@ Panel::Panel() {
     m_theme.opacity = m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
     m_theme.compact = m_store.prefs().compact;
+    m_theme.plannerWrap = m_store.prefs().plannerWrap;
     m_systemFont = QApplication::font();
     applyFont();
     m_nav = new Navigator(this, &m_store, this);
@@ -734,6 +735,14 @@ QWidget *Panel::buildBody() {
         m_store.prefs().compact = compact;
         applyTheme();
         rebuildList();   // the cards take their margins when built
+        refreshSettings();
+        save();
+    });
+    connect(m_settings, &SettingsView::plannerWrapPicked, this, [this](bool wrap) {
+        if (wrap == m_theme.plannerWrap) return;
+        m_theme.plannerWrap = wrap;
+        m_store.prefs().plannerWrap = wrap;
+        applyTheme();   // the planner repaints in setTheme()
         refreshSettings();
         save();
     });
@@ -2617,6 +2626,7 @@ void Panel::onStoreReloaded() {
     m_theme.opacity = m_store.prefs().opacity;
     m_theme.textScale = m_store.prefs().textScale;
     m_theme.compact = m_store.prefs().compact;
+    m_theme.plannerWrap = m_store.prefs().plannerWrap;
     VoiceRecorder::setPreferredInput(m_store.prefs().input);
     applyAlarmPrefs();
     applyFont();

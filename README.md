@@ -35,8 +35,8 @@
 
 | | |
 |---|---|
-| **Text** | Plain text, whose editor grows with the content: what you type is what you see. **Enter** finishes, **Shift+Enter** starts a new line. |
-| **Markdown** | Shown formatted on its card — headings, `**bold**`, `*italic*`, `` `code` ``, lists, quotes and `[links](…)`. Click it and it opens on its own page: the raw text with the syntax dimmed and line numbers, or the preview (**Ctrl+E**), with a formatting bar while you edit. Text notes you wrote in Markdown before 1.0 became Markdown notes on their own. |
+| **Text** | Plain text, whose editor grows with the content: what you type is what you see. **Enter** finishes, **Shift+Enter** starts a new line. A long one can be made taller by dragging the bottom edge of its text (or *Más alta* in its menu), and *Tamaño original* puts it back. |
+| **Markdown** | Shown formatted on its card — headings, `**bold**`, `*italic*`, `` `code` ``, lists, quotes and `[links](…)`. Every line is a line, and a plain line after a list or a quote leaves it; indent it to carry on the item. Click it and it opens on its own page: the raw text with the syntax dimmed and line numbers, or the preview (**Ctrl+E**), with a formatting bar while you edit. Text notes you wrote in Markdown before 1.0 became Markdown notes on their own. |
 | **Checklist** | Items you can tick off (done ones get struck through), rename in place and drag into a new order, a progress bar, and an add row that reads as a pending task rather than a form. |
 | **Reminder** | A real date, not just a label: when the time comes it rings until you stop it, or for a minute — after that it goes quiet but stays red until you acknowledge it. |
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
@@ -80,10 +80,13 @@
 - **Day, week and month views.** Day and week lay things out by the hour, side
   by side when they overlap, with a red line at the current time; month writes
   each day's entries inside its cell, with `+N more` when they do not fit.
+  Titles too long for their space end in "…", or, with *Settings → Appearance
+  → Títulos del planificador* on *Varias líneas*, carry on to the next lines.
 - **Events and tasks** with a start and an end, a category (work, personal,
-  studies, other, or **your own**, with a name and a colour — created from the
-  side panel or the form, edited with the pencil next to it; deleting one moves
-  its events to *other*) and an optional repeat — every day, week, month or
+  studies, other, or **your own**, with a name and a colour — one of the
+  swatches or any other, typed as `#rrggbb` — created from the side panel or
+  the form, edited with the pencil next to it; deleting one moves its events to
+  *other*) and an optional repeat — every day, week, month or
   year — with no end or *until* a chosen day. A task has a box to tick, and a
   repeating task is ticked per day, not all at once.
 - They can **ring before they start** — at the start, or 5, 10, 15 or 30

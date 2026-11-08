@@ -20,6 +20,8 @@ struct Theme {
     int textScale = 100;
     /// Settings → Density. Cards read it when built, so changing it rebuilds them.
     bool compact = false;
+    /// Settings → Planner titles: long ones break into lines instead of "…".
+    bool plannerWrap = false;
 
     /// A content size already scaled, for what is painted by hand.
     qreal fs(qreal px) const { return px * textScale / 100.0; }

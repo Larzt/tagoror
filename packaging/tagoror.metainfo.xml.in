@@ -96,6 +96,30 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.2.6" date="2026-11-08">
+      <description>
+        <p>Text and Markdown notes can be made taller by dragging their bottom
+           edge, and put back to their original size from the right-click menu.</p>
+      </description>
+    </release>
+    <release version="1.2.5" date="2026-11-08">
+      <description>
+        <p>Markdown notes: the text written after a list or a quote no longer
+           stays inside its last item.</p>
+      </description>
+    </release>
+    <release version="1.2.4" date="2026-11-08">
+      <description>
+        <p>Planner categories can take any colour, not only the default
+           swatches: the category editor has a field for a hex colour.</p>
+      </description>
+    </release>
+    <release version="1.2.3" date="2026-11-08">
+      <description>
+        <p>Planner titles that do not fit can break into several lines instead
+           of being cut: a new choice in the appearance settings.</p>
+      </description>
+    </release>
     <release version="1.2.2" date="2026-11-03">
       <description>
         <p>Repeating events and tasks can end on a chosen day: the edit form

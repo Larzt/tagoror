@@ -31,6 +31,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QTextEdit>
+#include <QTextLayout>
 #include <QTimer>
 #include <QToolButton>
 #include <QToolTip>
@@ -56,6 +57,31 @@ QString hhmm(qreal hours) {
 QColor withAlpha(QColor c, int alpha) {
     c.setAlpha(alpha);
     return c;
+}
+
+/// @p text broken into lines of @p width — at spaces, or anywhere in a word
+/// longer than the line. With more than @p maxLines the last one takes the rest,
+/// elided. Settings → Planner titles.
+QStringList wrapLines(const QString &text, const QFont &font, int width, int maxLines) {
+    QStringList out;
+    if (maxLines <= 0 || width <= 0) return out;
+    QTextLayout layout(text, font);
+    QTextOption opt;
+    opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    layout.setTextOption(opt);
+    layout.beginLayout();
+    for (QTextLine line = layout.createLine(); line.isValid(); line = layout.createLine()) {
+        line.setLineWidth(width);
+        if (out.size() == maxLines - 1) {
+            out << QFontMetrics(font).elidedText(text.mid(line.textStart()).trimmed(),
+                                                 Qt::ElideRight, width);
+            break;
+        }
+        out << text.mid(line.textStart(), line.textLength()).trimmed();
+    }
+    layout.endLayout();
+    if (out.isEmpty()) out << QString();
+    return out;
 }
 
 QFont monoFont(const QFont &base, qreal px) {
@@ -611,15 +637,24 @@ void TimeGrid::paintEvent(QPaintEvent *) {
         p.setFont(tf);
         p.setPen(it.done ? muted : fg);
         const int lineH = QFontMetrics(tf).height();
-        p.drawText(QRect(textX, r.top() + 4, textW, lineH), Qt::AlignLeft | Qt::AlignVCenter,
-                   p.fontMetrics().elidedText(it.title, Qt::ElideRight, textW));
-        if (r.height() >= lineH + 20) {
+        // The time keeps its line when it fits; wrapped, the title takes the rest
+        // of the block.
+        const bool showWhen = r.height() >= lineH + 20;
+        const int titleLines = m_theme->plannerWrap
+                                   ? qMax(1, (r.height() - 8 - (showWhen ? 14 : 0)) / lineH)
+                                   : 1;
+        const QStringList lines = wrapLines(it.title, tf, textW, titleLines);
+        for (int k = 0; k < lines.size(); ++k)
+            p.drawText(QRect(textX, r.top() + 4 + k * lineH, textW, lineH),
+                       Qt::AlignLeft | Qt::AlignVCenter, lines.at(k));
+        if (showWhen) {
             p.setFont(monoFont(font(), 9.5));
             p.setPen(muted);
             const QString when = it.source == Item::FromEvent
                                      ? hhmm(it.start) + "–" + hhmm(it.end)
                                      : hhmm(it.start);
-            p.drawText(QRect(textX, r.top() + 4 + lineH, textW, 14), Qt::AlignLeft | Qt::AlignVCenter,
+            p.drawText(QRect(textX, r.top() + 4 + int(lines.size()) * lineH, textW, 14),
+                       Qt::AlignLeft | Qt::AlignVCenter,
                        p.fontMetrics().elidedText(when, Qt::ElideRight, textW));
         }
     }
@@ -921,8 +956,9 @@ public:
         if (c < 0) return s;
         s.valid = true;
         s.day = m_start.addDays(c);
-        for (int k = 0; k < shownIn(c); ++k)
-            if (chipRect(c, k).contains(p)) {
+        const QList<QRect> chips = chipRects(c);
+        for (int k = 0; k < chips.size(); ++k)
+            if (chips.at(k).contains(p)) {
                 s.onItem = true;
                 s.item = m_items.at(c).at(k);
             }
@@ -944,16 +980,40 @@ protected:
     }
 
     // Chip geometry, the same maths paintEvent() uses.
-    int chipHeight() const { return QFontMetrics(sansFont(font(), m_theme->fs(9.5))).height() + 3; }
-    int shownIn(int cell) const {
-        const int room = qMax(0, (cellRect(cell).height() - 20) / chipHeight());
-        const int count = int(m_items.value(cell).size());
-        return count > room ? qMax(0, room - 1) : count;
+    QFont chipFont() const { return sansFont(font(), m_theme->fs(9.5)); }
+    int chipHeight() const { return QFontMetrics(chipFont()).height() + 3; }
+    static QString chipText(const Item &it) {
+        return it.allDay ? it.title : hhmm(it.start) + " " + it.title;
     }
-    QRect chipRect(int cell, int k) const {
+    /// A chip's text, in one line or, with Settings → Planner titles on
+    /// "Varias líneas", up to three.
+    static constexpr int kChipLines = 3;
+    QStringList chipLines(const Item &it, int chipW) const {
+        return wrapLines(chipText(it), chipFont(), chipW - 7, m_theme->plannerWrap ? kChipLines : 1);
+    }
+    /// The chips drawn in @p cell, top to bottom. If not all fit, the last row
+    /// is kept for "+N more" (paintEvent() writes it under the last one).
+    QList<QRect> chipRects(int cell) const {
+        QList<QRect> out;
         const QRect r = cellRect(cell);
         const int chipH = chipHeight();
-        return QRect(r.left() + 3, r.top() + 18 + k * chipH, r.width() - 6, chipH - 2);
+        const int lineH = chipH - 3;
+        const int room = r.height() - 20;
+        const QList<Item> items = m_items.value(cell);
+        QList<int> heights;
+        int total = 0;
+        for (const Item &it : items) {
+            heights << chipH + (int(chipLines(it, r.width() - 6).size()) - 1) * lineH;
+            total += heights.last();
+        }
+        int y = 0;
+        for (int k = 0; k < items.size(); ++k) {
+            // All fit, or this one still leaves a row for "+N more".
+            if (total > room && y + heights.at(k) + chipH > room) break;
+            out << QRect(r.left() + 3, r.top() + 18 + y, r.width() - 6, heights.at(k) - 2);
+            y += heights.at(k);
+        }
+        return out;
     }
 
     void mousePressEvent(QMouseEvent *e) override {
@@ -962,8 +1022,9 @@ protected:
         const QPoint at = e->position().toPoint();
         const int c = cellAt(at);
         if (c < 0) return;
-        for (int k = 0; k < shownIn(c); ++k)
-            if (chipRect(c, k).contains(at) && movable(m_items.at(c).at(k))) {
+        const QList<QRect> chips = chipRects(c);
+        for (int k = 0; k < chips.size(); ++k)
+            if (chips.at(k).contains(at) && movable(m_items.at(c).at(k))) {
                 m_pressed = true;
                 m_dragItem = m_items.at(c).at(k);
                 m_pressPos = at;
@@ -1058,8 +1119,8 @@ protected:
             p.drawText(QRectF(c * cw, 0, cw, kHead), Qt::AlignCenter,
                        Lang::locale().dayName(c + 1, QLocale::ShortFormat).toUpper().remove('.'));
 
-        const QFont chipFont = sansFont(font(), m_theme->fs(9.5));
-        const int chipH = QFontMetrics(chipFont).height() + 3;
+        const QFont chipF = chipFont();
+        const int chipH = chipHeight();
 
         for (int i = 0; i < 42; ++i) {
             const QDate d = m_start.addDays(i);
@@ -1092,32 +1153,33 @@ protected:
 
             // What fits, and "+N more" if not everything does.
             const QList<Item> &items = m_items.at(i);
-            const int room = qMax(0, (r.height() - 20) / chipH);
-            const bool overflow = items.size() > room;
-            const int shown = overflow ? qMax(0, room - 1) : int(items.size());
-            p.setFont(chipFont);
+            const QList<QRect> chips = chipRects(i);
+            const int shown = int(chips.size());
+            p.setFont(chipF);
             for (int k = 0; k < shown; ++k) {
                 const Item &it = items.at(k);
-                const QRect chip(r.left() + 3, r.top() + 18 + k * chipH, r.width() - 6, chipH - 2);
+                const QRect chip = chips.at(k);
                 p.setOpacity(m_dragging && sameItem(it, m_dragItem) ? 0.35 : 1.0);
                 const QColor color = it.alert ? kRed : it.color;
                 p.setPen(Qt::NoPen);
                 p.setBrush(withAlpha(color, out ? 26 : 44));
                 p.drawRoundedRect(chip, 4, 4);
                 p.fillRect(QRect(chip.left(), chip.top(), 2, chip.height()), color);
-                QString text = it.allDay ? it.title : hhmm(it.start) + " " + it.title;
-                QFont cf = chipFont;
+                QFont cf = chipF;
                 cf.setStrikeOut(it.done);
                 p.setFont(cf);
                 p.setPen(out ? muted : fg);
-                p.drawText(chip.adjusted(5, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft,
-                           QFontMetrics(cf).elidedText(text, Qt::ElideRight, chip.width() - 7));
+                const QStringList lines = chipLines(it, chip.width());
+                for (int l = 0; l < lines.size(); ++l)
+                    p.drawText(QRect(chip.left() + 5, chip.top() + l * (chipH - 3), chip.width() - 7, chipH - 2),
+                               Qt::AlignVCenter | Qt::AlignLeft, lines.at(l));
             }
             p.setOpacity(1.0);
-            if (overflow && items.size() - shown > 0) {
+            if (shown < items.size()) {
                 p.setFont(monoFont(font(), 9));
                 p.setPen(muted);
-                p.drawText(QRect(r.left() + 5, r.top() + 18 + shown * chipH, r.width() - 8, chipH),
+                const int y = chips.isEmpty() ? r.top() + 18 : chips.last().bottom() + 3;
+                p.drawText(QRect(r.left() + 5, y, r.width() - 8, chipH),
                            Qt::AlignVCenter | Qt::AlignLeft,
                            L("+%1 más").arg(items.size() - shown));
             }
@@ -1132,11 +1194,11 @@ protected:
             p.setPen(QPen(it.color, 1.2));
             p.setBrush(withAlpha(it.color, 110));
             p.drawRoundedRect(QRectF(chip).adjusted(0.5, 0.5, -0.5, -0.5), 4, 4);
-            p.setFont(chipFont);
+            p.setFont(chipF);
             p.setPen(fg);
             const QString text = it.allDay ? it.title : hhmm(it.start) + " " + it.title;
             p.drawText(chip.adjusted(5, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft,
-                       QFontMetrics(chipFont).elidedText(text, Qt::ElideRight, chip.width() - 7));
+                       QFontMetrics(chipF).elidedText(text, Qt::ElideRight, chip.width() - 7));
         }
     }
 
@@ -2098,14 +2160,26 @@ void PlannerView::rebuildCatButtons() {
 }
 
 void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool pickForForm) {
-    const QList<QColor> &palette = categoryPalette();
+    // The default colours, then the custom ones other categories already use, so
+    // a colour typed once can be picked again with a click. One row of them at
+    // most, the five first.
+    QList<QColor> palette = categoryPalette();
+    QList<QColor> used;
+    int customs = 0;
+    for (const CatInfo &info : allCategories()) {
+        used << info.color;
+        // Only colours someone chose: one standing in for the accent is not.
+        const QColor own = info.custom ? info.custom->color : QColor();
+        if (customs < 5 && own.isValid() && !palette.contains(own)) {
+            palette << own;
+            ++customs;
+        }
+    }
     int chosen = 0;
     if (c) {
         chosen = int(palette.indexOf(c->color));
     } else {
         // The first colour nobody uses, so two new categories do not look the same.
-        QList<QColor> used;
-        for (const CatInfo &info : allCategories()) used << info.color;
         for (int i = 0; i < palette.size(); ++i)
             if (!used.contains(palette.at(i))) {
                 chosen = i;
@@ -2118,9 +2192,9 @@ void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool p
     // Checked on return: the popup may close after a sync removed the category.
     QPointer<PlannerView> self(this);
     menu->addNameColor(L("Nombre"), c ? c->label : QString(), palette, chosen,
-                       [self, c, chosen, pickForForm](const QString &name, int color) {
+                       L("Otro color · #rrggbb"), c ? c->color : QColor(),
+                       [self, c, pickForForm](const QString &name, const QColor &picked) {
         if (!self) return;
-        const QColor picked = categoryPalette().value(color < 0 ? chosen : color);
         if (!c) {
             if (name.isEmpty()) return;   // nothing is created without a name
             auto *created = new Event::Category;
@@ -2135,7 +2209,7 @@ void PlannerView::openCategoryEditor(Event::Category *c, QWidget *anchor, bool p
         if (!self->m_categories || !self->m_categories->contains(c)) return;
         // An empty name deletes nothing: that is what Delete is for.
         if (!name.isEmpty()) c->label = name;
-        if (color >= 0 && picked.isValid()) c->color = picked;
+        if (picked.isValid()) c->color = picked;
         emit self->categoryChanged(c);
         self->refresh();
     });

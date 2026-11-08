@@ -4,6 +4,49 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.6] — 2026-11-08
+
+### Added
+
+- **Taller text notes, to read them comfortably**: hovering a text or Markdown
+  note's body shows a grip on its bottom edge; drag it to give the note any
+  height, with a scrollbar for whatever still does not fit. The right-click
+  menu has *Más alta* (a step taller) and, once resized, *Tamaño original*,
+  which brings back the usual card that grows with its text — as does a double
+  click on the grip. Each note keeps its own height, and it syncs with it.
+
+## [1.2.5] — 2026-11-08
+
+### Fixed
+
+- **Markdown: a list or a quote no longer swallows the text after it.** A
+  plain line right under `- item` or `> quote` was taken, as CommonMark does,
+  as more of that item, so everything written after a list ended up inside its
+  last point. Now that line starts a paragraph of its own; to carry on an item
+  on the next line, indent it (`  more of the item`). This applies to the
+  Markdown note's preview and to its card.
+
+## [1.2.4] — 2026-11-08
+
+### Added
+
+- **Any colour for a planner category**: under the ten default swatches, the
+  category editor has a field for another colour — `#rrggbb` or a name such as
+  `teal` — with a sample that follows what is typed; Enter saves it. Custom
+  colours already used by other categories show up as extra swatches (up to
+  five), so a colour typed once is one click away the next time.
+
+## [1.2.3] — 2026-11-08
+
+### Added
+
+- **Long planner titles can wrap**: *Settings → Appearance → Títulos del
+  planificador* chooses between *Cortar* (one line ending in "…", as before and
+  still the default) and *Varias líneas*. Wrapped, a block in the day and week
+  views uses every line it has room for, keeping the time underneath, and a
+  month chip grows to up to three lines; `+N more` counts whatever no longer
+  fits in the cell.
+
 ## [1.2.2] — 2026-11-03
 
 ### Added

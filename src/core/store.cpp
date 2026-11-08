@@ -423,6 +423,7 @@ void Store::save() {
     root["textScale"] = m_prefs.textScale;
     root["font"] = m_prefs.font;
     root["compact"] = m_prefs.compact;
+    root["plannerWrap"] = m_prefs.plannerWrap;
     root["alarmTone"] = m_prefs.alarmTone;
     root["alarmVolume"] = m_prefs.alarmVolume;
     root["plainText"] = true;   // text notes are plain text (see readObject())
@@ -886,6 +887,7 @@ bool Store::readObject(const QJsonObject &root) {
     if (root.contains("textScale")) m_prefs.textScale = qBound(80, root["textScale"].toInt(100), 150);
     m_prefs.font = root["font"].toString();
     m_prefs.compact = root["compact"].toBool();
+    m_prefs.plannerWrap = root["plannerWrap"].toBool();   // older files: cut
     if (root.contains("alarmTone")) m_prefs.alarmTone = root["alarmTone"].toString();
     if (root.contains("alarmVolume"))
         m_prefs.alarmVolume = qBound(0, root["alarmVolume"].toInt(60), 100);

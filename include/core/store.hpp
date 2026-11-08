@@ -69,6 +69,10 @@ public:
         /// Compact cards: tighter margins and gaps, so more notes fit.
         bool compact = false;
 
+        /// Planner titles that do not fit: cut with "…" (default) or broken into
+        /// lines, as many as the block has room for.
+        bool plannerWrap = false;
+
         /// Alarm tone (an Alarm::tones() id; "custom" is the WAV copied into
         /// the data folder) and its volume in percent.
         QString alarmTone = QStringLiteral("beeps");

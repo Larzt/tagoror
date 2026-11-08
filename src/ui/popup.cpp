@@ -277,7 +277,8 @@ void Popup::addChoice(const QStringList &labels, int chosen,
 
 void Popup::addNameColor(const QString &placeholder, const QString &name,
                          const QList<QColor> &colors, int chosen,
-                         std::function<void(const QString &, int)> commit) {
+                         const QString &customPlaceholder, const QColor &custom,
+                         std::function<void(const QString &, const QColor &)> commit) {
     constexpr int kPerRow = 5;
 
     auto *host = new QWidget;
@@ -312,18 +313,61 @@ void Popup::addNameColor(const QString &placeholder, const QString &name,
         dot.setDevicePixelRatio(2);
         chip->setIcon(QIcon(dot));
         chip->setIconSize(QSize(14, 14));
-        QObject::connect(chip, &QToolButton::clicked, this, [this, edit, i, commit] {
+        const QColor color = colors.at(i);
+        QObject::connect(chip, &QToolButton::clicked, this, [this, edit, color, commit] {
             const QString value = edit->text().trimmed();
-            run([value, i, commit] { if (commit) commit(value, i); });
+            run([value, color, commit] { if (commit) commit(value, color); });
         });
         grid->addWidget(chip, i / kPerRow, i % kPerRow);
     }
     l->addLayout(grid);
 
-    QObject::connect(edit, &QLineEdit::returnPressed, this, [this, edit, chosen, commit] {
+    // Any other colour: typed, with a sample that follows it.
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(6);
+    auto *sample = new QLabel;
+    sample->setFixedSize(26, 26);
+    auto *hex = new QLineEdit(custom.isValid() ? custom.name() : QString());
+    hex->setObjectName("popupEdit");
+    hex->setPlaceholderText(customPlaceholder);
+    hex->setFixedWidth(kRowWidth - 14 - 26 - 6);
+    const auto paintSample = [sample, hex] {
+        const QColor c(hex->text().trimmed());
+        QPixmap dot(52, 52);
+        dot.fill(Qt::transparent);
+        QPainter p(&dot);
+        p.setRenderHint(QPainter::Antialiasing);
+        if (c.isValid()) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(c);
+        } else {
+            // Nothing valid yet: an empty outline where the colour will go.
+            p.setPen(QPen(QColor(255, 255, 255, 70), 2, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+        }
+        p.drawRoundedRect(QRectF(7, 7, 38, 38), 11, 11);
+        p.end();
+        dot.setDevicePixelRatio(2);
+        sample->setPixmap(dot);
+    };
+    paintSample();
+    QObject::connect(hex, &QLineEdit::textChanged, sample, paintSample);
+    row->addWidget(sample);
+    row->addWidget(hex);
+    row->addStretch();
+    l->addLayout(row);
+
+    // Enter in either field: the typed colour if it is one, else the marked swatch.
+    const QColor marked = colors.value(chosen);
+    const auto confirm = [this, edit, hex, marked, commit] {
         const QString value = edit->text().trimmed();
-        run([value, chosen, commit] { if (commit) commit(value, chosen); });
-    });
+        const QColor typed(hex->text().trimmed());
+        const QColor color = typed.isValid() ? typed : marked;
+        run([value, color, commit] { if (commit) commit(value, color); });
+    };
+    QObject::connect(edit, &QLineEdit::returnPressed, this, confirm);
+    QObject::connect(hex, &QLineEdit::returnPressed, this, confirm);
 
     m_col->addWidget(host);
     QTimer::singleShot(0, edit, qOverload<>(&QWidget::setFocus));

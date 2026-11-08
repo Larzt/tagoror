@@ -60,11 +60,15 @@ public:
                        std::function<void(int)> action);
     /// A loose paragraph, for what a menu must explain before offering anything.
     void addText(const QString &text);
-    /// A name and a colour at once, for planner categories. Enter confirms with
-    /// the marked colour; clicking a colour confirms with that one and the text.
+    /// A name and a colour at once, for planner categories. Under the swatches,
+    /// a field for any other colour (#rrggbb or a name) with a live sample;
+    /// @p custom fills it. Enter confirms with that colour if it is valid, else
+    /// with the marked swatch (invalid when @p chosen is -1); clicking a swatch
+    /// confirms with that one and the text.
     void addNameColor(const QString &placeholder, const QString &name,
                       const QList<QColor> &colors, int chosen,
-                      std::function<void(const QString &, int)> commit);
+                      const QString &customPlaceholder, const QColor &custom,
+                      std::function<void(const QString &, const QColor &)> commit);
     /// Mini month, time column and quick picks; *Guardar* or Enter commits.
     /// @p quick commit at once, like the preset rows they replaced.
     void addDateTime(const QDateTime &initial, const QList<QPair<QString, QDateTime>> &quick,
