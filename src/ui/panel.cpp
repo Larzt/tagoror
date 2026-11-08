@@ -2,6 +2,7 @@
 #include "audio/alarm.hpp"
 #include "ui/alertcenter.hpp"
 #include "ui/welcome.hpp"
+#include "ui/collections.hpp"
 #include "ui/areatabs.hpp"
 #include "audio/recorder.hpp"
 #include "ui/birthdays.hpp"
@@ -313,7 +314,8 @@ void Panel::buildShell() {
                         {m_planner, "calendar", "Planner", "Ctrl+2"},
                         {m_timerView, "timer", "Timers", "Ctrl+3"},
                         {m_birthdays, "cake", "Cumpleaños", "Ctrl+4"},
-                        {m_tracking, "bars", "Seguimiento", "Ctrl+5"}});
+                        {m_tracking, "bars", "Seguimiento", "Ctrl+5"},
+                        {m_collections, "books", "Colecciones", "Ctrl+6"}});
     m_navBar->activated = [this](QWidget *page) {
         if (page == m_scroll) {
             showNotes();
@@ -345,6 +347,7 @@ void Panel::buildShell() {
     m_nav->addPage(m_timerView, m_navBar->buttonFor(m_timerView), "timers", "Timers");
     m_nav->addPage(m_birthdays, m_navBar->buttonFor(m_birthdays), "birthdays", "Cumpleaños");
     m_nav->addPage(m_tracking, m_navBar->buttonFor(m_tracking), "tracking", "Seguimiento");
+    m_nav->addPage(m_collections, m_navBar->buttonFor(m_collections), "collections", "Colecciones");
     // Settings has no item in the bar: it comes from "⋯", and leaving parks the
     // focus there.
     m_nav->addPage(m_settings, m_moreBtn, "settings", "Ajustes");
@@ -374,6 +377,7 @@ void Panel::installShortcuts() {
     key(QKeySequence(Qt::CTRL | Qt::Key_3), [this] { openPage(m_timerView); });
     key(QKeySequence(Qt::CTRL | Qt::Key_4), [this] { openPage(m_birthdays); });
     key(QKeySequence(Qt::CTRL | Qt::Key_5), [this] { openPage(m_tracking); });
+    key(QKeySequence(Qt::CTRL | Qt::Key_6), [this] { openPage(m_collections); });
     // Pause or resume what is being tracked, from any page.
     key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Space), [this] {
         if (has(Features::Tracking)) toggleTrackingPause();
@@ -393,11 +397,20 @@ void Panel::installShortcuts() {
         });
 
     // Notes: Ctrl+N is a text note straight away; the others name their type.
-    key(QKeySequence(Qt::CTRL | Qt::Key_F), [this] { focusSearch(); });
-    // On Seguimiento Ctrl+N adds a session, as its "+" does.
+    key(QKeySequence(Qt::CTRL | Qt::Key_F), [this] {
+        // Colecciones searches its own items.
+        if (m_body->currentWidget() == m_collections) m_collections->focusSearch();
+        else focusSearch();
+    });
+    // On Seguimiento Ctrl+N adds a session, as its "+" does; on Colecciones, an item.
     key(QKeySequence(Qt::CTRL | Qt::Key_N), [this] {
         if (m_body->currentWidget() == m_tracking) {
             openSessionEditor(nullptr);
+            return;
+        }
+        if (m_body->currentWidget() == m_collections) {
+            if (m_collections->current()) openItemEditor(nullptr);
+            else openCollectionEditor(nullptr);
             return;
         }
         showNotes();
@@ -440,6 +453,14 @@ QFrame *Panel::buildHeader() {
     m_titleLabel = new ElidedLabel(L("Notas"), QColor(Theme::fg()));
     m_titleLabel->setObjectName("title");
     l->addWidget(m_titleLabel, 1);
+    // On Colecciones the title is the collection, and changes it.
+    m_collSwitch = new CollectionSwitch(&m_theme);
+    m_collSwitch->hide();
+    connect(m_collSwitch, &QAbstractButton::clicked, this, [this] { openCollectionMenu(m_collSwitch); });
+    l->addWidget(m_collSwitch, 0);
+    m_collSpacer = new QWidget;
+    m_collSpacer->hide();
+    l->addWidget(m_collSpacer, 1);
 
     // What each page adds to the header: a new timer, a new birthday.
     m_timerAddBtn = iconButton("plus", "Nuevo temporizador");
@@ -461,6 +482,14 @@ QFrame *Panel::buildHeader() {
         else openSessionEditor(nullptr);
     });
     l->addWidget(m_trackAddBtn);
+    m_collAddBtn = iconButton("plus", "Añadir · Ctrl+N");
+    m_collAddBtn->setFixedSize(28, 28);
+    m_collAddBtn->hide();
+    connect(m_collAddBtn, &QToolButton::clicked, this, [this] {
+        if (m_collections->current()) openItemEditor(nullptr);
+        else openCollectionEditor(nullptr);
+    });
+    l->addWidget(m_collAddBtn);
 
     // Folding is one click away on every page, next to "⋯"; in app mode it
     // minimises instead (applyAppModeChrome() swaps the icon and the tip, and
@@ -719,6 +748,24 @@ QWidget *Panel::buildBody() {
                             QString());
     });
 
+    m_collections = new CollectionsView(m_theme);
+    m_collections->setStore(&m_store);
+    connect(m_collections, &CollectionsView::changed, this, [this] {
+        scheduleSave();
+        refreshTitle();
+    });
+    connect(m_collections, &CollectionsView::currentChanged, this, &Panel::refreshTitle);
+    connect(m_collections, &CollectionsView::addRequested, this, [this] { openItemEditor(nullptr); });
+    connect(m_collections, &CollectionsView::editRequested, this, &Panel::openItemEditor);
+    connect(m_collections, &CollectionsView::newCollectionRequested, this,
+            [this] { openCollectionEditor(nullptr); });
+    connect(m_collections, &CollectionsView::editCollectionRequested, this, &Panel::openCollectionEditor);
+    connect(m_collections, &CollectionsView::noteRequested, this, &Panel::openItemNote);
+    connect(m_collections, &CollectionsView::trackRequested, this, [this](CollectionItem *item) {
+        if (!has(Features::Tracking)) return;
+        startTracking(L("Leer «%1»").arg(item->title), QString());
+    });
+
     m_settings = new SettingsView(m_theme);
     m_settings->setSource(&m_store);
     connect(m_settings, &SettingsView::accentPicked, this, [this](const QColor &c) {
@@ -873,6 +920,7 @@ QWidget *Panel::buildBody() {
     m_body->addWidget(m_timerView);
     m_body->addWidget(m_birthdays);
     m_body->addWidget(m_tracking);
+    m_body->addWidget(m_collections);
     m_body->addWidget(m_settings);
     m_body->addWidget(m_mdPage);
 
@@ -953,6 +1001,9 @@ void Panel::applyTheme() {
     if (m_timerView) m_timerView->setTheme(m_theme);
     if (m_birthdays) m_birthdays->setTheme(m_theme);
     if (m_tracking) m_tracking->setTheme(m_theme);
+    if (m_collections) m_collections->setTheme(m_theme);
+    if (m_collAddBtn) m_collAddBtn->setIcon(paintIcon("plus", QColor(Theme::muted())));
+    if (m_collSwitch) m_collSwitch->update();
     // Settings is not rebuilt: it repaints what carries the accent and keeps the
     // opacity slider alive, which is what just called here.
     if (m_settings) m_settings->setTheme(m_theme);
@@ -997,6 +1048,7 @@ void Panel::retranslate() {
         m_birthdays->retranslate();
     }
     if (m_tracking) m_tracking->retranslate();
+    if (m_collections) m_collections->retranslate();
     if (m_settings) m_settings->retranslate();
     m_mdPage->retranslate();
     refreshTitle();
@@ -1578,6 +1630,7 @@ int Panel::featureOf(const QWidget *page) const {
     if (page == m_timerView) return Features::Timers;
     if (page == m_birthdays) return Features::Birthdays;
     if (page == m_tracking) return Features::Tracking;
+    if (page == m_collections) return Features::Collections;
     return -1;
 }
 
@@ -1596,7 +1649,8 @@ void Panel::setFeature(const QString &key, bool on) {
 void Panel::applyFeatures() {
     if (m_navBar)
         for (QWidget *page : {static_cast<QWidget *>(m_planner), static_cast<QWidget *>(m_timerView),
-                              static_cast<QWidget *>(m_birthdays), static_cast<QWidget *>(m_tracking)})
+                              static_cast<QWidget *>(m_birthdays), static_cast<QWidget *>(m_tracking),
+                              static_cast<QWidget *>(m_collections)})
             m_navBar->setItemVisible(page, has(Features::Id(featureOf(page))));
 
     if (m_planner) m_planner->setRemindersEnabled(hasNoteType(Note::Reminder));
@@ -1650,6 +1704,47 @@ void Panel::openWelcome() {
     });
 }
 
+void Panel::refreshCollections() {
+    if (!m_collections) return;
+    m_collections->refresh();
+    refreshTitle();
+}
+
+/// The header's switch: the collections with their counts, and a new one.
+void Panel::openCollectionMenu(QWidget *anchor) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Colecciones"));
+    const Collection *shown = m_collections->current();
+    for (Collection *c : m_store.collections()) {
+        const QString id = c->id;
+        const int n = Coll::countIn(m_store.collectionItems(), c->id);
+        menu->addItem(c->icon(), c == shown ? c->name + "  ✓" : c->name,
+                      n == 1 ? L("1 elemento") : L("%1 elementos").arg(n),
+                      [this, id] { m_collections->setCurrent(id); });
+    }
+    menu->addSeparator();
+    if (shown) {
+        Collection *editing = m_collections->current();
+        menu->addItem("pencil", L("Editar colección…"), L("Nombre, estados y campos"),
+                      [this, editing] { openCollectionEditor(editing); });
+    }
+    menu->addItem("plus", L("Nueva colección…"), QString(), [this] { openCollectionEditor(nullptr); });
+    menu->showUnder(anchor);
+}
+
+void Panel::openCollectionEditor(Collection *c) {
+    if (c) return;
+    // A library straight away; the editor with its templates comes next.
+    Collection *made = Collection::fromTemplate(Collection::Books, L("Biblioteca"));
+    m_store.addCollection(made);
+    m_collections->setCurrent(made->id);
+    refreshCollections();
+}
+
+void Panel::openItemEditor(CollectionItem *) {}
+
+void Panel::openItemNote(CollectionItem *) {}
+
 /// Opens a page. The bar marks where you are; leaving is another item, Escape,
 /// or (from settings) the back arrow.
 void Panel::openPage(QWidget *page) {
@@ -1664,6 +1759,7 @@ void Panel::openPage(QWidget *page) {
     else if (page == m_timerView) m_timerView->refresh();
     else if (page == m_birthdays) m_birthdays->refresh();
     else if (page == m_tracking) m_tracking->refresh();
+    else if (page == m_collections) m_collections->refresh();
     else if (page == m_settings) m_settings->refresh();
     closeSearch();
     m_nav->open(page);
@@ -1721,6 +1817,17 @@ void Panel::refreshTitle() {
     m_timerAddBtn->setVisible(m_body->currentWidget() == m_timerView);
     m_bdayAddBtn->setVisible(m_body->currentWidget() == m_birthdays);
     m_trackAddBtn->setVisible(m_body->currentWidget() == m_tracking);
+    // Colecciones: the collection's name with its switch, and "+" for an item.
+    const bool coll = m_body->currentWidget() == m_collections;
+    const Collection *c = coll ? m_collections->current() : nullptr;
+    // Without a collection yet the title stays the page's name.
+    m_titleLabel->setVisible(!c);
+    m_collSwitch->setVisible(c != nullptr);
+    m_collSpacer->setVisible(c != nullptr);
+    if (c) m_collSwitch->setCollection(c->name, c->icon());
+    m_collAddBtn->setVisible(coll);
+    m_collAddBtn->setToolTip(c ? L("Añadir %1 · Ctrl+N").arg(L(c->itemName()))
+                               : L("Crear colección"));
     m_backBtn->setVisible(back);
     m_header->layout()->setContentsMargins(back ? 6 : 14, 0, 6, 0);
 }
@@ -2771,6 +2878,7 @@ void Panel::onStoreMerged() {
     tickTimers();           // one arriving while running must start counting
     onTimersChanged();
     refreshTracking();      // a session started or stopped on another machine
+    refreshCollections();
     refreshNotices();
     checkReminders();       // and one arriving overdue, ringing
 }
@@ -2960,6 +3068,8 @@ void Panel::openPalette() {
         cmds << Command{go, "cake", L("Cumpleaños"), "Ctrl+4", [this] { openPage(m_birthdays); }};
     if (has(Features::Tracking))
         cmds << Command{go, "bars", L("Seguimiento"), "Ctrl+5", [this] { openPage(m_tracking); }};
+    if (has(Features::Collections))
+        cmds << Command{go, "books", L("Colecciones"), "Ctrl+6", [this] { openPage(m_collections); }};
     cmds << Command{go, "gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); }};
     const auto make = [this](Note::Type type) {
         return [this, type] {

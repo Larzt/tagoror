@@ -20,7 +20,7 @@
 /// later starts on.
 namespace Features {
 
-enum Id { Planner, Timers, Birthdays, Tracking, Checklists, Reminders, Voice, Markdown };
+enum Id { Planner, Timers, Birthdays, Tracking, Checklists, Reminders, Voice, Markdown, Collections };
 
 struct Info {
     Id id;
@@ -43,6 +43,8 @@ inline const QList<Info> &all() {
          "Fechas que avisan cada año", true},
         {Tracking, "tracking", "bars", "Seguimiento",
          "El tiempo que dedicas a cada proyecto", true},
+        {Collections, "collections", "books", "Colecciones",
+         "Libros por leer, leyendo y leídos, con su cola", true},
         {Checklists, "checklists", "check", "Checklists",
          "Notas con casillas para marcar", false},
         {Reminders, "reminders", "bell", "Recordatorios",

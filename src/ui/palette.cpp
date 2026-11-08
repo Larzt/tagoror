@@ -108,7 +108,7 @@ protected:
                 QFont mono = monoFont(font(), 10);
                 mono.setLetterSpacing(QFont::AbsoluteSpacing, 0.8);
                 p.setFont(mono);
-                p.setPen(QColor("#636872"));
+                p.setPen(QColor(Theme::muted()));   // a section title (1.3.0)
                 p.drawText(QRect(14, r.y, width() - 28, kHead - 4), Qt::AlignLeft | Qt::AlignBottom,
                            r.group.toUpper());
                 continue;
