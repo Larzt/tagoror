@@ -621,6 +621,9 @@ void Store::loadCollections() {
     sortCollections();
     qDeleteAll(m_collectionItems);
     m_collectionItems = readList<CollectionItem>(root, "items");
+    // An own "Sinopsis" field, from before the built-in one: saved as the
+    // built-in one from the next save on.
+    for (Collection *c : m_collections) Coll::adoptSynopsisField(*c, m_collectionItems);
 }
 
 /// Separate from save() so it can be skipped: an unreadable birthdays.json is

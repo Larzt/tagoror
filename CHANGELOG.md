@@ -4,6 +4,28 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.3] — 2026-11-08
+
+### Added
+
+- **Colecciones: synopsis.** Books have a *Sinopsis* field — a few lines,
+  edited in a box that wraps — shown in the wide mode's card. It is on in the
+  Libros template and turns on by itself in existing libraries (it can be
+  switched off in the collection's fields like any other). A field of your
+  own called *Sinopsis* becomes the built-in one, text included.
+- **Colecciones: filter by length.** In a library, by pages: up to 250,
+  251–500 or over 500, each with its count. Wide, under the tags in the
+  sidebar; narrow, in the filter button's menu (the old tag button), which
+  has the tags too. It combines with the tag, and the narrow panel says what
+  filters on top — *Solo «Fantasía» · Hasta 250 p.*
+
+### Fixed
+
+- **Colecciones: changing the page no longer needs *Editar*.** The wide
+  mode's card has the reading card's progress — bar, "p. 212 / 496", what is
+  left, *+10 p.*, *+25 p.* and the page typed — and the right-click menu of a
+  book in progress has them too, from the grid or the list.
+
 ## [1.3.2] — 2026-11-08
 
 ### Fixed

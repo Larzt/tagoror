@@ -695,7 +695,7 @@ QWidget *CollectionsView::buildTools() {
 
     // Narrow only: the tags the wide mode lists on its left, as a menu. Without
     // it a filter chosen wide stayed on, unseen and impossible to clear.
-    m_tagBtn = iconButton("tag", L("Filtrar por etiqueta"));
+    m_tagBtn = iconButton("tag", L("Filtrar"));
     connect(m_tagBtn, &QToolButton::clicked, this, [this] { openTagMenu(m_tagBtn); });
     m_tagBtn->hide();
     l->addWidget(m_tagBtn);
@@ -822,6 +822,7 @@ void CollectionsView::setCurrent(const QString &id) {
     m_tab.clear();
     m_selected.clear();
     m_tag.clear();
+    m_length = Coll::AnyLength;
     refresh();
     emit currentChanged();
 }
@@ -964,11 +965,11 @@ void CollectionsView::refreshTabs() {
         const CollectionState *s = c->state(t->stateId);
         t->set(s ? L(s->name) : L("Todos"), int(visible(*c, t->stateId).size()), t->stateId == m_tab);
     }
-    // Wide, the sidebar has the tags; narrow, this button, in the accent while
-    // one filters.
-    m_tagBtn->setVisible(!m_wide && (!m_tag.isEmpty() || !tagCounts(*c).isEmpty()));
-    m_tagBtn->setIcon(paintIcon("tag", m_tag.isEmpty() ? QColor(Theme::muted()) : m_theme.accent));
-    m_tagBtn->setToolTip(m_tag.isEmpty() ? L("Filtrar por etiqueta") : L("Solo «%1»").arg(m_tag));
+    // Wide, the sidebar has the filters; narrow, this button, in the accent
+    // while one is on.
+    m_tagBtn->setVisible(!m_wide && (filtering() || Coll::filtersByLength(*c) || !tagCounts(*c).isEmpty()));
+    m_tagBtn->setIcon(paintIcon("tag", filtering() ? m_theme.accent : QColor(Theme::muted())));
+    m_tagBtn->setToolTip(filtering() ? filterText(*c) : L("Filtrar"));
     m_gridBtn->setProperty("chosen", m_grid);
     m_listBtn->setProperty("chosen", !m_grid);
     repolish(m_gridBtn);
@@ -995,6 +996,7 @@ QList<CollectionItem *> CollectionsView::visible(const Collection &c, const QStr
 
 bool CollectionsView::matches(const CollectionItem *item) const {
     if (!m_tag.isEmpty() && !item->tags.contains(m_tag)) return false;
+    if (m_length != Coll::AnyLength && Coll::lengthOf(item) != m_length) return false;
     if (m_search.isEmpty()) return true;
     if (item->title.contains(m_search, Qt::CaseInsensitive)) return true;
     if (item->author.contains(m_search, Qt::CaseInsensitive)) return true;
@@ -1008,12 +1010,15 @@ void CollectionsView::refreshBody() {
     m_queueRows.clear();
     clearLayout(m_list);
     if (!c) return;
-    // Narrow there is no sidebar to show the tag that filters: it goes on top,
-    // with the way out.
-    if (!m_wide && !m_tag.isEmpty()) {
+    // Narrow there is no sidebar to show what filters: it goes on top, with
+    // the way out.
+    if (!m_wide && filtering()) {
         auto *clear = textButton("noticeAction", L("Quitar el filtro"));
-        connect(clear, &QToolButton::clicked, this, [this] { setTag(QString()); });
-        m_list->addWidget(sectionRow(L("Solo «%1»").arg(m_tag), clear));
+        connect(clear, &QToolButton::clicked, this, [this] {
+            m_length = Coll::AnyLength;
+            setTag(QString());
+        });
+        m_list->addWidget(sectionRow(filterText(*c), clear));
     }
     if (m_wide) fillGrid(m_list, *c, visible(*c, m_tab));
     else if (c->isInProgress(m_tab)) fillInProgress(m_list, *c, m_tab);
@@ -1132,7 +1137,7 @@ void CollectionsView::fillList(QVBoxLayout *col, const Collection &c, const QStr
     }
     col->addWidget(sectionRow(caption, total));
     if (items.isEmpty()) {
-        auto *none = new QLabel(m_search.isEmpty() && m_tag.isEmpty() ? L("Nada por aquí todavía.")
+        auto *none = new QLabel(m_search.isEmpty() && !filtering() ? L("Nada por aquí todavía.")
                                                                        : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
         none->setContentsMargins(6, 4, 6, 4);
@@ -1142,7 +1147,7 @@ void CollectionsView::fillList(QVBoxLayout *col, const Collection &c, const QStr
     // By hand only where the order shown is the queue's own: by priority, high
     // first, and with nothing filtered out.
     const bool handOrder = queue && c.sortKey == Collection::kByPriority && !c.sortAscending &&
-                           m_search.isEmpty() && m_tag.isEmpty();
+                           m_search.isEmpty() && !filtering();
     for (int i = 0; i < items.size(); ++i) {
         Row *r = row(c, items.at(i), i + 1, metaFor(c, items.at(i)), queue, false);
         if (r->grip) {
@@ -1166,7 +1171,7 @@ void CollectionsView::fillInProgress(QVBoxLayout *col, const Collection &c, cons
         auto *v = new QVBoxLayout(box);
         v->setContentsMargins(16, 24, 16, 18);
         v->setSpacing(6);
-        const bool filtered = !m_search.isEmpty() || !m_tag.isEmpty();
+        const bool filtered = !m_search.isEmpty() || filtering();
         auto *title = new QLabel(!filtered ? L("Nada en curso") : L("Nada coincide con la búsqueda."));
         title->setObjectName("trackEmptyTitle");
         title->setAlignment(Qt::AlignCenter);
@@ -1184,7 +1189,7 @@ void CollectionsView::fillInProgress(QVBoxLayout *col, const Collection &c, cons
 
     // A CONTINUACIÓN: the first three of the queue, each one click from starting.
     // Not while filtering: the queue would not be.
-    if (!m_search.isEmpty() || !m_tag.isEmpty()) return;
+    if (!m_search.isEmpty() || filtering()) return;
     const QList<CollectionItem *> next = Coll::queue(m_store->collectionItems(), c).mid(0, 3);
     if (next.isEmpty() || c.firstState() == stateId) return;
     auto *seeQueue = textButton("noticeAction", L("Ver cola"));
@@ -1249,6 +1254,29 @@ QWidget *CollectionsView::readingCard(const Collection &c, CollectionItem *item)
     top->addLayout(texts, 1);
     v->addLayout(top);
 
+    auto *done = textButton("pickSave", L("Terminado"));
+    done->setToolTip(L("Pasa a %1 con la fecha de hoy").arg(L(c.states.last().name)));
+    const QString final = c.finalState();
+    connect(done, &QToolButton::clicked, this, [this, item, final] { moveTo(item, final); });
+    v->addLayout(progressBlock(c, item, done));
+
+    // The card opens the item too, as a row does.
+    card->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(card, &QWidget::customContextMenuRequested, this,
+            [this, item, card](const QPoint &p) { openItemMenu(item, card->mapToGlobal(p)); });
+    card->installEventFilter(this);
+    card->setProperty("itemId", item->id);
+    return card;
+}
+
+/// Where something in progress is and the ways to move it on: the bar, "p. 212
+/// / 496" and what is left, +10, +25 and the page typed. The reading card's,
+/// and the wide detail's, so the page changes without opening Editar.
+/// @p trailing, if any, closes the row of buttons (the card's Terminado).
+QVBoxLayout *CollectionsView::progressBlock(const Collection &c, CollectionItem *item, QWidget *trailing) {
+    auto *v = new QVBoxLayout;
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(10);
     const QString unit = L(c.unitShort());
     if (c.has(Collection::kProgress)) {
         if (item->total > 0) {
@@ -1289,21 +1317,11 @@ QWidget *CollectionsView::readingCard(const Collection &c, CollectionItem *item)
         actions->addWidget(write);
     }
     actions->addStretch();
-    auto *done = textButton("pickSave", L("Terminado"));
-    done->setToolTip(L("Pasa a %1 con la fecha de hoy").arg(L(c.states.last().name)));
-    const QString final = c.finalState();
-    connect(done, &QToolButton::clicked, this, [this, item, final] { moveTo(item, final); });
-    actions->addWidget(done);
+    if (trailing) actions->addWidget(trailing);
     v->addLayout(actions);
-
-    // The card opens the item too, as a row does.
-    card->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(card, &QWidget::customContextMenuRequested, this,
-            [this, item, card](const QPoint &p) { openItemMenu(item, card->mapToGlobal(p)); });
-    card->installEventFilter(this);
-    card->setProperty("itemId", item->id);
-    return card;
+    return v;
 }
+
 
 /// The finished tab: this year's figures, then the list with the rating.
 void CollectionsView::fillFinished(QVBoxLayout *col, const Collection &c, const QString &stateId) {
@@ -1350,7 +1368,7 @@ void CollectionsView::fillFinished(QVBoxLayout *col, const Collection &c, const 
     else caption = L("Por fecha de fin");
     col->addWidget(sectionRow(caption, nullptr));
     if (items.isEmpty()) {
-        auto *none = new QLabel(m_search.isEmpty() && m_tag.isEmpty() ? L("Nada terminado todavía.")
+        auto *none = new QLabel(m_search.isEmpty() && !filtering() ? L("Nada terminado todavía.")
                                                                        : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
         none->setContentsMargins(6, 4, 6, 4);
@@ -1368,7 +1386,7 @@ void CollectionsView::addPages(CollectionItem *item, int pages) {
 }
 
 /// "p. …": the page typed, as the timers' editor takes a time.
-void CollectionsView::openPagePrompt(CollectionItem *item, QWidget *anchor) {
+void CollectionsView::openPagePrompt(CollectionItem *item, QWidget *anchor, const QPoint &at) {
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(item->total > 0 ? L("Página (de %1)").arg(item->total) : L("Página"));
     QPointer<CollectionsView> self(this);
@@ -1383,7 +1401,8 @@ void CollectionsView::openPagePrompt(CollectionItem *item, QWidget *anchor) {
         i->progress = i->total > 0 ? qMin(page, i->total) : page;
         self->edited();
     });
-    menu->showUnder(anchor);
+    if (anchor) menu->showUnder(anchor);
+    else menu->showAt(at);
 }
 
 /// The current collection's tags, most used first, with their counts.
@@ -1409,18 +1428,72 @@ void CollectionsView::setTag(const QString &tag) {
     if (m_wide) refreshSide();
 }
 
-/// Narrow: the tags as a menu, every one of them (the sidebar shows eight),
-/// and the way back to all.
+/// Filters by length (1.3.3), in both modes.
+void CollectionsView::setLength(Coll::Length length) {
+    m_length = length;
+    refreshTabs();
+    refreshBody();
+    if (m_wide) refreshSide();
+}
+
+bool CollectionsView::filtering() const { return !m_tag.isEmpty() || m_length != Coll::AnyLength; }
+
+/// "Hasta 250 p.", "251–500 p.", "Más de 500 p.".
+QString CollectionsView::lengthText(const Collection &c, Coll::Length length) {
+    const QString unit = L(c.unitShort());
+    switch (length) {
+        case Coll::Short:  return L("Hasta %1 %2").arg(Coll::kShortUpTo).arg(unit);
+        case Coll::Medium: return QString("%1–%2 %3").arg(Coll::kShortUpTo + 1).arg(Coll::kMediumUpTo).arg(unit);
+        case Coll::Long:   return L("Más de %1 %2").arg(Coll::kMediumUpTo).arg(unit);
+        default:           return L("Cualquiera");
+    }
+}
+
+/// What filters, in words: "Solo «Fantasía» · Hasta 250 p.".
+QString CollectionsView::filterText(const Collection &c) const {
+    QStringList parts;
+    if (!m_tag.isEmpty()) parts << L("Solo «%1»").arg(m_tag);
+    if (m_length != Coll::AnyLength) parts << lengthText(c, m_length);
+    return parts.join(" · ");
+}
+
+/// How many of @p c's items are in each length band.
+QHash<int, int> CollectionsView::lengthCounts(const Collection &c) const {
+    QHash<int, int> counts;
+    if (m_store)
+        for (const CollectionItem *i : m_store->collectionItems())
+            if (i->collection == c.id) ++counts[Coll::lengthOf(i)];
+    return counts;
+}
+
+/// Narrow: the filters as a menu — length for books, then every tag (the
+/// sidebar shows eight) — each with the way back to all.
 void CollectionsView::openTagMenu(QWidget *anchor) {
     const Collection *c = current();
     if (!c) return;
     auto *menu = new Popup(m_theme, this);
-    menu->addHeader(L("ETIQUETAS"));
     QPointer<CollectionsView> self(this);
+    if (Coll::filtersByLength(*c)) {
+        menu->addHeader(L(c->unitName()).toUpper());
+        const QHash<int, int> counts = lengthCounts(*c);
+        for (Coll::Length band : {Coll::AnyLength, Coll::Short, Coll::Medium, Coll::Long}) {
+            const QString hint = band == Coll::AnyLength ? QString() : QString::number(counts.value(band));
+            menu->addShortcutItem(m_length == band ? "check" : "", lengthText(*c, band), hint, [self, band] {
+                if (self) self->setLength(band);
+            });
+        }
+        menu->addSeparator();
+    }
+    const QList<QPair<QString, int>> tags = tagCounts(*c);
+    if (tags.isEmpty() && m_tag.isEmpty()) {
+        menu->showUnder(anchor);
+        return;
+    }
+    menu->addHeader(L("ETIQUETAS"));
     menu->addShortcutItem(m_tag.isEmpty() ? "check" : "", L("Todas"), QString(), [self] {
         if (self) self->setTag(QString());
     });
-    for (const auto &[tag, count] : tagCounts(*c)) {
+    for (const auto &[tag, count] : tags) {
         const QString t = tag;
         menu->addShortcutItem(t == m_tag ? "check" : "", t, QString::number(count), [self, t] {
             if (self) self->setTag(t);
@@ -1561,6 +1634,15 @@ void CollectionsView::openItemMenu(CollectionItem *item, const QPoint &globalPos
     auto *menu = new Popup(m_theme, this);
     menu->addHeader(item->title.isEmpty() ? L("Sin título") : item->title);
     menu->addItem("pencil", L("Editar…"), QString(), [this, item] { emit editRequested(item); });
+    // The page, from wherever it is shown (tile, row), without Editar.
+    if (c->isInProgress(item->state) && c->has(Collection::kProgress)) {
+        const QString unit = L(c->unitShort());
+        for (int step : {10, 25})
+            menu->addItem("plus", QString("+%1 %2").arg(step).arg(unit), QString(),
+                          [this, item, step] { addPages(item, step); });
+        menu->addItem("pencil", L("Escribir la página"), QString(),
+                      [this, item, globalPos] { openPagePrompt(item, nullptr, globalPos); });
+    }
     for (const CollectionState &s : c->states) {
         if (s.id == item->state) continue;
         const QString id = s.id;
@@ -1663,6 +1745,22 @@ void CollectionsView::refreshSide() {
             m_sideLayout->addWidget(r);
         }
     }
+    // PÁGINAS: the length bands, for books; a click filters, again unfilters.
+    if (Coll::filtersByLength(*shown)) {
+        const QHash<int, int> counts = lengthCounts(*shown);
+        auto *head = section(L(shown->unitName()).left(1).toUpper() + L(shown->unitName()).mid(1));
+        head->setContentsMargins(0, 12, 0, 0);
+        m_sideLayout->addWidget(head);
+        for (Coll::Length band : {Coll::Short, Coll::Medium, Coll::Long}) {
+            auto *r = new coll::SideRow(lengthText(*shown, band), QString::number(counts.value(band)));
+            r->setChosen(m_length == band);
+            r->setToolTip(m_length == band ? L("Quitar el filtro") : L("Ver solo «%1»").arg(lengthText(*shown, band)));
+            connect(r, &QToolButton::clicked, this, [this, band] {
+                setLength(m_length == band ? Coll::AnyLength : band);
+            });
+            m_sideLayout->addWidget(r);
+        }
+    }
     m_sideLayout->addStretch();
 
     // RETO: finished this year against the goal.
@@ -1724,7 +1822,7 @@ QString CollectionsView::progressText(const Collection &c, const CollectionItem 
 /// The centre: tiles in as many columns as fit, or the rows.
 void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QList<CollectionItem *> &items) {
     if (items.isEmpty()) {
-        auto *none = new QLabel(m_search.isEmpty() && m_tag.isEmpty() ? L("Nada por aquí todavía.")
+        auto *none = new QLabel(m_search.isEmpty() && !filtering() ? L("Nada por aquí todavía.")
                                                                        : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
         none->setContentsMargins(6, 4, 6, 4);
@@ -1858,14 +1956,15 @@ void CollectionsView::refreshDetail() {
         tiles->setColumnStretch(column++, 1);
     };
     if (c->has(Collection::kYear) && item->year > 0) tile(L("AÑO"), QString::number(item->year));
-    if (c->has(Collection::kProgress) && item->total > 0) {
-        QString value = Coll::number(item->total);
-        if (c->isInProgress(item->state) && item->progress > 0)
-            value = QString("%1 / %2").arg(Coll::number(item->progress), value);
-        tile(L(c->unitName()).toUpper(), value);
-    }
+    // The length; the page reached is in the progress block below.
+    if (c->has(Collection::kProgress) && item->total > 0)
+        tile(L(c->unitName()).toUpper(), Coll::number(item->total));
     tile(L("AÑADIDO"), Coll::shortDate(item->addedMs));
     m_detail->addLayout(tiles);
+
+    // In progress: the page, moved on right here, as on the reading card.
+    if (c->isInProgress(item->state) && c->has(Collection::kProgress))
+        m_detail->addLayout(progressBlock(*c, item, nullptr));
 
     // Priority, changed right here.
     if (c->has(Collection::kPriority) && !c->isFinal(item->state)) {
@@ -1912,6 +2011,19 @@ void CollectionsView::refreshDetail() {
         }
         tg->setColumnStretch(2, 1);
         m_detail->addWidget(tagBox);
+    }
+
+    if (c->has(Collection::kSynopsis) && !item->synopsis.isEmpty()) {
+        auto *label = new QLabel(L("Sinopsis"));
+        label->setObjectName("setFieldLabel");
+        m_detail->addWidget(label);
+        auto *text = new QLabel(item->synopsis);
+        text->setObjectName("popupText");
+        text->setTextFormat(Qt::PlainText);
+        text->setWordWrap(true);
+        text->setMinimumWidth(24);
+        text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_detail->addWidget(text);
     }
 
     // Planificar: a reading block in the Planner, the clock in Seguimiento.

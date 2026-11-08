@@ -15,6 +15,7 @@
 #include <QLineEdit>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPlainTextEdit>
 #include <QPointer>
 #include <QScrollArea>
 #include <QStyle>
@@ -280,6 +281,16 @@ void editItem(const Theme *theme, QWidget *host, Store *store, Collection *c, Co
         isbn = field(draft->isbn, true);
         col->addWidget(labelled(QStringLiteral("ISBN"), isbn));
     }
+    // A few lines, so a box that wraps rather than a one-line field.
+    QPlainTextEdit *synopsis = nullptr;
+    if (c->has(Collection::kSynopsis)) {
+        synopsis = new QPlainTextEdit(draft->synopsis);
+        synopsis->setObjectName("setFieldArea");
+        synopsis->setTabChangesFocus(true);
+        synopsis->setFixedHeight(84);
+        synopsis->setPlaceholderText(L("De qué va, en unas líneas"));
+        col->addWidget(labelled(L("Sinopsis"), synopsis));
+    }
     QList<QPair<QString, QLineEdit *>> customs;
     for (const CollectionField &f : c->custom) {
         QLineEdit *e = field(draft->extra.value(f.key).toString());
@@ -505,6 +516,7 @@ void editItem(const Theme *theme, QWidget *host, Store *store, Collection *c, Co
         if (year) target->year = year->text().toInt();
         if (total) target->total = total->text().toInt();
         if (isbn) target->isbn = isbn->text().trimmed();
+        if (synopsis) target->synopsis = synopsis->toPlainText().trimmed();
         for (const auto &[key, e] : customs) {
             if (e->text().trimmed().isEmpty()) target->extra.remove(key);
             else target->extra[key] = e->text().trimmed();
@@ -594,6 +606,7 @@ const QList<FieldInfo> &fieldInfo() {
         {Collection::kPriority, "Prioridad", "baja · media · alta"},
         {Collection::kRating, "Valoración", "0–5"},
         {Collection::kIsbn, "ISBN", "texto"},
+        {Collection::kSynopsis, "Sinopsis", "texto largo"},
     };
     return list;
 }

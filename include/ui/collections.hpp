@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QAbstractButton>
+#include <QHash>
 #include <QList>
 #include <QPointer>
 #include <QWidget>
@@ -120,6 +121,7 @@ private:
     void fillGrid(QVBoxLayout *col, const Collection &c, const QList<CollectionItem *> &items);
 
     QWidget *readingCard(const Collection &c, CollectionItem *item);
+    QVBoxLayout *progressBlock(const Collection &c, CollectionItem *item, QWidget *trailing);
     coll::Row *row(const Collection &c, CollectionItem *item, int number, const QString &meta,
                    bool grip, bool rating);
     QString metaFor(const Collection &c, const CollectionItem *item) const;
@@ -135,9 +137,16 @@ private:
     void openSortMenu(QWidget *anchor);
     void openTagMenu(QWidget *anchor);
     void setTag(const QString &tag);
+    void setLength(Coll::Length length);
+    /// A tag or a length filters.
+    bool filtering() const;
+    QString filterText(const Collection &c) const;
+    static QString lengthText(const Collection &c, Coll::Length length);
+    QHash<int, int> lengthCounts(const Collection &c) const;
     QList<QPair<QString, int>> tagCounts(const Collection &c) const;
     void openItemMenu(CollectionItem *item, const QPoint &globalPos);
-    void openPagePrompt(CollectionItem *item, QWidget *anchor);
+    /// Under @p anchor, or at @p at without one (the item's menu).
+    void openPagePrompt(CollectionItem *item, QWidget *anchor, const QPoint &at = QPoint());
     void select(CollectionItem *item);
     void addPages(CollectionItem *item, int pages);
     void moveTo(CollectionItem *item, const QString &stateId);
@@ -157,6 +166,7 @@ private:
     QString m_selected;         ///< Item id shown in the wide detail.
     bool m_wide = false;
     bool m_grid = true;         ///< Wide centre: tiles or rows.
+    Coll::Length m_length = Coll::AnyLength;   ///< The page filter (books).
     int m_gridColumns = 0;      ///< The tiles' columns as built; 0: no grid.
     bool m_planner = true;
     bool m_tracking = true;

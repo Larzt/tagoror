@@ -963,10 +963,17 @@ const QHash<QString, QString> &table() {
         {"Ver cola", "See queue"},
         {"Ver solo «%1»", "Show only “%1”"},
         // 1.3.2: the narrow panel's tag filter.
-        {"Filtrar por etiqueta", "Filter by tag"},
         {"Solo «%1»", "Only “%1”"},
         {"ETIQUETAS", "TAGS"},
         {"Todas", "All"},
+        // 1.3.3: the page filter and the synopsis.
+        {"Filtrar", "Filter"},
+        {"Hasta %1 %2", "Up to %1 %2"},
+        {"Más de %1 %2", "Over %1 %2"},
+        {"Cualquiera", "Any"},
+        {"Sinopsis", "Synopsis"},
+        {"De qué va, en unas líneas", "What it is about, in a few lines"},
+        {"texto largo", "long text"},
         {"Viendo", "Watching"},
         {"Vista", "Watched"},
         {"Voy por la página", "I'm on page"},

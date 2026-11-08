@@ -582,6 +582,12 @@ QLineEdit#setField {
     padding: 5px 8px; font-size: 11.5px; color: %3; font-family: "IBM Plex Mono", monospace;
 }
 QLineEdit#setField:focus { border: 1px solid %5; }
+/* Several lines in a form (1.3.3: a book's synopsis), in the body font. */
+QPlainTextEdit#setFieldArea {
+    background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px;
+    padding: 3px 4px; font-size: 11.5px; color: %3; selection-background-color: %9;
+}
+QPlainTextEdit#setFieldArea:focus { border: 1px solid %5; }
 QLabel#syncStatus { font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
 /* Folding a card (1.0): the chevron and what stands in for the body. */
 QToolButton#foldBtn { background: transparent; border: none; border-radius: 5px; }
