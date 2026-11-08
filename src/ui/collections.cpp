@@ -1059,7 +1059,8 @@ QString CollectionsView::metaFor(const Collection &c, const CollectionItem *item
     const QString progress = progressText(c, item);
     if (!progress.isEmpty()) return progress;
     if (c.sortKey == Collection::kByAdded)
-        return c.isFinal(item->state) ? L("terminado %1").arg(Coll::shortDate(item->finishedMs))
+        return c.isFinal(item->state) ? (item->finishedMs > 0 ? L("terminado %1").arg(Coll::shortDate(item->finishedMs))
+                                                              : L("sin fecha de fin"))
                                       : L("añadido %1").arg(Coll::shortDate(item->addedMs));
     if (c.isFinal(item->state) && item->finishedMs > 0)
         return L("terminado %1").arg(Coll::shortDate(item->finishedMs));
@@ -1385,6 +1386,8 @@ void CollectionsView::fillFinished(QVBoxLayout *col, const Collection &c, const 
     grid->addWidget(tile(L("MEDIA/MES"), Lang::locale().toString(perMonth, 'f', 1)), 0, 2);
     for (int i = 0; i < 3; ++i) grid->setColumnStretch(i, 1);
     col->addWidget(tiles);
+    // The goal: narrow there is no sidebar, so it lives here.
+    col->addWidget(goalCard(c));
 
     QString caption;
     if (c.sortKey == Collection::kByPriority) caption = L("Por valoración");
@@ -1789,34 +1792,83 @@ void CollectionsView::refreshSide() {
     }
     m_sideLayout->addStretch();
 
-    // RETO: finished this year against the goal.
-    if (shown->goal > 0) {
-        const int year = QDate::currentDate().year();
-        int done = 0;
-        for (const CollectionItem *i : m_store->collectionItems())
-            if (i->collection == shown->id && shown->isFinal(i->state) && i->finishedMs > 0 &&
-                QDateTime::fromMSecsSinceEpoch(i->finishedMs).date().year() == year)
-                ++done;
-        auto *card = new QFrame;
-        card->setObjectName("timerHero");
-        auto *v = new QVBoxLayout(card);
-        v->setContentsMargins(10, 10, 10, 10);
-        v->setSpacing(6);
-        auto *k = new QLabel(L("RETO %1").arg(year));
-        k->setObjectName("meta");
-        v->addWidget(k);
-        auto *nums = new QHBoxLayout;
-        nums->setSpacing(4);
-        auto *n = new QLabel(QString::number(done));
-        n->setObjectName("trackTileValue");
-        nums->addWidget(n, 0, Qt::AlignBottom);
-        auto *of = new ElidedLabel(QString("/ %1").arg(shown->goal), QColor(Theme::muted()));
-        of->setObjectName("timerSub");
-        nums->addWidget(of, 1, Qt::AlignBottom);
-        v->addLayout(nums);
-        v->addWidget(new coll::Bar(qMin(100, done * 100 / shown->goal), m_theme.accent));
-        m_sideLayout->addWidget(card);
+    // RETO: finished this year against the goal, or the way to set one.
+    m_sideLayout->addWidget(goalCard(*shown));
+}
+
+/// The yearly goal: "RETO 2026 · 3 / 6" with its bar and *Cambiar*, or, with
+/// none, *Ponerse un reto*. The wide sidebar's and the narrow finished tab's.
+/// Before 1.3.6 it was only in the sidebar and only changed from Editar
+/// colección, which nothing pointed to.
+QWidget *CollectionsView::goalCard(const Collection &c) {
+    const int year = QDate::currentDate().year();
+    auto *edit = textButton("noticeAction", c.goal > 0 ? L("Cambiar") : L("Ponerse un reto"));
+    edit->setToolTip(L("Cuántos terminar este año"));
+    connect(edit, &QToolButton::clicked, this, [this, edit] { openGoalPrompt(edit); });
+    if (c.goal <= 0) {
+        auto *row = sectionRow(L("RETO %1").arg(year), edit);
+        row->setContentsMargins(0, 8, 0, 0);
+        return row;
     }
+    const int done = Coll::finishedIn(m_store->collectionItems(), c, year);
+    auto *card = new QFrame;
+    card->setObjectName("timerHero");
+    auto *v = new QVBoxLayout(card);
+    v->setContentsMargins(10, 8, 6, 10);
+    v->setSpacing(6);
+    auto *head = new QHBoxLayout;
+    auto *k = new QLabel(L("RETO %1").arg(year));
+    k->setObjectName("meta");
+    head->addWidget(k, 1, Qt::AlignVCenter);
+    head->addWidget(edit, 0, Qt::AlignVCenter);
+    v->addLayout(head);
+    auto *nums = new QHBoxLayout;
+    nums->setSpacing(4);
+    auto *n = new QLabel(QString::number(done));
+    n->setObjectName("trackTileValue");
+    nums->addWidget(n, 0, Qt::AlignBottom);
+    auto *of = new ElidedLabel(QString("/ %1").arg(c.goal), QColor(Theme::muted()));
+    of->setObjectName("timerSub");
+    nums->addWidget(of, 1, Qt::AlignBottom);
+    v->addLayout(nums);
+    v->addWidget(new coll::Bar(qMin(100, done * 100 / c.goal), m_theme.accent));
+    // Finished without a date count in no year: said, or "3 leídos" and "0 / 6"
+    // look like a bug.
+    int undated = 0;
+    for (const CollectionItem *i : m_store->collectionItems())
+        if (i->collection == c.id && c.isFinal(i->state) && i->finishedMs <= 0) ++undated;
+    if (undated > 0) {
+        auto *note = new QLabel(undated == 1 ? L("1 sin fecha de fin: no cuenta")
+                                             : L("%1 sin fecha de fin: no cuentan").arg(undated));
+        note->setObjectName("meta");
+        note->setWordWrap(true);
+        note->setMinimumWidth(24);
+        note->setToolTip(L("Ponles la fecha en Editar → Terminado el"));
+        v->addWidget(note);
+    }
+    return card;
+}
+
+/// The goal typed, as the page is: a number, empty or 0 for none.
+void CollectionsView::openGoalPrompt(QWidget *anchor) {
+    Collection *c = current();
+    if (!c) return;
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("Reto %1 · cuántos terminar").arg(QDate::currentDate().year()));
+    QPointer<CollectionsView> self(this);
+    const QString id = c->id;
+    menu->addEditor(L("Sin reto"), c->goal > 0 ? QString::number(c->goal) : QString(),
+                    [self, id](const QString &text) {
+        if (!self || !self->m_store) return;
+        Collection *col = self->m_store->collection(id);
+        if (!col) return;
+        bool ok = false;
+        const int goal = text.trimmed().isEmpty() ? 0 : text.trimmed().toInt(&ok);
+        if (!text.trimmed().isEmpty() && (!ok || goal < 0)) return;
+        col->goal = qMin(goal, 9999);
+        self->edited();
+    });
+    menu->showUnder(anchor);
 }
 
 /// The width the grid has: the centre's, less its margins and a scroll bar's

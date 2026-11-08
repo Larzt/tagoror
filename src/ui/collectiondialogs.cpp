@@ -426,6 +426,13 @@ void editItem(const Theme *theme, QWidget *host, Store *store, Collection *c, Co
     pv->addWidget(started);
     col->addWidget(progressBox);
 
+    // The day it was finished, once finished (1.3.6): what the yearly goal
+    // counts by. Empty is "no date", for something finished long ago.
+    QLineEdit *finished = field(dateText(draft->finishedMs), true);
+    finished->setPlaceholderText(L("Sin fecha · dd/mm/aaaa"));
+    auto *finishedBox = labelled(L("Terminado el"), finished);
+    col->addWidget(finishedBox);
+
     // Rating, once finished.
     QList<QToolButton *> ratingBtns;
     auto *ratingBox = new QWidget;
@@ -527,6 +534,11 @@ void editItem(const Theme *theme, QWidget *host, Store *store, Collection *c, Co
         const QString sid = c->states.value(*stateIdx).id;
         progressBox->setVisible(c->has(Collection::kProgress) && c->isInProgress(sid));
         ratingBox->setVisible(c->has(Collection::kRating) && c->isFinal(sid));
+        finishedBox->setVisible(c->isFinal(sid));
+        // Moved to finished here: today, as the Terminado button would. One
+        // that already was keeps what it had, even no date.
+        if (c->isFinal(sid) && !c->isFinal(draft->state) && finished->text().isEmpty())
+            finished->setText(dateText(QDateTime::currentMSecsSinceEpoch()));
         const int t = total ? total->text().toInt() : 0;
         const int p = page->text().toInt();
         ofTotal->setText(t > 0 ? QString("/ %1").arg(t) : QString());
@@ -598,6 +610,19 @@ void editItem(const Theme *theme, QWidget *host, Store *store, Collection *c, Co
             added->setFocus();
             return nullptr;
         }
+        // -1: unreadable; 0: no date.
+        const qint64 finishedMs = finished->text().trimmed().isEmpty()
+                                      ? 0
+                                      : parseDate(finished->text(), draft->finishedMs > 0
+                                                                        ? draft->finishedMs
+                                                                        : QDateTime::currentMSecsSinceEpoch());
+        if (coll->isFinal(coll->states.value(*stateIdx).id) && finishedMs < 0) {
+            warn->setText(L("La fecha de fin tiene que ser dd/mm/aaaa."));
+            warn->show();
+            ov->relayout();
+            finished->setFocus();
+            return nullptr;
+        }
         CollectionItem *target = itemId.isEmpty() ? nullptr : store->collectionItem(itemId);
         if (!itemId.isEmpty() && !target) return nullptr;   // deleted meanwhile (a sync)
         const bool fresh = !target;
@@ -648,6 +673,7 @@ void editItem(const Theme *theme, QWidget *host, Store *store, Collection *c, Co
         } else {
             Coll::setState(target, *coll, sid);
         }
+        if (coll->isFinal(target->state)) target->finishedMs = qMax<qint64>(0, finishedMs);
         if (coll->has(Collection::kProgress) && coll->isInProgress(target->state)) {
             int p = page->text().toInt();
             if (target->total > 0) p = qMin(p, target->total);

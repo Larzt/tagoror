@@ -4,6 +4,26 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.6] — 2026-11-08
+
+### Fixed
+
+- **Colecciones: the yearly goal.** It counts what was finished this year,
+  so anything finished with no date counted nowhere, silently: three books
+  read showed "0 / 6". Now:
+  - The card of something finished has **Terminado el**, the day it was
+    finished — today when it is moved there in the card, editable, and
+    empty for "no date".
+  - The RETO card says how many finished have no date and so do not count.
+  - The goal is changed right on it (*Cambiar*), or set with *Ponerse un
+    reto* when there is none; before, only *Editar colección* had it, and
+    nothing said so (its menu entry now reads "Nombre, estados, campos y
+    reto").
+  - The narrow panel shows it too, in the finished tab under this year's
+    figures; before it was only in the wide mode's sidebar.
+  - Sorted by date, something finished with no date says "sin fecha de fin"
+    instead of a bare "terminado".
+
 ## [1.3.5] — 2026-11-08
 
 ### Added

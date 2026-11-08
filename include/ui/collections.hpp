@@ -121,6 +121,8 @@ private:
     void fillGrid(QVBoxLayout *col, const Collection &c, const QList<CollectionItem *> &items);
 
     QWidget *readingCard(const Collection &c, CollectionItem *item);
+    QWidget *goalCard(const Collection &c);
+    void openGoalPrompt(QWidget *anchor);
     QVBoxLayout *progressBlock(const Collection &c, CollectionItem *item, QWidget *trailing);
     coll::Row *row(const Collection &c, CollectionItem *item, int number, const QString &meta,
                    bool grip, bool rating);
