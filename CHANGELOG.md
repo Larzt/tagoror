@@ -4,6 +4,24 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.1] — 2026-11-08
+
+### Fixed
+
+- **Colecciones, wide mode**: the grid's tiles no longer lose information at
+  some window sizes. The columns follow the window as it is resized, each tile
+  keeps the height its width needs (the state and priority under the cover
+  were cut off), and a long title wraps into the lines the cover has room for
+  and ends in "…", instead of losing its beginning. The state under a tile is
+  elided before it reaches the priority stones ("por escuchar"), and the
+  tooltip has the whole title, author and progress.
+- **Colecciones, list mode**: what is in progress shows its progress — a bar
+  under the title and "p. 212 / 496 · 43%" on the right — in *Todos* and in
+  the in-progress tab. Tiles show the percentage next to the state too.
+- Every template is covered, not only Libros: tiles show the year and the
+  author only if the collection uses those fields, and the progress uses each
+  template's unit (episodes, etc.).
+
 ## [1.3.0] — 2026-11-08
 
 ### Added

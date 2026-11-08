@@ -9,6 +9,7 @@
 #include <QApplication>
 #include <QContextMenuEvent>
 #include <QEnterEvent>
+#include <QFontMetrics>
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIntValidator>
@@ -23,6 +24,7 @@
 #include <QSet>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QTextLayout>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -102,6 +104,30 @@ void clearLayout(QLayout *l) {
 /// "Proyecto Hail Mary" → the first three words, for the text on a cover.
 QString coverText(const QString &title) {
     return title.simplified().split(' ', Qt::SkipEmptyParts).mid(0, 3).join(' ');
+}
+
+/// @p text wrapped to @p width in at most @p maxLines, the last one elided.
+/// A plain drawText() with a word wrap clips instead: aligned to the bottom,
+/// a long title lost its beginning ("joven Werther").
+QStringList wrapLines(const QString &text, const QFont &font, qreal width, int maxLines) {
+    QStringList lines;
+    if (text.isEmpty() || maxLines < 1 || width < 1) return lines;
+    const QFontMetricsF fm(font);
+    QTextLayout layout(text, font);
+    QTextOption option;
+    option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+    layout.setTextOption(option);
+    layout.beginLayout();
+    for (QTextLine line = layout.createLine(); line.isValid(); line = layout.createLine()) {
+        line.setLineWidth(width);
+        if (lines.size() == maxLines - 1) {
+            lines << fm.elidedText(text.mid(line.textStart()).simplified(), Qt::ElideRight, width);
+            break;
+        }
+        lines << text.mid(line.textStart(), line.textLength()).trimmed();
+    }
+    layout.endLayout();
+    return lines;
 }
 
 }  // namespace
@@ -351,6 +377,8 @@ public:
     QColor stateColor;
     int percent = -1;
     bool priority = true;
+    bool showYear = true;
+    bool showAuthor = true;
     bool selected = false;
     std::function<void()> select;
     std::function<void()> open;
@@ -383,7 +411,10 @@ protected:
             p.setBrush(fill);
             p.drawRoundedRect(frame, 10, 10);
         }
-        const QRectF cover(6, 6, width() - 12, (width() - 12) * 1.5);
+        // 2:3, unless the tile was given less height than that: then the cover
+        // gives way, never the foot under it.
+        const qreal coverH = qMax<qreal>(40, qMin<qreal>((width() - 12) * 1.5, height() - 6 - 28));
+        const QRectF cover(6, 6, width() - 12, coverH);
         QPainterPath path;
         path.addRoundedRect(cover, 4, 4);
         p.fillPath(path, CollectionItem::coverColor(item->color));
@@ -403,30 +434,50 @@ protected:
         mono.setPixelSize(9);
         p.setFont(mono);
         p.setPen(QColor(255, 255, 255, 178));
-        if (item->year > 0) p.drawText(text, Qt::AlignLeft | Qt::AlignTop, QString::number(item->year));
+        qreal top = text.top();
+        if (showYear && item->year > 0) {
+            p.drawText(text, Qt::AlignLeft | Qt::AlignTop, QString::number(item->year));
+            top += QFontMetricsF(mono).height() + 4;
+        }
         QFont small = font();
         small.setPixelSize(10);
-        const QFontMetrics sm(small);
-        const QString author = sm.elidedText(item->author, Qt::ElideRight, int(text.width()));
+        const QFontMetricsF sm(small);
+        qreal bottom = text.bottom();
+        if (showAuthor && !item->author.isEmpty()) {
+            const QRectF authorBox(text.left(), text.bottom() - sm.height(), text.width(), sm.height());
+            p.setFont(small);
+            p.drawText(authorBox, Qt::AlignLeft | Qt::AlignVCenter,
+                       sm.elidedText(item->author, Qt::ElideRight, text.width()));
+            bottom = authorBox.top() - 3;
+        }
+        // As many lines of title as the cover leaves room for, from the
+        // bottom up, the last one with "…". At least one, over the year if
+        // it must: the title is what tells tiles apart.
         QFont big = font();
         big.setPixelSize(12);
         big.setWeight(QFont::DemiBold);
-        const QRectF authorBox(text.left(), text.bottom() - sm.height(), text.width(), sm.height());
-        const qreal titleH = QFontMetrics(big).height() * 3;
-        const QRectF titleBox(text.left(), authorBox.top() - 3 - titleH, text.width(), titleH);
+        const qreal lineH = QFontMetricsF(big).height();
+        const int maxLines = qBound(1, int((bottom - top) / lineH), 4);
+        const QStringList lines = wrapLines(item->title.isEmpty() ? L("Sin título") : item->title, big,
+                                            text.width(), maxLines);
         p.setFont(big);
         p.setPen(QColor(255, 255, 255, 235));
-        p.drawText(titleBox, Qt::AlignLeft | Qt::AlignBottom | Qt::TextWordWrap, item->title);
-        p.setFont(small);
-        p.setPen(QColor(255, 255, 255, 178));
-        p.drawText(authorBox, Qt::AlignLeft | Qt::AlignVCenter, author);
+        qreal y = bottom - lines.size() * lineH;
+        for (const QString &line : lines) {
+            p.drawText(QRectF(text.left(), y, text.width(), lineH), Qt::AlignLeft | Qt::AlignVCenter, line);
+            y += lineH;
+        }
 
         const QRectF foot(8, cover.bottom() + 4, width() - 16, 16);
-        p.setFont(mono);
         mono.setPixelSize(10);
         p.setFont(mono);
         p.setPen(stateColor);
-        p.drawText(foot, Qt::AlignLeft | Qt::AlignVCenter, state);
+        // The state, and how far along while in progress; elided before it
+        // reaches the stones ("por escuchar" on a narrow tile).
+        const qreal stones = priority ? 3 * 5 + 2 * 2 + 6 : 0;
+        const QString footText = percent >= 0 ? QString("%1 · %2%").arg(state).arg(percent) : state;
+        p.drawText(foot.adjusted(0, 0, -stones, 0), Qt::AlignLeft | Qt::AlignVCenter,
+                   QFontMetricsF(mono).elidedText(footText, Qt::ElideRight, foot.width() - stones));
         if (priority) {
             static const qreal sizes[3] = {5, 5, 5};
             qreal x = foot.right() - 3 * 5 - 2 * 2;
@@ -586,6 +637,7 @@ CollectionsView::CollectionsView(const Theme &theme, QWidget *parent)
     m_scroll->setWidget(m_listHost);
     m_scroll->viewport()->setAutoFillBackground(false);
     m_scroll->viewport()->setObjectName("scrollViewport");
+    m_scroll->installEventFilter(this);   // the grid's columns follow its width
 
     // Wide: the collections on the left and the detail on the right, each
     // behind a hairline.
@@ -776,6 +828,22 @@ void CollectionsView::focusSearch() {
 }
 
 bool CollectionsView::eventFilter(QObject *watched, QEvent *event) {
+    // Wider or narrower by a column: the tiles are rebuilt for the new count.
+    // Their height follows their width, so leaving them to the layout would
+    // stretch them past it and cut the state and stones under the cover.
+    // Within the same count, each tile just takes the height of its new width.
+    if (watched == m_scroll && event->type() == QEvent::Resize && m_wide && m_grid && m_gridColumns > 0) {
+        const int avail = gridWidth();
+        const int columns = gridColumns(avail);
+        if (columns != m_gridColumns) {
+            m_gridColumns = 0;   // one rebuild per change, however many resizes arrive
+            QTimer::singleShot(0, this, [this] { if (m_wide) refreshBody(); });
+        } else {
+            const int tileW = (avail - 8 * (columns - 1)) / columns;
+            for (QWidget *w : m_listHost->findChildren<QWidget *>())   // Tile has no Q_OBJECT
+                if (auto *t = dynamic_cast<coll::Tile *>(w)) t->setFixedHeight(t->heightForWidth(tileW));
+        }
+    }
     // A reading card or a tile: double click opens the item, as on a row.
     const QString itemId = watched->property("itemId").toString();
     if (!itemId.isEmpty() && m_store) {
@@ -939,6 +1007,9 @@ void CollectionsView::refreshBody() {
 /// added, or year and length.
 QString CollectionsView::metaFor(const Collection &c, const CollectionItem *item) const {
     QStringList parts;
+    // In progress, how far along says more than any sort.
+    const QString progress = progressText(c, item);
+    if (!progress.isEmpty()) return progress;
     if (c.sortKey == Collection::kByAdded)
         return c.isFinal(item->state) ? L("terminado %1").arg(Coll::shortDate(item->finishedMs))
                                       : L("añadido %1").arg(Coll::shortDate(item->addedMs));
@@ -978,6 +1049,12 @@ Row *CollectionsView::row(const Collection &c, CollectionItem *item, int number,
     if (rating && c.has(Collection::kYear) && item->year > 0)
         sub = sub.isEmpty() ? QString::number(item->year) : sub + " · " + QString::number(item->year);
     if (!sub.isEmpty()) texts->addWidget(elided(sub, "collSub", QColor(Theme::muted())));
+    // In progress, its bar, as on the reading card: the wide list's rows are
+    // the only place the Todos and Leyendo tabs show it.
+    if (c.isInProgress(item->state) && c.has(Collection::kProgress) && item->total > 0) {
+        texts->addSpacing(2);
+        texts->addWidget(new coll::Bar(item->percent(), m_theme.accent));
+    }
     l->addLayout(texts, 1);
 
     auto *right = new QVBoxLayout;
@@ -1557,6 +1634,32 @@ void CollectionsView::refreshSide() {
     }
 }
 
+/// The width the grid has: the centre's, less its margins and a scroll bar's
+/// room, always, so the bar appearing does not change the columns and make
+/// it disappear again.
+int CollectionsView::gridWidth() const {
+    const int bar = m_scroll->style()->pixelMetric(QStyle::PM_ScrollBarExtent, nullptr, m_scroll);
+    return qMax(110, m_scroll->width() - 24 - bar);
+}
+
+/// Tiles of 110 px or more, up to eight.
+int CollectionsView::gridColumns(int width) {
+    return qBound(1, (width + 8) / (110 + 8), 8);
+}
+
+/// "p. 212 / 496 · 43%", "ep. 3", or nothing: how far along something in
+/// progress is, for the rows and tiles of the wide mode.
+QString CollectionsView::progressText(const Collection &c, const CollectionItem *item) const {
+    if (!c.isInProgress(item->state) || !c.has(Collection::kProgress)) return QString();
+    const QString unit = L(c.unitShort());
+    if (item->total > 0)
+        return QString("%1 %2 / %3 · %4%")
+            .arg(unit, Coll::number(item->progress), Coll::number(item->total))
+            .arg(item->percent());
+    if (item->progress > 0) return QString("%1 %2").arg(unit, Coll::number(item->progress));
+    return QString();
+}
+
 /// The centre: tiles in as many columns as fit, or the rows.
 void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QList<CollectionItem *> &items) {
     if (items.isEmpty()) {
@@ -1584,8 +1687,13 @@ void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QLis
     auto *grid = new QGridLayout(host);
     grid->setContentsMargins(0, 0, 0, 0);
     grid->setSpacing(8);
-    const int avail = m_scroll->viewport()->width() - 24;
-    const int columns = qBound(2, avail / 130, 8);
+    // The columns that fit now, each tile as tall as its width asks: the grid
+    // is rebuilt when the window changes how many fit (eventFilter), so a tile
+    // is never stretched past the height it was made for.
+    const int avail = gridWidth();
+    const int columns = gridColumns(avail);
+    m_gridColumns = columns;
+    const int tileW = (avail - 8 * (columns - 1)) / columns;
     for (int i = 0; i < items.size(); ++i) {
         CollectionItem *item = items.at(i);
         auto *t = new coll::Tile(item, &m_theme);
@@ -1596,8 +1704,16 @@ void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QLis
                                                      : kAmber;
         t->percent = c.isInProgress(item->state) && c.has(Collection::kProgress) ? item->percent() : -1;
         t->priority = c.has(Collection::kPriority);
+        t->showYear = c.has(Collection::kYear);
+        t->showAuthor = c.has(Collection::kAuthor);
         t->selected = item->id == m_selected;
-        t->setToolTip(item->title);
+        t->setFixedHeight(t->heightForWidth(tileW));
+        // Whole, whatever the tile had room for.
+        QStringList tip{item->title.isEmpty() ? L("Sin título") : item->title};
+        if (t->showAuthor && !item->author.isEmpty()) tip << item->author;
+        const QString figures = progressText(c, item);
+        if (!figures.isEmpty()) tip << figures;
+        t->setToolTip(tip.join('\n'));
         t->select = [this, item] { select(item); };
         t->open = [this, item] { emit editRequested(item); };
         t->menu = [this, item](const QPoint &at) { openItemMenu(item, at); };

@@ -123,6 +123,11 @@ private:
     coll::Row *row(const Collection &c, CollectionItem *item, int number, const QString &meta,
                    bool grip, bool rating);
     QString metaFor(const Collection &c, const CollectionItem *item) const;
+    /// "p. 212 / 496 · 43%" while in progress; empty otherwise.
+    QString progressText(const Collection &c, const CollectionItem *item) const;
+    /// The wide grid's width for tiles, and the columns that fit in it.
+    int gridWidth() const;
+    static int gridColumns(int width);
     /// Items of the tab after the search.
     QList<CollectionItem *> visible(const Collection &c, const QString &stateId) const;
     bool matches(const CollectionItem *item) const;
@@ -149,6 +154,7 @@ private:
     QString m_selected;         ///< Item id shown in the wide detail.
     bool m_wide = false;
     bool m_grid = true;         ///< Wide centre: tiles or rows.
+    int m_gridColumns = 0;      ///< The tiles' columns as built; 0: no grid.
     bool m_planner = true;
     bool m_tracking = true;
 
