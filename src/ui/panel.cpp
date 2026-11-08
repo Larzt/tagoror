@@ -312,7 +312,7 @@ void Panel::buildShell() {
 
     m_navBar = new NavBar(&m_theme);
     m_navBar->setItems({{m_scroll, "notes", "Notas", "Ctrl+1"},
-                        {m_planner, "calendar", "Planner", "Ctrl+2"},
+                        {m_planner, "calendar", "Planificador", "Ctrl+2"},
                         {m_timerView, "timer", "Timers", "Ctrl+3"},
                         {m_birthdays, "cake", "Cumpleaños", "Ctrl+4"},
                         {m_tracking, "bars", "Seguimiento", "Ctrl+5"},
@@ -344,7 +344,7 @@ void Panel::buildShell() {
     m_stack->addWidget(m_badge);
 
     m_nav->setStacks(m_stack, m_shell, m_badge, m_body, m_scroll);
-    m_nav->addPage(m_planner, m_navBar->buttonFor(m_planner), "planner", "Planner");
+    m_nav->addPage(m_planner, m_navBar->buttonFor(m_planner), "planner", "Planificador");
     m_nav->addPage(m_timerView, m_navBar->buttonFor(m_timerView), "timers", "Timers");
     m_nav->addPage(m_birthdays, m_navBar->buttonFor(m_birthdays), "birthdays", "Cumpleaños");
     m_nav->addPage(m_tracking, m_navBar->buttonFor(m_tracking), "tracking", "Seguimiento");
@@ -811,6 +811,7 @@ QWidget *Panel::buildBody() {
         save();
     });
     connect(m_settings, &SettingsView::featureToggled, this, &Panel::setFeature);
+    connect(m_settings, &SettingsView::pageOrderChanged, this, &Panel::setPageOrder);
     connect(m_settings, &SettingsView::plannerWrapPicked, this, [this](bool wrap) {
         if (wrap == m_theme.plannerWrap) return;
         m_theme.plannerWrap = wrap;
@@ -1650,6 +1651,27 @@ void Panel::setFeature(const QString &key, bool on) {
     save();
 }
 
+void Panel::setPageOrder(const QStringList &keys) {
+    m_store.prefs().pageOrder = Features::pageOrder(keys);
+    applyPageOrder();
+    refreshSettings();
+    save();
+}
+
+/// The navigation in the chosen order. The shortcuts stay with their page
+/// (Ctrl+2 is still the Planificador wherever it sits): they are learnt by
+/// hand, and moving a page should not move what the fingers know.
+void Panel::applyPageOrder() {
+    if (!m_navBar) return;
+    QList<QWidget *> pages;
+    const QList<QWidget *> all{m_planner, m_timerView, m_birthdays, m_tracking, m_collections};
+    for (const QString &key : Features::pageOrder(m_store.prefs().pageOrder))
+        for (QWidget *page : all)
+            if (page && featureOf(page) >= 0 && Features::key(Features::Id(featureOf(page))) == key)
+                pages << page;
+    m_navBar->setOrder(pages);
+}
+
 /// What is left out disappears from every way in; nothing is deleted. What it
 /// had ringing goes quiet, since there is no page left to stop it from.
 void Panel::applyFeatures() {
@@ -1658,6 +1680,7 @@ void Panel::applyFeatures() {
                               static_cast<QWidget *>(m_birthdays), static_cast<QWidget *>(m_tracking),
                               static_cast<QWidget *>(m_collections)})
             m_navBar->setItemVisible(page, has(Features::Id(featureOf(page))));
+    applyPageOrder();
 
     if (m_planner) m_planner->setRemindersEnabled(hasNoteType(Note::Reminder));
     if (m_collections) m_collections->setLinks(has(Features::Planner), has(Features::Tracking));
@@ -3111,7 +3134,7 @@ void Panel::openPalette() {
     const QString go = L("Ir a"), create = L("Crear"), areas = L("Áreas");
     cmds << Command{go, "notes", L("Notas"), "Ctrl+1", [this] { showNotes(); }};
     if (has(Features::Planner))
-        cmds << Command{go, "calendar", L("Planner"), "Ctrl+2", [this] { openPage(m_planner); }};
+        cmds << Command{go, "calendar", L("Planificador"), "Ctrl+2", [this] { openPage(m_planner); }};
     if (has(Features::Timers))
         cmds << Command{go, "timer", L("Timers"), "Ctrl+3", [this] { openPage(m_timerView); }};
     if (has(Features::Birthdays))

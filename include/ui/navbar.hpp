@@ -56,6 +56,10 @@ public:
     /// (core/features.hpp); the others share the room.
     void setItemVisible(QWidget *page, bool visible);
 
+    /// Puts the items of @p pages in that order; any other (Notas) stays
+    /// before them, as it was.
+    void setOrder(const QList<QWidget *> &pages);
+
     /// The item's widget, to park the focus on when its page is left.
     QWidget *buttonFor(QWidget *page) const;
 

@@ -85,7 +85,7 @@
   <img src="docs/v5-planner.png" alt="The planner in week view: the navigation as a rail, a mini month, today's tasks and the categories on the left, the week's events laid out by hour" width="720">
 </p>
 
-- *Planner* in the navigation (or **Ctrl+2**) opens it. The
+- *Planner* (*Planificador* in Spanish) in the navigation (or **Ctrl+2**) opens it. The
   panel **widens while it is open** — a week does not fit in 300 pixels — and
   returns to its size when you leave, unless you resized it in between.
 - **Day, week and month views.** Day and week lay things out by the hour, side
@@ -329,7 +329,9 @@
 - **The navigation stays put**: Notes, Planner, Timers, Birthdays and Seguimiento along the
   bottom, the open one marked, or as a rail on the left once the panel is wider
   than 480 px. A red dot on Notes says a reminder is ringing while you are
-  elsewhere.
+  elsewhere. Notes is always first; the other pages go in the order you set in
+  **Settings → General → Orden de las páginas** (their shortcuts stay with
+  them).
 - **One place for notices**: what rings, a missing data folder, a failed sync
   and a new version share a single card above the navigation, most urgent first,
   with *1 of N* for the rest. Nothing slides in pushing your notes down.

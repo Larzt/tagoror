@@ -67,6 +67,8 @@ signals:
     void compactPicked(bool compact);
     void plannerWrapPicked(bool wrap);
     void featureToggled(const QString &key, bool on);   ///< core/features.hpp
+    /// The pages after Notas, as Features::key()s, in their new order.
+    void pageOrderChanged(const QStringList &keys);
     void alarmToneRequested(QWidget *anchor);   ///< The menu of tones.
     void alarmVolumeChanged(int percent);       ///< Live, while dragging.
     void alarmPreviewRequested();
@@ -106,6 +108,7 @@ private:
     void addAlarm();
     void addLanguage();
     void addFeatures();
+    void addPageOrder();
     void addWindow();
     void addData();
     void addInputs();

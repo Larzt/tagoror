@@ -4,6 +4,23 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.5] — 2026-11-08
+
+### Added
+
+- **The pages' order in the navigation can be changed**: *Ajustes → General
+  → Orden de las páginas* moves each one up or down. *Notas* is the app
+  itself and stays first. Pages turned off keep their place for when they
+  come back, and the shortcuts stay with their page (Ctrl+2 is the planner
+  wherever it sits).
+
+### Changed
+
+- In Spanish the *Planner* is now the ***Planificador*** — in the
+  navigation, its page, the palette, the shortcuts, the features and
+  Colecciones' "Bloque de lectura en el Planificador". English keeps
+  *Planner*.
+
 ## [1.3.4] — 2026-11-08
 
 ### Added

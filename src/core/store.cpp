@@ -482,6 +482,7 @@ void Store::save() {
     root["compact"] = m_prefs.compact;
     root["plannerWrap"] = m_prefs.plannerWrap;
     root["featuresOff"] = QJsonArray::fromStringList(m_prefs.featuresOff);
+    root["pageOrder"] = QJsonArray::fromStringList(m_prefs.pageOrder);
     root["featuresChosen"] = m_prefs.featuresChosen;
     root["alarmTone"] = m_prefs.alarmTone;
     root["alarmVolume"] = m_prefs.alarmVolume;
@@ -1009,6 +1010,8 @@ bool Store::readObject(const QJsonObject &root) {
     m_prefs.plannerWrap = root["plannerWrap"].toBool();   // older files: cut
     m_prefs.featuresOff.clear();
     for (const QJsonValue v : root["featuresOff"].toArray()) m_prefs.featuresOff << v.toString();
+    m_prefs.pageOrder.clear();
+    for (const QJsonValue v : root["pageOrder"].toArray()) m_prefs.pageOrder << v.toString();
     // Older files: chosen already, everything on, as their owner had it.
     m_prefs.featuresChosen = !root.contains("featuresChosen") || root["featuresChosen"].toBool();
     if (root.contains("alarmTone")) m_prefs.alarmTone = root["alarmTone"].toString();

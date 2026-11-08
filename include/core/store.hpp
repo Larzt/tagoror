@@ -77,6 +77,9 @@ public:
         /// Parts of the app left out (Features::key()s); empty is everything, as
         /// before 1.3. See core/features.hpp.
         QStringList featuresOff;
+        /// 1.3.5: the pages' order in the navigation, after Notas, which is
+        /// always first. Keys of Features::pages(); see Features::pageOrder().
+        QStringList pageOrder;
         /// Whether the first-start choice of features was made. Only a fresh
         /// install starts without it; a file from before 1.3 counts as made.
         bool featuresChosen = true;

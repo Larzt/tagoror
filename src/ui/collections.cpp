@@ -2071,7 +2071,7 @@ void CollectionsView::refreshDetail() {
             pv->addWidget(b);
         };
         if (m_planner)
-            link("calendar", L("Bloque de lectura en el Planner"), [this, item] { emit planRequested(item); });
+            link("calendar", L("Bloque de lectura en el Planificador"), [this, item] { emit planRequested(item); });
         if (m_tracking)
             link("bars", L("Medir tiempo con Seguimiento"), [this, item] { emit trackRequested(item); });
         m_detail->addLayout(pv);

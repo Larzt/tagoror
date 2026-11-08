@@ -96,6 +96,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.3.5" date="2026-11-08">
+      <description>
+        <p>The pages after Notes can be put in any order from the settings, and
+           the Spanish interface calls the planner Planificador.</p>
+      </description>
+    </release>
     <release version="1.3.4" date="2026-11-08">
       <description>
         <p>Collections: a picture can be the cover of a book, game, film,

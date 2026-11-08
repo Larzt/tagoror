@@ -281,6 +281,7 @@ void SettingsView::refresh() {
         case General:
             addLanguage();
             addFeatures();
+            addPageOrder();
             addWindow();
             addData();
             addInputs();
@@ -538,6 +539,53 @@ void SettingsView::addFeatures() {
         const QString key = QString::fromLatin1(f.key);
         addToggle(L(f.name), L(f.hint), !off.contains(key),
                   [this, key](bool on) { emit featureToggled(key, on); });
+    }
+}
+
+/// The navigation's order (1.3.5): Notas first, always, as the app itself;
+/// the rest moved up or down a place, the ones turned off included, so they
+/// come back where they were put.
+void SettingsView::addPageOrder() {
+    beginGroup(L("ORDEN DE LAS PÁGINAS"), "sort");
+    const QStringList order = Features::pageOrder(m_store->prefs().pageOrder);
+    const QStringList &off = m_store->prefs().featuresOff;
+
+    const auto row = [this](const QString &name, const QString &hint) {
+        auto *r = new SettingRow;
+        auto *l = new QHBoxLayout(r);
+        l->setContentsMargins(8, 5, 6, 5);
+        l->setSpacing(4);
+        l->addLayout(textColumn(name, hint), 1);
+        addToGroup(r);
+        return l;
+    };
+    row(L("Notas"), L("Siempre la primera"));
+
+    for (int i = 0; i < order.size(); ++i) {
+        const QString key = order.at(i);
+        QString name;
+        for (const Features::Info &f : Features::pages())
+            if (key == QLatin1String(f.key)) name = L(f.name);
+        QHBoxLayout *l = row(name, off.contains(key) ? L("Apagada") : QString());
+        const auto move = [this, order, i](int to) {
+            QStringList moved = order;
+            moved.move(i, to);
+            emit pageOrderChanged(moved);
+        };
+        for (const bool up : {true, false}) {
+            auto *b = new QToolButton;
+            b->setObjectName("foldBtn");
+            b->setIcon(paintIcon(up ? "chevronUp" : "chevronDown", QColor(Theme::muted()), 14));
+            b->setIconSize(QSize(14, 14));
+            b->setFixedSize(26, 26);
+            b->setCursor(Qt::PointingHandCursor);
+            b->setFocusPolicy(Qt::TabFocus);
+            b->setToolTip(up ? L("Subir «%1»").arg(name) : L("Bajar «%1»").arg(name));
+            const int to = up ? i - 1 : i + 1;
+            b->setEnabled(to >= 0 && to < order.size());
+            connect(b, &QToolButton::clicked, this, [move, to] { move(to); });
+            l->addWidget(b, 0, Qt::AlignVCenter);
+        }
     }
 }
 
@@ -930,7 +978,7 @@ void SettingsView::addCalendar() {
 /// they do.
 void SettingsView::addShortcuts() {
     const QList<QPair<const char *, QList<QPair<const char *, QString>>>> groups{
-        {"PÁGINAS", {{"Notas", "Ctrl+1"}, {"Planner", "Ctrl+2"}, {"Timers", "Ctrl+3"},
+        {"PÁGINAS", {{"Notas", "Ctrl+1"}, {"Planificador", "Ctrl+2"}, {"Timers", "Ctrl+3"},
                      {"Cumpleaños", "Ctrl+4"}, {"Seguimiento", "Ctrl+5"}, {"Colecciones", "Ctrl+6"},
                      {"Ajustes", "Ctrl+,"},
                      {"Paleta de comandos", "Ctrl+K"}, {"Volver a las notas", "Esc"}}},
@@ -938,9 +986,9 @@ void SettingsView::addShortcuts() {
                    {"Recordatorio", "Ctrl+⇧R"}, {"Nota de voz", "Ctrl+⇧V"},
                    {"Nota Markdown", "Ctrl+⇧M"}, {"Buscar", "Ctrl+F"},
                    {"Terminar de escribir", "Enter"}, {"Nueva línea en una nota", "⇧+Enter"}}},
-        {"PLANNER", {{"Copiar lo que hay bajo el ratón", "Ctrl+C"},
-                     {"Pegar en la hora o el día bajo el ratón", "Ctrl+V"},
-                     {"Duplicar en el mismo sitio", "Ctrl+D"}}},
+        {"PLANIFICADOR", {{"Copiar lo que hay bajo el ratón", "Ctrl+C"},
+                          {"Pegar en la hora o el día bajo el ratón", "Ctrl+V"},
+                          {"Duplicar en el mismo sitio", "Ctrl+D"}}},
         {"SEGUIMIENTO", {{"Pausar o reanudar", "Ctrl+⇧+Espacio"},
                          {"Añadir una sesión pasada", "Ctrl+N"}, {"Duplicar sesión", "Ctrl+D"},
                          {"Borrar sesión", "Supr"}}},

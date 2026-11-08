@@ -325,6 +325,9 @@ private:
     int featureOf(const QWidget *page) const;
     /// Turns one on or off, saves, and applies it.
     void setFeature(const QString &key, bool on);
+    /// 1.3.5: the pages after Notas in @p keys' order, in the navigation.
+    void setPageOrder(const QStringList &keys);
+    void applyPageOrder();
     /// Hides what is off and shows what is on: navigation, tray, planner.
     void applyFeatures();
     /// The first start's choice (WelcomeView), once the window is up.
