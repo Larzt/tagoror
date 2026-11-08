@@ -1,6 +1,7 @@
 #include "ui/panel.hpp"
 #include "audio/alarm.hpp"
 #include "ui/alertcenter.hpp"
+#include "ui/welcome.hpp"
 #include "ui/areatabs.hpp"
 #include "audio/recorder.hpp"
 #include "ui/birthdays.hpp"
@@ -209,6 +210,7 @@ Panel::Panel() {
     buildShell();
     applyAppModeChrome();
     buildTray();
+    applyFeatures();
     rebuildList();
     applyTheme();
     refreshSettings();
@@ -240,6 +242,13 @@ void Panel::startUp(bool visible) {
     const bool updates = updateCheckDue();
     if (sync) m_sync->syncNow();
     if (updates) pollUpdates();
+    // A fresh install asks first which parts of the app to use; the splash would
+    // only stand in front of the question. Started into the tray, it waits for
+    // the window (showEvent()).
+    if (!m_store.prefs().featuresChosen) {
+        if (visible) openWelcome();
+        return;
+    }
     if (!visible || (!sync && !updates)) return;
 
     QList<Splash::Step> steps;
@@ -366,7 +375,9 @@ void Panel::installShortcuts() {
     key(QKeySequence(Qt::CTRL | Qt::Key_4), [this] { openPage(m_birthdays); });
     key(QKeySequence(Qt::CTRL | Qt::Key_5), [this] { openPage(m_tracking); });
     // Pause or resume what is being tracked, from any page.
-    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Space), [this] { toggleTrackingPause(); });
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Space), [this] {
+        if (has(Features::Tracking)) toggleTrackingPause();
+    });
     key(QKeySequence(Qt::CTRL | Qt::Key_Comma), [this] { openPage(m_settings); });
     key(QKeySequence(Qt::CTRL | Qt::Key_M), [this] {
         if (appMode()) showMinimized();
@@ -392,10 +403,18 @@ void Panel::installShortcuts() {
         showNotes();
         addNote(Note::Text);
     });
-    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L), [this] { showNotes(); addNote(Note::Check); });
-    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), [this] { showNotes(); addNote(Note::Reminder); });
-    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), [this] { showNotes(); addNote(Note::Voice); });
-    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M), [this] { showNotes(); addNote(Note::Markdown); });
+    // A type left out (core/features.hpp) does nothing, not even leave the page.
+    const auto newNote = [this](Note::Type type) {
+        return [this, type] {
+            if (!hasNoteType(type)) return;
+            showNotes();
+            addNote(type);
+        };
+    };
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L), newNote(Note::Check));
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R), newNote(Note::Reminder));
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V), newNote(Note::Voice));
+    key(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_M), newNote(Note::Markdown));
 }
 
 QFrame *Panel::buildHeader() {
@@ -738,6 +757,7 @@ QWidget *Panel::buildBody() {
         refreshSettings();
         save();
     });
+    connect(m_settings, &SettingsView::featureToggled, this, &Panel::setFeature);
     connect(m_settings, &SettingsView::plannerWrapPicked, this, [this](bool wrap) {
         if (wrap == m_theme.plannerWrap) return;
         m_theme.plannerWrap = wrap;
@@ -1074,6 +1094,7 @@ void Panel::refreshNav() {
 }
 
 void Panel::addNote(Note::Type type) {
+    if (!hasNoteType(type)) return;
     auto *n = new Note;
     n->type = type;
     n->title = type == Note::Check    ? L("Nueva lista")
@@ -1551,6 +1572,84 @@ void Panel::changeEvent(QEvent *e) {
     }
 }
 
+int Panel::featureOf(const QWidget *page) const {
+    if (!page) return -1;
+    if (page == m_planner) return Features::Planner;
+    if (page == m_timerView) return Features::Timers;
+    if (page == m_birthdays) return Features::Birthdays;
+    if (page == m_tracking) return Features::Tracking;
+    return -1;
+}
+
+void Panel::setFeature(const QString &key, bool on) {
+    QStringList &off = m_store.prefs().featuresOff;
+    if (off.contains(key) != on) return;   // already so
+    off.removeAll(key);
+    if (!on) off.append(key);
+    applyFeatures();
+    refreshSettings();
+    save();
+}
+
+/// What is left out disappears from every way in; nothing is deleted. What it
+/// had ringing goes quiet, since there is no page left to stop it from.
+void Panel::applyFeatures() {
+    if (m_navBar)
+        for (QWidget *page : {static_cast<QWidget *>(m_planner), static_cast<QWidget *>(m_timerView),
+                              static_cast<QWidget *>(m_birthdays), static_cast<QWidget *>(m_tracking)})
+            m_navBar->setItemVisible(page, has(Features::Id(featureOf(page))));
+
+    if (m_planner) m_planner->setRemindersEnabled(hasNoteType(Note::Reminder));
+    // Birthdays also show on the planner, as all-day tags.
+    if (m_planner)
+        m_planner->setSources(&m_store.events(), &m_store.notes(),
+                              has(Features::Birthdays) ? &m_store.birthdays() : nullptr,
+                              &m_store.categories());
+
+    bool silenced = false;
+    if (!has(Features::Birthdays))
+        for (Birthday *b : m_store.birthdays())
+            if (b->ringing) {
+                m_alerts->silenceBirthday(b);
+                silenced = true;
+            }
+    if (!has(Features::Planner))
+        for (Event *e : m_store.events())
+            if (e->ringingMs) {
+                m_alerts->silenceEvent(e);
+                silenced = true;
+            }
+    if (silenced) {
+        m_alerts->stopIfQuiet();
+        refreshNotices();
+        applyBadgeAlert();
+        scheduleSave();
+    }
+
+    // Standing on a page that just went: back to the notes.
+    if (m_body) {
+        const int f = featureOf(m_body->currentWidget());
+        if (f >= 0 && !has(Features::Id(f))) showNotes();
+    }
+    if (m_peek && !has(Features::Tracking)) m_peek->hide();
+    buildTrayMenu();
+    refreshNav();
+}
+
+void Panel::openWelcome() {
+    if (m_welcomeOpen || m_store.prefs().featuresChosen || !m_shell) return;
+    if (m_nav->folded()) expand();
+    m_welcomeOpen = true;
+    Welcome::open(&m_theme, m_shell, m_store.prefs().featuresOff, [this](const QStringList &off) {
+        m_welcomeOpen = false;
+        m_store.prefs().featuresOff = off;
+        m_store.prefs().featuresChosen = true;
+        applyFeatures();
+        refreshSettings();
+        save();
+    });
+}
+
 /// Opens a page. The bar marks where you are; leaving is another item, Escape,
 /// or (from settings) the back arrow.
 void Panel::openPage(QWidget *page) {
@@ -1558,6 +1657,8 @@ void Panel::openPage(QWidget *page) {
         showNotes();
         return;
     }
+    // A page left out (core/features.hpp) cannot be reached by any route.
+    if (const int f = featureOf(page); f >= 0 && !has(Features::Id(f))) return;
     if (m_body->currentWidget() == page) return;
     if (page == m_planner) m_planner->refresh();
     else if (page == m_timerView) m_timerView->refresh();
@@ -2259,10 +2360,14 @@ void Panel::applyBadgeAlert() {
 void Panel::openNewNoteMenu(QWidget *anchor) {
     auto *menu = new Popup(m_theme, this);
     menu->addShortcutItem("text", L("Nota de texto"), "Ctrl+N", [this] { addNote(Note::Text); });
-    menu->addShortcutItem("check", L("Checklist"), "Ctrl+⇧L", [this] { addNote(Note::Check); });
-    menu->addShortcutItem("bell", L("Recordatorio"), "Ctrl+⇧R", [this] { addNote(Note::Reminder); });
-    menu->addShortcutItem("mic", L("Nota de voz"), "Ctrl+⇧V", [this] { addNote(Note::Voice); });
-    menu->addShortcutItem("markdown", L("Nota Markdown"), "Ctrl+⇧M", [this] { addNote(Note::Markdown); });
+    if (hasNoteType(Note::Check))
+        menu->addShortcutItem("check", L("Checklist"), "Ctrl+⇧L", [this] { addNote(Note::Check); });
+    if (hasNoteType(Note::Reminder))
+        menu->addShortcutItem("bell", L("Recordatorio"), "Ctrl+⇧R", [this] { addNote(Note::Reminder); });
+    if (hasNoteType(Note::Voice))
+        menu->addShortcutItem("mic", L("Nota de voz"), "Ctrl+⇧V", [this] { addNote(Note::Voice); });
+    if (hasNoteType(Note::Markdown))
+        menu->addShortcutItem("markdown", L("Nota Markdown"), "Ctrl+⇧M", [this] { addNote(Note::Markdown); });
     // Right-aligned under "+", which sits at the right end of the row.
     menu->adjustSize();
     menu->showAt(anchor->mapToGlobal(QPoint(anchor->width() - menu->width() + 36, anchor->height() + 2)));
@@ -2631,6 +2736,7 @@ void Panel::onStoreReloaded() {
     applyAlarmPrefs();
     applyFont();
     applyTheme();
+    applyFeatures();
     // Store::load() already set the language; retranslate() rewrites the window
     // with it and rebuilds cards, planner and tray in one go.
     retranslate();
@@ -2845,26 +2951,37 @@ void Panel::openPalette() {
     using Command = CommandPalette::Command;
     QList<Command> cmds;
     const QString go = L("Ir a"), create = L("Crear"), areas = L("Áreas");
-    cmds << Command{go, "notes", L("Notas"), "Ctrl+1", [this] { showNotes(); }}
-         << Command{go, "calendar", L("Planner"), "Ctrl+2", [this] { openPage(m_planner); }}
-         << Command{go, "timer", L("Timers"), "Ctrl+3", [this] { openPage(m_timerView); }}
-         << Command{go, "cake", L("Cumpleaños"), "Ctrl+4", [this] { openPage(m_birthdays); }}
-         << Command{go, "bars", L("Seguimiento"), "Ctrl+5", [this] { openPage(m_tracking); }}
-         << Command{go, "gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); }};
+    cmds << Command{go, "notes", L("Notas"), "Ctrl+1", [this] { showNotes(); }};
+    if (has(Features::Planner))
+        cmds << Command{go, "calendar", L("Planner"), "Ctrl+2", [this] { openPage(m_planner); }};
+    if (has(Features::Timers))
+        cmds << Command{go, "timer", L("Timers"), "Ctrl+3", [this] { openPage(m_timerView); }};
+    if (has(Features::Birthdays))
+        cmds << Command{go, "cake", L("Cumpleaños"), "Ctrl+4", [this] { openPage(m_birthdays); }};
+    if (has(Features::Tracking))
+        cmds << Command{go, "bars", L("Seguimiento"), "Ctrl+5", [this] { openPage(m_tracking); }};
+    cmds << Command{go, "gear", L("Ajustes"), "Ctrl+,", [this] { openPage(m_settings); }};
     const auto make = [this](Note::Type type) {
         return [this, type] {
             showNotes();
             addNote(type);
         };
     };
-    cmds << Command{create, "text", L("Nueva nota de texto"), "Ctrl+N", make(Note::Text)}
-         << Command{create, "check", L("Nueva checklist"), "Ctrl+⇧L", make(Note::Check)}
-         << Command{create, "bell", L("Nuevo recordatorio"), "Ctrl+⇧R", make(Note::Reminder)}
-         << Command{create, "mic", L("Nueva nota de voz"), "Ctrl+⇧V", make(Note::Voice)}
-         << Command{create, "markdown", L("Nueva nota Markdown"), "Ctrl+⇧M", make(Note::Markdown)};
+    const QList<Command> creates{
+        Command{create, "text", L("Nueva nota de texto"), "Ctrl+N", make(Note::Text)},
+        Command{create, "check", L("Nueva checklist"), "Ctrl+⇧L", make(Note::Check)},
+        Command{create, "bell", L("Nuevo recordatorio"), "Ctrl+⇧R", make(Note::Reminder)},
+        Command{create, "mic", L("Nueva nota de voz"), "Ctrl+⇧V", make(Note::Voice)},
+        Command{create, "markdown", L("Nueva nota Markdown"), "Ctrl+⇧M", make(Note::Markdown)}};
+    const Note::Type createTypes[] = {Note::Text, Note::Check, Note::Reminder, Note::Voice,
+                                      Note::Markdown};
+    for (int i = 0; i < creates.size(); ++i)
+        if (hasNoteType(createTypes[i])) cmds << creates.at(i);
     // Seguimiento: start (into its field), pause and stop, and a past session.
     const QString track = L("Seguimiento");
-    if (const Session *s = m_store.runningSession()) {
+    if (!has(Features::Tracking)) {
+        // left out: none of its commands
+    } else if (const Session *s = m_store.runningSession()) {
         cmds << Command{track, s->paused() ? "play" : "pause",
                         s->paused() ? L("Reanudar «%1»").arg(s->task) : L("Pausar «%1»").arg(s->task),
                         "Ctrl+⇧+Space", [this] { toggleTrackingPause(); }}
@@ -2876,9 +2993,10 @@ void Panel::openPalette() {
             m_tracking->focusTask();
         }};
     }
-    cmds << Command{track, "plus", L("Añadir una sesión pasada"), QString(), [this] {
-        openSessionEditor(nullptr);
-    }};
+    if (has(Features::Tracking))
+        cmds << Command{track, "plus", L("Añadir una sesión pasada"), QString(), [this] {
+            openSessionEditor(nullptr);
+        }};
     const QList<Area *> &list = m_store.areas();
     const QString open = currentArea();
     for (int i = 0; i < list.size(); ++i) {
@@ -2955,11 +3073,13 @@ void Panel::buildTrayMenu() {
         {L("Nota de voz"), Note::Voice},
         {L("Nota Markdown"), Note::Markdown},
     };
-    for (const auto &[label, type] : types)
+    for (const auto &[label, type] : types) {
+        if (!hasNoteType(type)) continue;
         connect(create->addAction(label), &QAction::triggered, this, [this, type] {
             addNote(type);
             showRestored();
         });
+    }
 
     // Unfolded first: the page is then sized as if its header button was clicked.
     QMenu *open = m_trayMenu->addMenu(L("Abrir"));
@@ -2967,11 +3087,13 @@ void Panel::buildTrayMenu() {
         bringToFront();
         showNotes();
     });
-    for (const Navigator::Page &p : m_nav->pages())
+    for (const Navigator::Page &p : m_nav->pages()) {
+        if (const int f = featureOf(p.page); f >= 0 && !has(Features::Id(f))) continue;
         connect(open->addAction(L(p.name)), &QAction::triggered, this, [this, page = p.page] {
             bringToFront();
             if (m_body->currentWidget() != page) openPage(page);
         });
+    }
 
     m_trayMenu->addSeparator();
     QAction *onTop = m_trayMenu->addAction(L("Siempre encima"));
@@ -3063,6 +3185,8 @@ void Panel::showEvent(QShowEvent *e) {
     // reboot, does exactly that). It is asked again once, with a native window;
     // after that the window belongs to the user.
     m_nav->mapped();
+    if (!m_store.prefs().featuresChosen)
+        QTimer::singleShot(0, this, [this] { openWelcome(); });
 }
 
 void Panel::applyWindowFlags() {

@@ -424,6 +424,8 @@ void Store::save() {
     root["font"] = m_prefs.font;
     root["compact"] = m_prefs.compact;
     root["plannerWrap"] = m_prefs.plannerWrap;
+    root["featuresOff"] = QJsonArray::fromStringList(m_prefs.featuresOff);
+    root["featuresChosen"] = m_prefs.featuresChosen;
     root["alarmTone"] = m_prefs.alarmTone;
     root["alarmVolume"] = m_prefs.alarmVolume;
     root["plainText"] = true;   // text notes are plain text (see readObject())
@@ -813,6 +815,8 @@ void Store::load() {
         // notes, which are translated too.
         m_prefs.lang = Lang::systemDefault();
         Lang::setCurrent(m_prefs.lang);
+        // The welcome asks which parts of the app to use.
+        m_prefs.featuresChosen = false;
         seedDemoNotes();
         ensureAreas();
         // There may be birthdays without notes.
@@ -888,6 +892,10 @@ bool Store::readObject(const QJsonObject &root) {
     m_prefs.font = root["font"].toString();
     m_prefs.compact = root["compact"].toBool();
     m_prefs.plannerWrap = root["plannerWrap"].toBool();   // older files: cut
+    m_prefs.featuresOff.clear();
+    for (const QJsonValue v : root["featuresOff"].toArray()) m_prefs.featuresOff << v.toString();
+    // Older files: chosen already, everything on, as their owner had it.
+    m_prefs.featuresChosen = !root.contains("featuresChosen") || root["featuresChosen"].toBool();
     if (root.contains("alarmTone")) m_prefs.alarmTone = root["alarmTone"].toString();
     if (root.contains("alarmVolume"))
         m_prefs.alarmVolume = qBound(0, root["alarmVolume"].toInt(60), 100);

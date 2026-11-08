@@ -66,6 +66,7 @@ signals:
     void fontEditorRequested(QWidget *anchor);
     void compactPicked(bool compact);
     void plannerWrapPicked(bool wrap);
+    void featureToggled(const QString &key, bool on);   ///< core/features.hpp
     void alarmToneRequested(QWidget *anchor);   ///< The menu of tones.
     void alarmVolumeChanged(int percent);       ///< Live, while dragging.
     void alarmPreviewRequested();
@@ -104,6 +105,7 @@ private:
     void addAppearance();
     void addAlarm();
     void addLanguage();
+    void addFeatures();
     void addWindow();
     void addData();
     void addInputs();

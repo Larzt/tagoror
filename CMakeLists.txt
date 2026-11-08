@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(tagoror VERSION 1.2.6 LANGUAGES CXX)
+project(tagoror VERSION 1.3.0 LANGUAGES CXX)
 
 # La versión que llega al binario (la que compara el aviso de actualizaciones)
 # y la que enseñan el .exe de Windows y su instalador. La CI la pisa con la de
@@ -58,6 +58,7 @@ add_executable(tagoror
     include/core/calendarsync.hpp
     include/core/area.hpp
     include/core/event.hpp
+    include/core/features.hpp
     include/core/lang.hpp
     include/core/note.hpp
     include/core/paths.hpp
@@ -87,6 +88,7 @@ add_executable(tagoror
     src/ui/mdpage.cpp
     src/ui/splash.cpp
     src/ui/waveform.cpp
+    src/ui/welcome.cpp
     src/ui/workarea.cpp
     include/ui/panel.hpp
     include/ui/notecard.hpp
@@ -111,6 +113,8 @@ add_executable(tagoror
     include/ui/splash.hpp
     include/ui/theme.hpp
     include/ui/waveform.hpp
+    include/ui/welcome.hpp
+    include/ui/switch.hpp
     include/ui/workarea.hpp
     include/ui/dragwidgets.hpp
     include/ui/elidedlabel.hpp

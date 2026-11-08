@@ -4,6 +4,23 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] — 2026-11-08
+
+### Added
+
+- **Choose which parts of Tagoror to use.** The first start opens a welcome
+  with a switch for each optional part — the *Planner*, *Timers*,
+  *Cumpleaños* and *Seguimiento* pages, and *Checklists*, *Recordatorios*,
+  *Notas de voz* and *Notas Markdown* — all on; text notes are always there.
+  *Settings → General → Funciones* changes it later.
+- A part turned off disappears from the navigation, from its shortcuts, the
+  command palette, the tray menu and the new-note menu (and reminders from the
+  planner's form), and stops ringing: birthdays and planner events no longer
+  sound, and what was ringing goes quiet. **Nothing is deleted**: notes of a
+  type turned off stay on the list, and turning a part back on brings back
+  everything it had.
+- Existing installs keep everything on and never see the welcome.
+
 ## [1.2.6] — 2026-11-08
 
 ### Added

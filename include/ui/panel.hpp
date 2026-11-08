@@ -9,6 +9,7 @@
 #include <QSize>
 #include <QWidget>
 
+#include "core/features.hpp"
 #include "core/store.hpp"
 #include "ui/theme.hpp"
 
@@ -300,6 +301,20 @@ private:
     void setAppMode(bool on);
     void applyAppModeChrome();      ///< Margins, shadow, frame and the "–" button.
     bool appMode() const { return m_store.prefs().appMode; }
+
+    // Parts of the app in use (core/features.hpp, 1.3.0).
+    bool has(Features::Id f) const { return Features::enabled(m_store.prefs().featuresOff, f); }
+    bool hasNoteType(Note::Type t) const {
+        return Features::noteTypeEnabled(m_store.prefs().featuresOff, t);
+    }
+    /// The feature a page belongs to, or -1 for those always there.
+    int featureOf(const QWidget *page) const;
+    /// Turns one on or off, saves, and applies it.
+    void setFeature(const QString &key, bool on);
+    /// Hides what is off and shows what is on: navigation, tray, planner.
+    void applyFeatures();
+    /// The first start's choice (WelcomeView), once the window is up.
+    void openWelcome();
     int shadowMargin() const;
     /// From the tray or a second instance: also when minimised.
     void showRestored();
@@ -393,4 +408,5 @@ private:
     /// Brought to front from the tray: the widget is out of the desktop layer
     /// until sent back. Not saved, it does not survive a restart.
     bool m_lifted = false;
+    bool m_welcomeOpen = false;   ///< The first start's choice is on screen.
 };

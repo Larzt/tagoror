@@ -52,6 +52,10 @@ public:
     /// Re-reads the labels and tooltips in the current language.
     void retranslate();
 
+    /// Hides or shows that page's item, for a part of the app left out
+    /// (core/features.hpp); the others share the room.
+    void setItemVisible(QWidget *page, bool visible);
+
     /// The item's widget, to park the focus on when its page is left.
     QWidget *buttonFor(QWidget *page) const;
 

@@ -811,6 +811,27 @@ const QHash<QString, QString> &table() {
         {"O arrastra su borde de abajo", "Or drag its bottom edge"},
         {"Tamaño original", "Original size"},
         {"Vuelve a crecer con el texto", "Grows with its text again"},
+        // 1.3.0: the parts of the app in use (core/features.hpp) and the welcome.
+        {"Checklists", "Checklists"},
+        {"Notas de voz", "Voice notes"},
+        {"Notas Markdown", "Markdown notes"},
+        {"Eventos y tareas por día, semana y mes", "Events and tasks by day, week and month"},
+        {"Cuentas atrás y Pomodoro que suenan al acabar", "Countdowns and Pomodoro that ring when done"},
+        {"Fechas que avisan cada año", "Dates that remind you every year"},
+        {"El tiempo que dedicas a cada proyecto", "The time you spend on each project"},
+        {"Notas con casillas para marcar", "Notes with boxes to tick"},
+        {"Notas que suenan a una hora", "Notes that ring at a time"},
+        {"Grabaciones con el micrófono", "Recordings from the microphone"},
+        {"Títulos, listas y enlaces en su propia página", "Headings, lists and links on a page of their own"},
+        {"Bienvenido a Tagoror", "Welcome to Tagoror"},
+        {"Elige qué quieres usar. Las notas de texto siempre están, y puedes cambiarlo cuando quieras en Ajustes → General.",
+         "Choose what you want to use. Text notes are always there, and you can change it whenever you like in Settings → General."},
+        // "PÁGINAS" is already in the shortcuts list.
+        {"TIPOS DE NOTA", "NOTE TYPES"},
+        {"Empezar", "Start"},
+        {"FUNCIONES", "FEATURES"},
+        {"Lo que apagues desaparece de la app; lo que tenía se guarda y vuelve al encenderlo.",
+         "What you turn off disappears from the app; what it had is kept and comes back when you turn it on."},
     };
     return t;
 }

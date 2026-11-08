@@ -73,6 +73,13 @@ public:
         /// lines, as many as the block has room for.
         bool plannerWrap = false;
 
+        /// Parts of the app left out (Features::key()s); empty is everything, as
+        /// before 1.3. See core/features.hpp.
+        QStringList featuresOff;
+        /// Whether the first-start choice of features was made. Only a fresh
+        /// install starts without it; a file from before 1.3 counts as made.
+        bool featuresChosen = true;
+
         /// Alarm tone (an Alarm::tones() id; "custom" is the WAV copied into
         /// the data folder) and its volume in percent.
         QString alarmTone = QStringLiteral("beeps");

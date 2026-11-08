@@ -2397,7 +2397,14 @@ bool PlannerView::closeEditor() {
     return true;
 }
 
+void PlannerView::setRemindersEnabled(bool on) {
+    m_remindersOn = on;
+    if (m_kindButtons.size() > 2) m_kindButtons.at(2)->setVisible(on);
+    if (!on && m_fKind == 2) setEditorKind(0);
+}
+
 void PlannerView::setEditorKind(int kind) {
+    if (kind == 2 && !m_remindersOn) kind = 0;
     m_fKind = kind;
     // A reminder is an instant: no end, no category and not this repetition (its
     // own is chosen on the card).

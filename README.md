@@ -27,6 +27,17 @@
 
 ## Features
 
+### Only the parts you want
+
+- On the **first start**, Tagoror asks which parts you want to use: the
+  planner, timers, birthdays and tracking pages, and checklists, reminders,
+  voice notes and Markdown notes. Everything is on unless you switch it off;
+  text notes are always there.
+- *Settings → General → Funciones* changes it whenever you like. What you turn
+  off disappears from the navigation, its shortcuts, the command palette, the
+  tray menu and the *+* menu, and stops ringing — but nothing is deleted:
+  turning it back on brings back everything it had.
+
 <p align="center">
   <img src="docs/v5-notas.png" alt="The notes panel: area tabs, a checklist, a reminder and a Markdown note, with the navigation along the bottom" width="400">
 </p>
@@ -333,7 +344,8 @@
 </p>
 
 - From **⋯** in the header, or **Ctrl+,**, in five tabs: *General* (language,
-  window, data folder, backups, microphone, updates), *Appearance* (accent,
+  the parts of the app in use, window, data folder, backups, microphone,
+  updates), *Appearance* (accent,
   opacity, **typeface, text size, density** and the **alarm**), *Sync*,
   *Shortcuts* (every one of them in one list) and *About*.
 - **Typeface**: IBM Plex Sans, which comes with the app and is the default, the

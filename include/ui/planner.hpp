@@ -58,6 +58,9 @@ public:
     void setView(View v);
     View view() const { return m_view; }
     void setHidden(const QStringList &categories);
+    /// Reminders left out of the app (core/features.hpp): the form offers only
+    /// event and task.
+    void setRemindersEnabled(bool on);
     QStringList hidden() const { return QStringList(m_hidden.begin(), m_hidden.end()); }
 
     void refresh();
@@ -254,6 +257,7 @@ private:
     QToolButton *m_fDelete = nullptr;
     QToolButton *m_fDuplicate = nullptr;
     QList<QToolButton *> m_kindButtons;
+    bool m_remindersOn = true;
     QList<QToolButton *> m_repeatButtons;
     QList<QToolButton *> m_catButtons;
     QWidget *m_repeatBox = nullptr;

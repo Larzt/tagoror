@@ -257,6 +257,11 @@ void NavBar::retranslate() {
     for (NavItem *i : m_items) i->retranslate();
 }
 
+void NavBar::setItemVisible(QWidget *page, bool visible) {
+    for (NavItem *i : m_items)
+        if (i->item().page == page) i->setVisible(visible);
+}
+
 QWidget *NavBar::buttonFor(QWidget *page) const {
     for (NavItem *i : m_items)
         if (i->item().page == page) return i;

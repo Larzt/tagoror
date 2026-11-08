@@ -1,6 +1,7 @@
 #include "ui/alertcenter.hpp"
 
 #include "audio/alarm.hpp"
+#include "core/features.hpp"
 #include "core/store.hpp"
 
 AlertCenter::AlertCenter(Store *store, QObject *parent)
@@ -35,8 +36,12 @@ bool AlertCenter::check() {
     // Birthdays with a time ring on the same heartbeat with the same tone: to
     // whoever hears it, it is the same alarm, and a second mechanism would only
     // be a second way for it to get stuck.
+    // What was left out of the app (core/features.hpp) does not ring: there would
+    // be no page to see it on.
+    const QStringList &off = m_store->prefs().featuresOff;
     const QDateTime nowAt = QDateTime::currentDateTime();
     for (Birthday *b : m_store->birthdays()) {
+        if (!Features::enabled(off, Features::Birthdays)) break;
         if (b->alarmDue(nowAt) && !b->ringing) {
             b->ringing = true;
             started = true;
@@ -44,6 +49,7 @@ bool AlertCenter::check() {
     }
     // Planner events with an alert, the same tone again.
     for (Event *e : m_store->events()) {
+        if (!Features::enabled(off, Features::Planner)) break;
         const qint64 key = e->alarmDue(nowAt);
         if (key && e->ringingMs != key) {
             e->ringingMs = key;
