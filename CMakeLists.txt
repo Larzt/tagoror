@@ -48,6 +48,7 @@ add_executable(tagoror
     src/core/folderbackend.cpp
     src/core/calendarsync.cpp
     src/core/tracking.cpp
+    src/core/collection.cpp
     include/core/birthday.hpp
     include/core/drivesync.hpp
     include/core/synccontroller.hpp
@@ -65,6 +66,7 @@ add_executable(tagoror
     include/core/store.hpp
     include/core/timer.hpp
     include/core/tracking.hpp
+    include/core/collection.hpp
     include/core/updater.hpp
 
     src/ui/panel.cpp
@@ -73,6 +75,8 @@ add_executable(tagoror
     src/ui/timers.cpp
     src/ui/birthdays.cpp
     src/ui/tracking.cpp
+    src/ui/collections.cpp
+    src/ui/collectiondialogs.cpp
     src/ui/trackdialogs.cpp
     src/ui/overlay.cpp
     src/ui/settings.cpp
@@ -97,6 +101,8 @@ add_executable(tagoror
     include/ui/keynav.hpp
     include/ui/birthdays.hpp
     include/ui/tracking.hpp
+    include/ui/collections.hpp
+    include/ui/collectiondialogs.hpp
     include/ui/trackdialogs.hpp
     include/ui/overlay.hpp
     include/ui/settings.hpp

@@ -931,7 +931,8 @@ void SettingsView::addCalendar() {
 void SettingsView::addShortcuts() {
     const QList<QPair<const char *, QList<QPair<const char *, QString>>>> groups{
         {"PÁGINAS", {{"Notas", "Ctrl+1"}, {"Planner", "Ctrl+2"}, {"Timers", "Ctrl+3"},
-                     {"Cumpleaños", "Ctrl+4"}, {"Seguimiento", "Ctrl+5"}, {"Ajustes", "Ctrl+,"},
+                     {"Cumpleaños", "Ctrl+4"}, {"Seguimiento", "Ctrl+5"}, {"Colecciones", "Ctrl+6"},
+                     {"Ajustes", "Ctrl+,"},
                      {"Paleta de comandos", "Ctrl+K"}, {"Volver a las notas", "Esc"}}},
         {"NOTAS", {{"Nota de texto", "Ctrl+N"}, {"Checklist", "Ctrl+⇧L"},
                    {"Recordatorio", "Ctrl+⇧R"}, {"Nota de voz", "Ctrl+⇧V"},

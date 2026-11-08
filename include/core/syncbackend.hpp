@@ -7,7 +7,7 @@
 #include <functional>
 
 /// Where the shared copy lives: a folder (called Tagoror by convention) with
-/// notes.json, birthdays.json, events.json, tracking.json and the audio/ and
+/// notes.json, birthdays.json, events.json, tracking.json, collections.json and the audio/ and
 /// images/ subfolders. The backend only lists, downloads and uploads files there;
 /// what to transfer and how to merge is SyncEngine's, the same for all of
 /// them (see *Sync* in CLAUDE.md).

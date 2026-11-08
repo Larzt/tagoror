@@ -15,6 +15,7 @@
 
 #include "core/area.hpp"
 #include "core/birthday.hpp"
+#include "core/collection.hpp"
 #include "core/event.hpp"
 #include "core/lang.hpp"
 #include "core/note.hpp"
@@ -193,6 +194,24 @@ public:
     bool trackingReadable() const { return m_trackingReadable; }
     /// @}
 
+    /// @name Colecciones
+    /// Collections and their items, in collections.json (see collection.hpp):
+    /// own file, own backups with the same timestamp, same lock and same sync
+    /// as tracking.json.
+    /// @{
+    /// In their order (pos).
+    const QList<Collection *> &collections() const { return m_collections; }
+    Collection *collection(const QString &id) const;
+    void addCollection(Collection *c);
+    /// Deletes it with its items.
+    void removeCollection(Collection *c);
+    const QList<CollectionItem *> &collectionItems() const { return m_collectionItems; }
+    CollectionItem *collectionItem(const QString &id) const;
+    void addCollectionItem(CollectionItem *i);
+    void removeCollectionItem(CollectionItem *i);
+    bool collectionsReadable() const { return m_collectionsReadable; }
+    /// @}
+
     Prefs &prefs() { return m_prefs; }
     const Prefs &prefs() const { return m_prefs; }
 
@@ -212,6 +231,7 @@ public:
     QString birthdaysPath() const;     ///< birthdays.json, next to it.
     QString eventsPath() const;        ///< events.json, next to it.
     QString trackingPath() const;      ///< tracking.json, next to it.
+    QString collectionsPath() const;   ///< collections.json, next to it.
     void load();                       ///< Seeds two demo notes when there is no file.
     void save();
 
@@ -262,7 +282,8 @@ public:
         QSet<QString> pull;
     };
     MergeResult mergeRemote(const QJsonObject &notesRoot, const QJsonObject &birthdaysRoot,
-                            const QJsonObject &eventsRoot, const QJsonObject &trackingRoot);
+                            const QJsonObject &eventsRoot, const QJsonObject &trackingRoot,
+                            const QJsonObject &collectionsRoot);
     /// Attachments used by the notes, as "audio/<name>" or "images/<name>".
     QStringList attachments() const;
     /// JSON files that may be uploaded. One that existed but could not be read is
@@ -306,6 +327,10 @@ private:
     /// And for Seguimiento.
     void loadTracking();
     void saveTracking();
+    /// And for Colecciones.
+    void loadCollections();
+    void saveCollections();
+    void sortCollections();
     void seedDemoNotes();
     /// Guarantees at least one area and keeps the list sorted by pos.
     void ensureAreas();
@@ -334,6 +359,8 @@ private:
     QList<Event::Category *> m_categories;
     QList<Project *> m_projects;
     QList<Session *> m_sessions;
+    QList<Collection *> m_collections;
+    QList<CollectionItem *> m_collectionItems;
     Prefs m_prefs;
     QTimer *m_saveTimer = nullptr;
     bool m_available = true;
@@ -342,6 +369,7 @@ private:
     bool m_birthdaysReadable = true;
     bool m_eventsReadable = true;
     bool m_trackingReadable = true;
+    bool m_collectionsReadable = true;
 
     /// Each element's JSON (without its timestamp) as last seen, keyed
     /// "<type>:<id>", to detect changes nobody reported.

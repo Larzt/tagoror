@@ -46,6 +46,10 @@ class PlannerView;
 class SettingsView;
 class TimerView;
 class TrackingView;
+class CollectionsView;
+class CollectionSwitch;
+struct Collection;
+struct CollectionItem;
 
 /// The single window: draws its own chrome and presents what the Store keeps.
 /// An outer stack swaps the expanded panel for the folded dock; inside it,
@@ -221,6 +225,16 @@ private:
     /// @{
     void openNewNoteMenu(QWidget *anchor);
     void openMoreMenu(QWidget *anchor);   ///< "⋯" in the header.
+    /// @name Colecciones
+    /// @{
+    void openCollectionMenu(QWidget *anchor);   ///< The header's switch.
+    /// Null: a new one. Opens over the panel (ui/collectiondialogs).
+    void openCollectionEditor(Collection *c);
+    void openItemEditor(CollectionItem *item);
+    /// The item's Markdown note, created first if there is none.
+    void openItemNote(CollectionItem *item);
+    void refreshCollections();
+    /// @}
     void openPalette();                   ///< Ctrl+K; again closes it.
     void openAbout(QWidget *anchor);
     void refreshSettings();
@@ -356,6 +370,10 @@ private:
     TimerView *m_timerView = nullptr;
     BirthdayView *m_birthdays = nullptr;
     TrackingView *m_tracking = nullptr;
+    CollectionsView *m_collections = nullptr;
+    CollectionSwitch *m_collSwitch = nullptr;   ///< The header's title on Colecciones.
+    QToolButton *m_collAddBtn = nullptr;
+    QWidget *m_collSpacer = nullptr;   ///< Keeps the header buttons right while the title is hidden.
     SettingsView *m_settings = nullptr;
 
     QFrame *m_header = nullptr;
