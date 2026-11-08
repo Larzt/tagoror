@@ -4,6 +4,18 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.2] — 2026-11-08
+
+### Fixed
+
+- **Colecciones, narrow panel**: a tag chosen in the wide mode stayed on when
+  the window was narrowed, where the tags are not shown, so only that tag's
+  items appeared with no way to tell why or to clear it. Now the narrow panel
+  says it on top — *Solo «Fantasía»* — with *Quitar el filtro*, and a tag
+  button next to the sort lists every tag with its count, to filter or go back
+  to all. The empty messages count the tag as a filter, and *A continuación*
+  is hidden while filtering.
+
 ## [1.3.1] — 2026-11-08
 
 ### Fixed

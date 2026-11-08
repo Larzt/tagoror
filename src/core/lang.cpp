@@ -962,6 +962,11 @@ const QHash<QString, QString> &table() {
         {"Valoración %1 de 5", "Rated %1 out of 5"},
         {"Ver cola", "See queue"},
         {"Ver solo «%1»", "Show only “%1”"},
+        // 1.3.2: the narrow panel's tag filter.
+        {"Filtrar por etiqueta", "Filter by tag"},
+        {"Solo «%1»", "Only “%1”"},
+        {"ETIQUETAS", "TAGS"},
+        {"Todas", "All"},
         {"Viendo", "Watching"},
         {"Vista", "Watched"},
         {"Voy por la página", "I'm on page"},

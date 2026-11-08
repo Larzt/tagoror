@@ -693,6 +693,13 @@ QWidget *CollectionsView::buildTools() {
     l->addWidget(m_searchField, 1);
     l->addStretch();
 
+    // Narrow only: the tags the wide mode lists on its left, as a menu. Without
+    // it a filter chosen wide stayed on, unseen and impossible to clear.
+    m_tagBtn = iconButton("tag", L("Filtrar por etiqueta"));
+    connect(m_tagBtn, &QToolButton::clicked, this, [this] { openTagMenu(m_tagBtn); });
+    m_tagBtn->hide();
+    l->addWidget(m_tagBtn);
+
     m_sortBtn = textButton("quickChip", QString());
     m_sortBtn->setIcon(paintIcon("sort", QColor(Theme::muted()), 13));
     m_sortBtn->setIconSize(QSize(13, 13));
@@ -957,6 +964,11 @@ void CollectionsView::refreshTabs() {
         const CollectionState *s = c->state(t->stateId);
         t->set(s ? L(s->name) : L("Todos"), int(visible(*c, t->stateId).size()), t->stateId == m_tab);
     }
+    // Wide, the sidebar has the tags; narrow, this button, in the accent while
+    // one filters.
+    m_tagBtn->setVisible(!m_wide && (!m_tag.isEmpty() || !tagCounts(*c).isEmpty()));
+    m_tagBtn->setIcon(paintIcon("tag", m_tag.isEmpty() ? QColor(Theme::muted()) : m_theme.accent));
+    m_tagBtn->setToolTip(m_tag.isEmpty() ? L("Filtrar por etiqueta") : L("Solo «%1»").arg(m_tag));
     m_gridBtn->setProperty("chosen", m_grid);
     m_listBtn->setProperty("chosen", !m_grid);
     repolish(m_gridBtn);
@@ -996,6 +1008,13 @@ void CollectionsView::refreshBody() {
     m_queueRows.clear();
     clearLayout(m_list);
     if (!c) return;
+    // Narrow there is no sidebar to show the tag that filters: it goes on top,
+    // with the way out.
+    if (!m_wide && !m_tag.isEmpty()) {
+        auto *clear = textButton("noticeAction", L("Quitar el filtro"));
+        connect(clear, &QToolButton::clicked, this, [this] { setTag(QString()); });
+        m_list->addWidget(sectionRow(L("Solo «%1»").arg(m_tag), clear));
+    }
     if (m_wide) fillGrid(m_list, *c, visible(*c, m_tab));
     else if (c->isInProgress(m_tab)) fillInProgress(m_list, *c, m_tab);
     else if (c->isFinal(m_tab)) fillFinished(m_list, *c, m_tab);
@@ -1113,7 +1132,8 @@ void CollectionsView::fillList(QVBoxLayout *col, const Collection &c, const QStr
     }
     col->addWidget(sectionRow(caption, total));
     if (items.isEmpty()) {
-        auto *none = new QLabel(m_search.isEmpty() ? L("Nada por aquí todavía.") : L("Nada coincide con la búsqueda."));
+        auto *none = new QLabel(m_search.isEmpty() && m_tag.isEmpty() ? L("Nada por aquí todavía.")
+                                                                       : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
         none->setContentsMargins(6, 4, 6, 4);
         col->addWidget(none);
@@ -1146,11 +1166,12 @@ void CollectionsView::fillInProgress(QVBoxLayout *col, const Collection &c, cons
         auto *v = new QVBoxLayout(box);
         v->setContentsMargins(16, 24, 16, 18);
         v->setSpacing(6);
-        auto *title = new QLabel(m_search.isEmpty() ? L("Nada en curso") : L("Nada coincide con la búsqueda."));
+        const bool filtered = !m_search.isEmpty() || !m_tag.isEmpty();
+        auto *title = new QLabel(!filtered ? L("Nada en curso") : L("Nada coincide con la búsqueda."));
         title->setObjectName("trackEmptyTitle");
         title->setAlignment(Qt::AlignCenter);
         v->addWidget(title);
-        if (m_search.isEmpty()) {
+        if (!filtered) {
             auto *text = new QLabel(L("Empieza el primero de la cola."));
             text->setObjectName("popupText");
             text->setAlignment(Qt::AlignCenter);
@@ -1162,7 +1183,8 @@ void CollectionsView::fillInProgress(QVBoxLayout *col, const Collection &c, cons
     }
 
     // A CONTINUACIÓN: the first three of the queue, each one click from starting.
-    if (!m_search.isEmpty()) return;
+    // Not while filtering: the queue would not be.
+    if (!m_search.isEmpty() || !m_tag.isEmpty()) return;
     const QList<CollectionItem *> next = Coll::queue(m_store->collectionItems(), c).mid(0, 3);
     if (next.isEmpty() || c.firstState() == stateId) return;
     auto *seeQueue = textButton("noticeAction", L("Ver cola"));
@@ -1328,7 +1350,8 @@ void CollectionsView::fillFinished(QVBoxLayout *col, const Collection &c, const 
     else caption = L("Por fecha de fin");
     col->addWidget(sectionRow(caption, nullptr));
     if (items.isEmpty()) {
-        auto *none = new QLabel(m_search.isEmpty() ? L("Nada terminado todavía.") : L("Nada coincide con la búsqueda."));
+        auto *none = new QLabel(m_search.isEmpty() && m_tag.isEmpty() ? L("Nada terminado todavía.")
+                                                                       : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
         none->setContentsMargins(6, 4, 6, 4);
         col->addWidget(none);
@@ -1360,6 +1383,49 @@ void CollectionsView::openPagePrompt(CollectionItem *item, QWidget *anchor) {
         i->progress = i->total > 0 ? qMin(page, i->total) : page;
         self->edited();
     });
+    menu->showUnder(anchor);
+}
+
+/// The current collection's tags, most used first, with their counts.
+QList<QPair<QString, int>> CollectionsView::tagCounts(const Collection &c) const {
+    QHash<QString, int> counts;
+    if (m_store)
+        for (const CollectionItem *i : m_store->collectionItems())
+            if (i->collection == c.id)
+                for (const QString &t : i->tags) ++counts[t];
+    QList<QPair<QString, int>> out;
+    for (auto it = counts.cbegin(); it != counts.cend(); ++it) out.append({it.key(), it.value()});
+    std::sort(out.begin(), out.end(), [](const QPair<QString, int> &a, const QPair<QString, int> &b) {
+        return a.second != b.second ? a.second > b.second : a.first < b.first;
+    });
+    return out;
+}
+
+/// Filters by @p tag (empty: none), in both modes.
+void CollectionsView::setTag(const QString &tag) {
+    m_tag = tag;
+    refreshTabs();
+    refreshBody();
+    if (m_wide) refreshSide();
+}
+
+/// Narrow: the tags as a menu, every one of them (the sidebar shows eight),
+/// and the way back to all.
+void CollectionsView::openTagMenu(QWidget *anchor) {
+    const Collection *c = current();
+    if (!c) return;
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("ETIQUETAS"));
+    QPointer<CollectionsView> self(this);
+    menu->addShortcutItem(m_tag.isEmpty() ? "check" : "", L("Todas"), QString(), [self] {
+        if (self) self->setTag(QString());
+    });
+    for (const auto &[tag, count] : tagCounts(*c)) {
+        const QString t = tag;
+        menu->addShortcutItem(t == m_tag ? "check" : "", t, QString::number(count), [self, t] {
+            if (self) self->setTag(t);
+        });
+    }
     menu->showUnder(anchor);
 }
 
@@ -1593,12 +1659,7 @@ void CollectionsView::refreshSide() {
             r->setMark(dot);
             r->setChosen(tag == m_tag);
             r->setToolTip(tag == m_tag ? L("Quitar el filtro") : L("Ver solo «%1»").arg(tag));
-            connect(r, &QToolButton::clicked, this, [this, tag] {
-                m_tag = m_tag == tag ? QString() : tag;
-                refreshTabs();
-                refreshBody();
-                refreshSide();
-            });
+            connect(r, &QToolButton::clicked, this, [this, tag] { setTag(m_tag == tag ? QString() : tag); });
             m_sideLayout->addWidget(r);
         }
     }
@@ -1846,12 +1907,7 @@ void CollectionsView::refreshDetail() {
             const QString tag = item->tags.at(i);
             auto *chip = textButton("trackChip", tag);
             chip->setToolTip(L("Ver solo «%1»").arg(tag));
-            connect(chip, &QToolButton::clicked, this, [this, tag] {
-                m_tag = tag;
-                refreshTabs();
-                refreshBody();
-                refreshSide();
-            });
+            connect(chip, &QToolButton::clicked, this, [this, tag] { setTag(tag); });
             tg->addWidget(chip, i / 2, i % 2, Qt::AlignLeft);
         }
         tg->setColumnStretch(2, 1);

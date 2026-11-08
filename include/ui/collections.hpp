@@ -133,6 +133,9 @@ private:
     bool matches(const CollectionItem *item) const;
 
     void openSortMenu(QWidget *anchor);
+    void openTagMenu(QWidget *anchor);
+    void setTag(const QString &tag);
+    QList<QPair<QString, int>> tagCounts(const Collection &c) const;
     void openItemMenu(CollectionItem *item, const QPoint &globalPos);
     void openPagePrompt(CollectionItem *item, QWidget *anchor);
     void select(CollectionItem *item);
@@ -162,6 +165,7 @@ private:
     QHBoxLayout *m_tabsLayout = nullptr;
     QList<coll::CountTab *> m_tabs;
     QToolButton *m_sortBtn = nullptr;
+    QToolButton *m_tagBtn = nullptr;   ///< Narrow: the tags, as a menu.
     QToolButton *m_searchBtn = nullptr;
     QLineEdit *m_searchField = nullptr;
     QWidget *m_viewToggle = nullptr;
