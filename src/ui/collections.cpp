@@ -565,6 +565,20 @@ void CollectionsView::focusSearch() {
 }
 
 bool CollectionsView::eventFilter(QObject *watched, QEvent *event) {
+    // A reading card or a tile: double click opens the item, as on a row.
+    const QString itemId = watched->property("itemId").toString();
+    if (!itemId.isEmpty() && m_store) {
+        CollectionItem *item = m_store->collectionItem(itemId);
+        if (item && event->type() == QEvent::MouseButtonDblClick) {
+            emit editRequested(item);
+            return true;
+        }
+        if (item && event->type() == QEvent::MouseButtonRelease &&
+            static_cast<QMouseEvent *>(event)->button() == Qt::LeftButton) {
+            select(item);
+            return false;
+        }
+    }
     if (watched == m_searchField && event->type() == QEvent::KeyPress &&
         static_cast<QKeyEvent *>(event)->key() == Qt::Key_Escape) {
         m_searchField->clear();
@@ -673,7 +687,9 @@ void CollectionsView::refreshBody() {
     m_queueRows.clear();
     clearLayout(m_list);
     if (!c) return;
-    fillList(m_list, *c, m_tab);
+    if (c->isInProgress(m_tab)) fillInProgress(m_list, *c, m_tab);
+    else if (c->isFinal(m_tab)) fillFinished(m_list, *c, m_tab);
+    else fillList(m_list, *c, m_tab);
     m_list->addStretch();
 }
 
@@ -759,8 +775,24 @@ void CollectionsView::fillList(QVBoxLayout *col, const Collection &c, const QStr
         total = new QLabel(QString("%1 %2").arg(Coll::number(pages), L(c.unitShort())));
         total->setObjectName("meta");
     }
-    const CollectionState *s = c.state(stateId);
-    col->addWidget(sectionRow(s ? L(s->name.toUtf8().constData()) : QString(), total));
+    // The first state is the queue, and says how it is ordered.
+    const bool queue = stateId == c.firstState();
+    QString caption;
+    if (!queue) {
+        const CollectionState *s = c.state(stateId);
+        caption = s ? L(s->name) : QString();
+    } else if (c.sortKey == Collection::kByPriority) {
+        caption = L("Cola · por prioridad");
+    } else if (c.sortKey == Collection::kByYear) {
+        caption = L("Por año de publicación");
+    } else if (c.sortKey == Collection::kByAuthor) {
+        caption = L("Por %1").arg(L(c.authorLabel()).toLower());
+    } else if (c.sortKey == Collection::kByTitle) {
+        caption = L("Por título");
+    } else {
+        caption = L("Por fecha añadido");
+    }
+    col->addWidget(sectionRow(caption, total));
     if (items.isEmpty()) {
         auto *none = new QLabel(m_search.isEmpty() ? L("Nada por aquí todavía.") : L("Nada coincide con la búsqueda."));
         none->setObjectName("popupText");
@@ -768,8 +800,336 @@ void CollectionsView::fillList(QVBoxLayout *col, const Collection &c, const QStr
         col->addWidget(none);
         return;
     }
-    for (int i = 0; i < items.size(); ++i)
-        col->addWidget(row(c, items.at(i), i + 1, metaFor(c, items.at(i)), false, false));
+    // By hand only where the order shown is the queue's own: by priority, high
+    // first, and with nothing filtered out.
+    const bool handOrder = queue && c.sortKey == Collection::kByPriority && !c.sortAscending &&
+                           m_search.isEmpty() && m_tag.isEmpty();
+    for (int i = 0; i < items.size(); ++i) {
+        Row *r = row(c, items.at(i), i + 1, metaFor(c, items.at(i)), queue, false);
+        if (r->grip) {
+            r->grip->active = handOrder;
+            r->grip->setToolTip(handOrder ? L("Arrastra para ordenar la cola")
+                                          : L("Ordena por prioridad para mover a mano"));
+            r->grip->moved = [this, r](const QPoint &at) { dragRowTo(r, at); };
+            r->grip->finished = [this, r] { endRowDrag(r); };
+            m_queueRows << r;
+        }
+        col->addWidget(r);
+    }
+}
+
+/// The in-progress tab: a card per item, then what comes next.
+void CollectionsView::fillInProgress(QVBoxLayout *col, const Collection &c, const QString &stateId) {
+    const QList<CollectionItem *> items = visible(c, stateId);
+    for (CollectionItem *i : items) col->addWidget(readingCard(c, i));
+    if (items.isEmpty()) {
+        auto *box = new QWidget;
+        auto *v = new QVBoxLayout(box);
+        v->setContentsMargins(16, 24, 16, 18);
+        v->setSpacing(6);
+        auto *title = new QLabel(m_search.isEmpty() ? L("Nada en curso") : L("Nada coincide con la búsqueda."));
+        title->setObjectName("trackEmptyTitle");
+        title->setAlignment(Qt::AlignCenter);
+        v->addWidget(title);
+        if (m_search.isEmpty()) {
+            auto *text = new QLabel(L("Empieza el primero de la cola."));
+            text->setObjectName("popupText");
+            text->setAlignment(Qt::AlignCenter);
+            text->setWordWrap(true);
+            text->setMinimumWidth(24);
+            v->addWidget(text);
+        }
+        col->addWidget(box);
+    }
+
+    // A CONTINUACIÓN: the first three of the queue, each one click from starting.
+    if (!m_search.isEmpty()) return;
+    const QList<CollectionItem *> next = Coll::queue(m_store->collectionItems(), c).mid(0, 3);
+    if (next.isEmpty() || c.firstState() == stateId) return;
+    auto *seeQueue = textButton("noticeAction", L("Ver cola"));
+    connect(seeQueue, &QToolButton::clicked, this, [this] {
+        Collection *cur = current();
+        if (!cur) return;
+        m_tab = cur->firstState();
+        cur->sortKey = Collection::kByPriority;
+        cur->sortAscending = false;
+        edited();
+    });
+    auto *head = sectionRow(L("A continuación"), seeQueue);
+    head->setContentsMargins(0, 6, 0, 0);
+    col->addWidget(head);
+    for (int i = 0; i < next.size(); ++i) {
+        CollectionItem *item = next.at(i);
+        Row *r = row(c, item, i + 1, QString(), false, false);
+        // "Empezar" instead of the stones: what this list is for.
+        auto *l = static_cast<QHBoxLayout *>(r->layout());
+        QLayoutItem *last = l->takeAt(l->count() - 1);
+        if (last) {
+            if (last->layout()) clearLayout(last->layout());
+            delete last;
+        }
+        auto *start = textButton("quickChip", L("Empezar"));
+        const QString target = stateId;
+        connect(start, &QToolButton::clicked, this, [this, item, target] { moveTo(item, target); });
+        l->addWidget(start, 0, Qt::AlignVCenter);
+        col->addWidget(r);
+    }
+}
+
+QWidget *CollectionsView::readingCard(const Collection &c, CollectionItem *item) {
+    auto *card = new QFrame;
+    card->setObjectName("trackClock");
+    auto *v = new QVBoxLayout(card);
+    v->setContentsMargins(12, 12, 12, 12);
+    v->setSpacing(10);
+
+    auto *top = new QHBoxLayout;
+    top->setSpacing(12);
+    top->addWidget(new coll::Cover(CollectionItem::coverColor(item->color), coverText(item->title),
+                                   QSize(46, 66)), 0, Qt::AlignTop);
+    auto *texts = new QVBoxLayout;
+    texts->setSpacing(3);
+    const CollectionState *s = c.state(item->state);
+    QString kicker = s ? L(s->name).toUpper() : QString();
+    if (item->startedMs > 0) kicker += " · " + L("DESDE %1").arg(Coll::shortDate(item->startedMs).toUpper());
+    auto *k = new ElidedLabel(kicker, m_theme.accent);
+    k->setObjectName("collKicker");
+    texts->addWidget(k);
+    auto *title = new QLabel(item->title.isEmpty() ? L("Sin título") : item->title);
+    title->setObjectName("trackTask");
+    title->setWordWrap(true);
+    title->setMinimumWidth(24);   // see *Card widths*
+    texts->addWidget(title);
+    QStringList sub;
+    if (c.has(Collection::kAuthor) && !item->author.isEmpty()) sub << item->author;
+    if (c.has(Collection::kYear) && item->year > 0) sub << QString::number(item->year);
+    if (!sub.isEmpty()) texts->addWidget(elided(sub.join(" · "), "collSub", QColor(Theme::muted())));
+    texts->addStretch();
+    top->addLayout(texts, 1);
+    v->addLayout(top);
+
+    const QString unit = L(c.unitShort());
+    if (c.has(Collection::kProgress)) {
+        if (item->total > 0) {
+            const int pct = item->percent();
+            v->addWidget(new coll::Bar(pct, m_theme.accent));
+            auto *nums = new QHBoxLayout;
+            auto *at = new QLabel(QString("%1 <span style='color:%2'>%3</span> / %4")
+                                      .arg(unit, Theme::fg(), Coll::number(item->progress),
+                                           Coll::number(item->total)));
+            at->setObjectName("timerSub");
+            at->setTextFormat(Qt::RichText);
+            nums->addWidget(at);
+            nums->addStretch();
+            auto *left = new QLabel(L("%1% · faltan %2 %3")
+                                        .arg(pct)
+                                        .arg(Coll::number(qMax(0, item->total - item->progress)), unit));
+            left->setObjectName("timerSub");
+            nums->addWidget(left);
+            v->addLayout(nums);
+        } else if (item->progress > 0) {
+            auto *at = new QLabel(QString("%1 %2").arg(unit, Coll::number(item->progress)));
+            at->setObjectName("timerSub");
+            v->addWidget(at);
+        }
+    }
+
+    auto *actions = new QHBoxLayout;
+    actions->setSpacing(6);
+    if (c.has(Collection::kProgress)) {
+        for (int step : {10, 25}) {
+            auto *chip = textButton("quickChip", QString("+%1 %2").arg(step).arg(unit));
+            connect(chip, &QToolButton::clicked, this, [this, item, step] { addPages(item, step); });
+            actions->addWidget(chip);
+        }
+        auto *write = textButton("quickChip", unit + " …");
+        write->setToolTip(L("Escribir la página"));
+        connect(write, &QToolButton::clicked, this, [this, item, write] { openPagePrompt(item, write); });
+        actions->addWidget(write);
+    }
+    actions->addStretch();
+    auto *done = textButton("pickSave", L("Terminado"));
+    done->setToolTip(L("Pasa a %1 con la fecha de hoy").arg(L(c.states.last().name)));
+    const QString final = c.finalState();
+    connect(done, &QToolButton::clicked, this, [this, item, final] { moveTo(item, final); });
+    actions->addWidget(done);
+    v->addLayout(actions);
+
+    // The card opens the item too, as a row does.
+    card->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(card, &QWidget::customContextMenuRequested, this,
+            [this, item, card](const QPoint &p) { openItemMenu(item, card->mapToGlobal(p)); });
+    card->installEventFilter(this);
+    card->setProperty("itemId", item->id);
+    return card;
+}
+
+/// The finished tab: this year's figures, then the list with the rating.
+void CollectionsView::fillFinished(QVBoxLayout *col, const Collection &c, const QString &stateId) {
+    const QList<CollectionItem *> items = visible(c, stateId);
+    const QDate today = QDate::currentDate();
+    int thisYear = 0, units = 0;
+    for (const CollectionItem *i : items) {
+        if (i->finishedMs <= 0 || QDateTime::fromMSecsSinceEpoch(i->finishedMs).date().year() != today.year())
+            continue;
+        ++thisYear;
+        units += i->total;
+    }
+    auto *tiles = new QWidget;
+    auto *grid = new QGridLayout(tiles);
+    grid->setContentsMargins(0, 0, 0, 0);
+    grid->setSpacing(6);
+    const auto tile = [](const QString &label, const QString &value) {
+        auto *f = new QFrame;
+        f->setObjectName("timerHero");
+        auto *v = new QVBoxLayout(f);
+        v->setContentsMargins(10, 8, 10, 8);
+        v->setSpacing(2);
+        auto *l = new ElidedLabel(label, QColor(Theme::muted()));
+        l->setObjectName("meta");
+        v->addWidget(l);
+        auto *n = new QLabel(value);
+        n->setObjectName("trackTileValue");
+        v->addWidget(n);
+        return f;
+    };
+    const double perMonth = thisYear / double(today.month());
+    grid->addWidget(tile(L("EN %1").arg(today.year()), QString::number(thisYear)), 0, 0);
+    if (c.has(Collection::kProgress))
+        grid->addWidget(tile(L(c.unitName()).toUpper(), Coll::number(units)), 0, 1);
+    grid->addWidget(tile(L("MEDIA/MES"), Lang::locale().toString(perMonth, 'f', 1)), 0, 2);
+    for (int i = 0; i < 3; ++i) grid->setColumnStretch(i, 1);
+    col->addWidget(tiles);
+
+    QString caption;
+    if (c.sortKey == Collection::kByPriority) caption = L("Por valoración");
+    else if (c.sortKey == Collection::kByYear) caption = L("Por año de publicación");
+    else if (c.sortKey == Collection::kByAuthor) caption = L("Por %1").arg(L(c.authorLabel()).toLower());
+    else if (c.sortKey == Collection::kByTitle) caption = L("Por título");
+    else caption = L("Por fecha de fin");
+    col->addWidget(sectionRow(caption, nullptr));
+    if (items.isEmpty()) {
+        auto *none = new QLabel(m_search.isEmpty() ? L("Nada terminado todavía.") : L("Nada coincide con la búsqueda."));
+        none->setObjectName("popupText");
+        none->setContentsMargins(6, 4, 6, 4);
+        col->addWidget(none);
+        return;
+    }
+    for (CollectionItem *i : items) col->addWidget(row(c, i, 0, metaFor(c, i), false, true));
+}
+
+void CollectionsView::addPages(CollectionItem *item, int pages) {
+    int to = item->progress + pages;
+    if (item->total > 0) to = qMin(to, item->total);
+    item->progress = qMax(0, to);
+    edited();
+}
+
+/// "p. …": the page typed, as the timers' editor takes a time.
+void CollectionsView::openPagePrompt(CollectionItem *item, QWidget *anchor) {
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(item->total > 0 ? L("Página (de %1)").arg(item->total) : L("Página"));
+    QPointer<CollectionsView> self(this);
+    const QString id = item->id;
+    menu->addEditor(L("Página"), item->progress > 0 ? QString::number(item->progress) : QString(),
+                    [self, id](const QString &text) {
+        if (!self || !self->m_store) return;
+        CollectionItem *i = self->m_store->collectionItem(id);
+        bool ok = false;
+        const int page = text.trimmed().toInt(&ok);
+        if (!i || !ok || page < 0) return;
+        i->progress = i->total > 0 ? qMin(page, i->total) : page;
+        self->edited();
+    });
+    menu->showUnder(anchor);
+}
+
+void CollectionsView::openSortMenu(QWidget *anchor) {
+    Collection *c = current();
+    if (!c) return;
+    const bool finished = c->isFinal(m_tab);
+    struct Option {
+        QString key, label, hint;
+        bool shown;
+    };
+    const QList<Option> options{
+        {Collection::kByPriority, finished ? L("Valoración") : L("Prioridad"),
+         finished ? L("valoración") : L("cola"),
+         finished ? c->has(Collection::kRating) : c->has(Collection::kPriority)},
+        {Collection::kByYear, L("Publicación"), L("año"), c->has(Collection::kYear)},
+        {Collection::kByAuthor, L(c->authorLabel()), L("apellido"), c->has(Collection::kAuthor)},
+        {Collection::kByTitle, L("Título"), QStringLiteral("A–Z"), true},
+        {Collection::kByAdded, finished ? L("Terminado") : L("Añadido"), L("fecha"), true},
+    };
+    auto *menu = new Popup(m_theme, this);
+    menu->addHeader(L("ORDENAR POR"));
+    QPointer<CollectionsView> self(this);
+    const QString id = c->id;
+    for (const Option &o : options) {
+        if (!o.shown) continue;
+        const QString key = o.key;
+        menu->addShortcutItem(c->sortKey == key ? "check" : "", o.label, o.hint, [self, id, key] {
+            if (!self || !self->m_store) return;
+            Collection *col = self->m_store->collection(id);
+            if (!col) return;
+            col->sortKey = key;
+            col->sortAscending = Collection::defaultAscending(key);
+            self->edited();
+        });
+    }
+    menu->addSeparator();
+    // Which way it goes now, in words: "Alta primero", "Más antiguos primero",
+    // "A → Z". The row turns it round.
+    const QString k = c->sortKey;
+    const bool asc = c->sortAscending;
+    QString words;
+    if (k == Collection::kByPriority)
+        words = finished ? (asc ? L("Peor valorados primero") : L("Mejor valorados primero"))
+                         : (asc ? L("Baja primero") : L("Alta primero"));
+    else if (k == Collection::kByAuthor || k == Collection::kByTitle)
+        words = asc ? QStringLiteral("A → Z") : QStringLiteral("Z → A");
+    else
+        words = asc ? L("Más antiguos primero") : L("Más recientes primero");
+    menu->addShortcutItem(asc ? "chevronUp" : "chevronDown", words, L("invertir"), [self, id] {
+        if (!self || !self->m_store) return;
+        if (Collection *col = self->m_store->collection(id)) {
+            col->sortAscending = !col->sortAscending;
+            self->edited();
+        }
+    });
+    menu->showUnder(anchor);
+}
+
+void CollectionsView::dragRowTo(Row *dragged, const QPoint &globalPos) {
+    if (!m_queueRows.contains(dragged)) return;
+    // Near the edges the list scrolls, as the notes do while dragging a card.
+    const QPoint inView = m_scroll->viewport()->mapFromGlobal(globalPos);
+    QScrollBar *bar = m_scroll->verticalScrollBar();
+    if (inView.y() < 24) bar->setValue(bar->value() - 12);
+    else if (inView.y() > m_scroll->viewport()->height() - 24) bar->setValue(bar->value() + 12);
+
+    const int y = m_listHost->mapFromGlobal(globalPos).y();
+    int target = 0;
+    for (Row *r : std::as_const(m_queueRows)) {
+        if (r == dragged) continue;
+        if (r->geometry().center().y() < y) ++target;
+    }
+    const int from = int(m_queueRows.indexOf(dragged));
+    if (target == from) return;
+    const int base = m_list->indexOf(m_queueRows.first());
+    m_queueRows.move(from, target);
+    m_list->removeWidget(dragged);
+    m_list->insertWidget(base + target, dragged);
+    m_rowMoved = true;
+}
+
+void CollectionsView::endRowDrag(Row *dragged) {
+    if (!m_rowMoved || !current()) return;
+    m_rowMoved = false;
+    QList<CollectionItem *> order;
+    for (Row *r : std::as_const(m_queueRows)) order << r->item;
+    Coll::moveInQueue(order, dragged->item, int(order.indexOf(dragged->item)));
+    edited();
 }
 
 void CollectionsView::select(CollectionItem *item) {
