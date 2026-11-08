@@ -4,6 +4,17 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.6] — 2026-11-08
+
+### Added
+
+- **Taller text notes, to read them comfortably**: hovering a text or Markdown
+  note's body shows a grip on its bottom edge; drag it to give the note any
+  height, with a scrollbar for whatever still does not fit. The right-click
+  menu has *Más alta* (a step taller) and, once resized, *Tamaño original*,
+  which brings back the usual card that grows with its text — as does a double
+  click on the grip. Each note keeps its own height, and it syncs with it.
+
 ## [1.2.5] — 2026-11-08
 
 ### Fixed

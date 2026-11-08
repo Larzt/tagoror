@@ -804,6 +804,13 @@ const QHash<QString, QString> &table() {
         {"Varias líneas", "Several lines"},
         // 1.2.4: any colour for a planner category.
         {"Otro color · #rrggbb", "Other colour · #rrggbb"},
+        // 1.2.6: a text note's height.
+        {"Arrastra para cambiar el alto · doble clic: tamaño original",
+         "Drag to change the height · double click: original size"},
+        {"Más alta", "Taller"},
+        {"O arrastra su borde de abajo", "Or drag its bottom edge"},
+        {"Tamaño original", "Original size"},
+        {"Vuelve a crecer con el texto", "Grows with its text again"},
     };
     return t;
 }

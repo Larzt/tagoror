@@ -65,6 +65,11 @@ private:
     void buildDueRow(QVBoxLayout *l);   ///< Date chip of a reminder or a dated checklist.
     void buildText(QVBoxLayout *l);
     void buildMarkdown(QVBoxLayout *l);
+    /// The bottom-edge grip of a text or Markdown body, at the note's height.
+    void addBodyGrip(QTextEdit *body);
+    /// Sets the body's height (Note::bodyHeight); 0 is the original, growing
+    /// with the text.
+    void setBodyHeight(int height);
     /// Folded: only the title row, with the indicator standing in for the body.
     void applyCollapsed();
     /// What a folded card says about its content: 2/4, the reminder's time, the
@@ -145,6 +150,7 @@ private:
     QWidget *m_detailSlot = nullptr;
     QVBoxLayout *m_detailLayout = nullptr;
     QTextEdit *m_detailBody = nullptr;   ///< Alive only while the editor is shown.
+    QTextEdit *m_sizedBody = nullptr;    ///< A text or Markdown body, which can be resized.
     QLabel *m_repeatChip = nullptr;
 
     QWidget *m_dueRow = nullptr;         ///< Holds the chip; hidden on an undated checklist.
