@@ -98,6 +98,8 @@
   <releases>
     <release version="1.3.0" date="2026-11-08">
       <description>
+        <p>Collections, a new page: a library of books to read, being read and
+           read, with progress, a queue by priority and this year's figures.</p>
         <p>Choose which parts of Tagoror to use: the first start asks, and the
            settings change it later. What is turned off is hidden, not deleted.</p>
       </description>

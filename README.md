@@ -30,7 +30,7 @@
 ### Only the parts you want
 
 - On the **first start**, Tagoror asks which parts you want to use: the
-  planner, timers, birthdays and tracking pages, and checklists, reminders,
+  planner, timers, birthdays, tracking and collections pages, and checklists, reminders,
   voice notes and Markdown notes. Everything is on unless you switch it off;
   text notes are always there.
 - *Settings → General → Funciones* changes it whenever you like. What you turn
@@ -179,6 +179,30 @@
   side by side. Like a timer it stores instants, not a count, so **it keeps
   adding up with the app closed**; sessions live in their own `tracking.json`,
   backed up and synced like everything else.
+
+### Collections (Colecciones)
+
+- *Colecciones* in the navigation (or **Ctrl+6**): lists of things that move
+  through states. The first template is a **library** — *Pendiente*,
+  *Leyendo*, *Leído* — and the header's name changes collection or makes a new
+  one.
+- **Leyendo**: a card per book with its cover, the progress bar and what is
+  left, **+10 p.** / **+25 p.** or the page typed, and **Terminado**, which
+  files it as read today. Under it, the next three in the queue.
+- **Pendiente** is the queue, by priority, reordered by hand with the grip;
+  **Leído** has this year's figures and the rating.
+- **Sort** by priority (or rating), year, author by surname, title or date —
+  each with its own direction, which a row turns round.
+- Each book has a card (double click, or right click → *Editar*): cover
+  colour, author and what it sorts by, year, pages, state, progress, priority,
+  rating, tags and a **reading note**, a Markdown note opened on its page.
+- New collections come from a template — Libros, Películas, Series, Juegos,
+  Discos or En blanco — with states you can rename, reorder, add or remove,
+  fields you switch on, fields of your own and a yearly goal.
+- Wide (app mode), three columns: collections, tags and the goal; a grid of
+  covers or a list with *Todos*; and the book's card, with a reading block in
+  the Planner and the clock in Seguimiento.
+- Kept in `collections.json`, backed up and synced like everything else.
 
 ### Birthdays
 
@@ -483,7 +507,7 @@ always, and those two rows in settings are simply disabled.
 
 - **Ctrl+K** opens the **command palette**: type to go to any page, create any
   kind of note or switch area — accents don't matter, *cumple* finds Birthdays.
-- **Ctrl+1…5** open the pages, **Ctrl+,** the settings, **Alt+1…9** the areas,
+- **Ctrl+1…6** open the pages, **Ctrl+,** the settings, **Alt+1…9** the areas,
   **Ctrl+M** folds the panel; *Settings → Shortcuts* lists them all.
 - **Tab** goes through everything that can be clicked: the navigation, each
   note's title and body, checklist boxes, link rows, the date chip, the settings

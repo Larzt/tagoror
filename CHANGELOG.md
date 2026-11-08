@@ -8,6 +8,34 @@ All notable changes to Tagoror are recorded here. Versions follow
 
 ### Added
 
+- **Colecciones, a new page (Ctrl+6)**: lists of things that move through
+  states, starting with a library — *Pendiente*, *Leyendo* and *Leído*.
+  - *Leyendo* shows a card per book with its cover, since when, the progress
+    bar ("p. 212 / 496", "43% · 284 p. to go"), quick *+10 p.* and *+25 p.*,
+    a field for the page and *Terminado*, which files it as read today. Under
+    the cards, the next three in the queue, one click from starting.
+  - *Pendiente* is the queue: by priority, with a grip to reorder it by hand
+    (dropping a book among another priority gives it that priority), and its
+    total of pages.
+  - *Leído* has this year's figures — books, pages, average per month — and
+    the rating as stones.
+  - Sort by priority (rating among the read), year, author by surname, title
+    or date added (finished among the read), each with its own direction and a
+    row that turns it round in words; the order is kept per collection.
+  - Each book has a card: cover colour, title, author and what it sorts by
+    (the last word unless told, for "Liu Cixin" or "García Márquez"), year,
+    pages, date added, state, progress, priority, rating, tags and a reading
+    note — a Markdown note created the first time and opened on its page.
+  - Collections are made from a template (Libros today; Películas, Series,
+    Juegos, Discos and En blanco share the shape) whose states can be
+    renamed, reordered, added or removed, and whose fields can be switched on
+    or off, plus fields of your own and a yearly goal.
+  - In the app mode's width it becomes three columns: the collections, tags
+    and the yearly goal; *Todos* and the states as a grid of covers or a list;
+    and the selected book's card, with a reading block in the Planner and the
+    clock in Seguimiento.
+  - Stored in `collections.json` next to the notes, with the same backups and
+    sync as the other files. It is one more part that can be turned off.
 - **Choose which parts of Tagoror to use.** The first start opens a welcome
   with a switch for each optional part — the *Planner*, *Timers*,
   *Cumpleaños* and *Seguimiento* pages, and *Checklists*, *Recordatorios*,
@@ -20,6 +48,12 @@ All notable changes to Tagoror are recorded here. Versions follow
   type turned off stay on the list, and turning a part back on brings back
   everything it had.
 - Existing installs keep everything on and never see the welcome.
+
+### Changed
+
+- Section titles (*A CONTINUACIÓN*, the days in Seguimiento, the command
+  palette's groups…) are in the muted grey (#8b909a) instead of #636872, which
+  barely read on the panel.
 
 ## [1.2.6] — 2026-11-08
 

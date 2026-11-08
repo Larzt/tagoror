@@ -155,7 +155,7 @@ class Stones : public QWidget {
 public:
     Stones(int total, int filled, const QColor &on, QWidget *parent = nullptr)
         : QWidget(parent), m_total(total), m_filled(filled), m_on(on) {
-        setFixedSize(total == 3 ? 24 : 36, 8);
+        setFixedSize(total == 3 ? 26 : 40, 8);   // the stones' widths and gaps, rounded up
         setAttribute(Qt::WA_TransparentForMouseEvents);
     }
 
@@ -226,7 +226,7 @@ public:
         m_name->setObjectName("collTabName");
         m_count = new QLabel;
         m_count->setObjectName("collTabCount");
-        for (QLabel *label : {m_name, m_count}) {
+        for (QLabel *label : {static_cast<QLabel *>(m_name), m_count}) {
             label->setAttribute(Qt::WA_TransparentForMouseEvents);
             l->addWidget(label);
         }
@@ -690,7 +690,10 @@ QWidget *CollectionsView::buildTools() {
     });
     l->addWidget(m_searchBtn);
 
-    m_wideAdd = textButton("pickSave", QStringLiteral("+"));
+    // Filled with the accent, as the notes' "+": the icon is dark.
+    m_wideAdd = textButton("addNote", QString());
+    m_wideAdd->setIcon(paintIcon("plus", QColor("#0c1222")));
+    m_wideAdd->setIconSize(QSize(16, 16));
     m_wideAdd->setFixedSize(28, 28);
     connect(m_wideAdd, &QToolButton::clicked, this, [this] { emit addRequested(); });
     m_wideAdd->hide();
@@ -854,9 +857,14 @@ void CollectionsView::refreshTabs() {
     if (!c) return;
     // Rebuilt only when the states change; otherwise relabelled, so the focus
     // stays on the tab it was on.
+    // The state in progress first, as the design has it (Leyendo, Pendientes,
+    // Leídos): it is what the page opens on. The rest in their order.
     QStringList ids;
     if (m_wide) ids << QString();   // Todos
-    for (const CollectionState &s : c->states) ids << s.id;
+    const QString inProgress = c->inProgressState();
+    if (!inProgress.isEmpty()) ids << inProgress;
+    for (const CollectionState &s : c->states)
+        if (s.id != inProgress) ids << s.id;
     QStringList have;
     for (const CountTab *t : m_tabs) have << t->stateId;
     if (ids != have) {
@@ -1324,7 +1332,7 @@ void CollectionsView::openSortMenu(QWidget *anchor) {
         words = asc ? QStringLiteral("A → Z") : QStringLiteral("Z → A");
     else
         words = asc ? L("Más antiguos primero") : L("Más recientes primero");
-    menu->addShortcutItem(asc ? "chevronUp" : "chevronDown", words, L("invertir"), [self, id] {
+    menu->addShortcutItem(asc ? "chevronUp" : "chevronDown", words, QString(), [self, id] {
         if (!self || !self->m_store) return;
         if (Collection *col = self->m_store->collection(id)) {
             col->sortAscending = !col->sortAscending;
@@ -1374,13 +1382,15 @@ void CollectionsView::select(CollectionItem *item) {
     }
     m_selected = id;
     // The tiles show which one; repainting them is enough.
-    for (coll::Tile *t : m_listHost->findChildren<coll::Tile *>()) {
-        t->selected = t->item->id == m_selected;
-        t->update();
-    }
-    for (Row *r : m_listHost->findChildren<Row *>()) {
-        r->setProperty("chosen", r->item->id == m_selected);
-        repolish(r);
+    // No Q_OBJECT on these, so findChildren<Tile *>() cannot tell them apart.
+    for (QWidget *w : m_listHost->findChildren<QWidget *>()) {
+        if (auto *t = dynamic_cast<coll::Tile *>(w)) {
+            t->selected = t->item->id == m_selected;
+            t->update();
+        } else if (auto *r = dynamic_cast<Row *>(w)) {
+            r->setProperty("chosen", r->item->id == m_selected);
+            repolish(r);
+        }
     }
     refreshDetail();
 }

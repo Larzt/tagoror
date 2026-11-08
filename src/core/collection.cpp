@@ -30,7 +30,7 @@ const TemplateInfo &info(Collection::Template t) {
     return table[qBound(0, int(t), Collection::kTemplates - 1)];
 }
 
-CollectionState state(const char *name, bool inProgress = false) {
+CollectionState makeState(const char *name, bool inProgress = false) {
     CollectionState s;
     s.name = QString::fromUtf8(name);
     s.inProgress = inProgress;
@@ -63,27 +63,27 @@ Collection *Collection::fromTemplate(Template kind, const QString &name) {
     c->name = name;
     switch (kind) {
         case Books:
-            c->states = {state("Pendiente"), state("Leyendo", true), state("Leído")};
+            c->states = {makeState("Pendiente"), makeState("Leyendo", true), makeState("Leído")};
             c->fields = {kAuthor, kYear, kProgress, kPriority, kRating};
             break;
         case Movies:
-            c->states = {state("Por ver"), state("Vista")};
+            c->states = {makeState("Por ver"), makeState("Vista")};
             c->fields = {kAuthor, kYear, kPriority, kRating};
             break;
         case Series:
-            c->states = {state("Por ver"), state("Viendo", true), state("Vista")};
+            c->states = {makeState("Por ver"), makeState("Viendo", true), makeState("Vista")};
             c->fields = {kYear, kProgress, kPriority, kRating};
             break;
         case Games:
-            c->states = {state("Pendiente"), state("Jugando", true), state("Terminado")};
+            c->states = {makeState("Pendiente"), makeState("Jugando", true), makeState("Terminado")};
             c->fields = {kAuthor, kYear, kPriority, kRating};
             break;
         case Records:
-            c->states = {state("Por escuchar"), state("Escuchado")};
+            c->states = {makeState("Por escuchar"), makeState("Escuchado")};
             c->fields = {kAuthor, kYear, kRating};
             break;
         case Blank:
-            c->states = {state("Pendiente"), state("En curso", true), state("Hecho")};
+            c->states = {makeState("Pendiente"), makeState("En curso", true), makeState("Hecho")};
             c->fields = {kPriority};
             break;
     }
