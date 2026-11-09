@@ -1772,14 +1772,25 @@ void CollectionsView::openItemMenu(CollectionItem *item, const QPoint &globalPos
 // ---------------------------------------------------------------------------
 // Wide mode
 
+/// The sidebar scrolls (1.3.8): collections, lengths, eight tags and the goal
+/// need some 520 px, and a shorter window squeezed them into each other.
 QWidget *CollectionsView::buildSide() {
-    m_side = new QWidget;
-    m_side->setObjectName("collPane");
-    m_side->setMinimumWidth(kSideMin);
-    m_side->setMaximumWidth(kSideMax);
-    m_sideLayout = new QVBoxLayout(m_side);
+    auto *scroll = new QScrollArea;
+    scroll->setObjectName("collPane");
+    scroll->setMinimumWidth(kSideMin);
+    scroll->setMaximumWidth(kSideMax);
+    scroll->setWidgetResizable(true);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setFrameShape(QFrame::NoFrame);
+    auto *host = new QWidget;
+    host->setObjectName("listHost");
+    m_sideLayout = new QVBoxLayout(host);
     m_sideLayout->setContentsMargins(8, 10, 8, 10);
     m_sideLayout->setSpacing(2);
+    scroll->setWidget(host);
+    scroll->viewport()->setAutoFillBackground(false);
+    scroll->viewport()->setObjectName("scrollViewport");
+    m_side = scroll;
     m_side->hide();
     return m_side;
 }
@@ -1900,7 +1911,8 @@ QWidget *CollectionsView::goalCard(const Collection &c) {
     v->setContentsMargins(10, 8, 6, 10);
     v->setSpacing(6);
     auto *head = new QHBoxLayout;
-    auto *k = new QLabel(L("RETO %1").arg(year));
+    // Elided, not pushed out: the sidebar can be as narrow as 160 px.
+    auto *k = new ElidedLabel(L("RETO %1").arg(year), QColor(Theme::muted()));
     k->setObjectName("meta");
     head->addWidget(k, 1, Qt::AlignVCenter);
     head->addWidget(edit, 0, Qt::AlignVCenter);
@@ -2034,6 +2046,10 @@ void CollectionsView::fillGrid(QVBoxLayout *col, const Collection &c, const QLis
         if (t->showAuthor && !item->author.isEmpty()) tip << item->author;
         const QString figures = progressText(c, item);
         if (!figures.isEmpty()) tip << figures;
+        for (const CollectionField &f : c.custom) {   // the Saga, and the like
+            const QString value = item->extra.value(f.key).toString().trimmed();
+            if (!value.isEmpty()) tip << f.name + ": " + value;
+        }
         t->setToolTip(tip.join('\n'));
         t->select = [this, item] { select(item); };
         t->open = [this, item] { emit editRequested(item); };
@@ -2174,6 +2190,26 @@ void CollectionsView::refreshDetail() {
         }
         tg->setColumnStretch(2, 1);
         m_detail->addWidget(tagBox);
+    }
+
+    // The collection's own fields (a book's Saga…), those it has filled in.
+    // Before 1.3.8 they were only seen in Editar.
+    for (const CollectionField &f : c->custom) {
+        const QString value = item->extra.value(f.key).toString().trimmed();
+        if (value.isEmpty() || f.name.trimmed().isEmpty()) continue;
+        auto *box = new QVBoxLayout;
+        box->setSpacing(3);
+        auto *label = new QLabel(f.name);
+        label->setObjectName("setFieldLabel");
+        box->addWidget(label);
+        auto *text = new QLabel(value);
+        text->setObjectName("popupText");
+        text->setTextFormat(Qt::PlainText);
+        text->setWordWrap(true);
+        text->setMinimumWidth(24);
+        text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        box->addWidget(text);
+        m_detail->addLayout(box);
     }
 
     if (c->has(Collection::kSynopsis) && !item->synopsis.isEmpty()) {
