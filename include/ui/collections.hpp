@@ -200,6 +200,8 @@ private:
     QWidget *m_listHost = nullptr;
     QVBoxLayout *m_list = nullptr;
     QScrollArea *m_detailScroll = nullptr;
+    QPointer<QWidget> m_detailCover;   ///< The detail's cover, sized to the column.
+    QSize detailCoverSize() const;
     /// Wide: sidebar | centre | detail, with edges that can be dragged.
     QSplitter *m_split = nullptr;
     QToolButton *m_detailBtn = nullptr;

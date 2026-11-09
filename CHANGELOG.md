@@ -4,6 +4,29 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.9] — 2026-11-09
+
+### Changed
+
+- **Colecciones, wide mode: a large cover in the item's card.** It was 70 px
+  beside the title, too small to make a picture out; now it sits on top,
+  centred, as wide as the column allows up to 240 px at 2:3, and follows the
+  column as its edge is dragged. The kicker, title and author go under it. A
+  cover without a picture shows the title in letters that grow with it.
+
+## [1.3.8] — 2026-11-09
+
+### Fixed
+
+- **Colecciones, wide mode: the sidebar scrolls.** Collections, lengths,
+  eight tags and the goal need some 520 px; in a shorter window they were
+  squeezed into each other. The goal's heading is elided rather than pushed
+  out when the sidebar is at its narrowest.
+- **Colecciones: fields of your own show in the item's card.** A book's
+  *Saga* (or any field added to a collection) was only seen in *Editar*; the
+  wide mode's card lists the ones filled in, before the synopsis, and the
+  tiles' tooltip has them too.
+
 ## [1.3.7] — 2026-11-08
 
 ### Added
