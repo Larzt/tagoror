@@ -27,6 +27,17 @@
 
 ## Features
 
+### Only the parts you want
+
+- On the **first start**, Tagoror asks which parts you want to use: the
+  planner, timers, birthdays, tracking and collections pages, and checklists, reminders,
+  voice notes and Markdown notes. Everything is on unless you switch it off;
+  text notes are always there.
+- *Settings → General → Funciones* changes it whenever you like. What you turn
+  off disappears from the navigation, its shortcuts, the command palette, the
+  tray menu and the *+* menu, and stops ringing — but nothing is deleted:
+  turning it back on brings back everything it had.
+
 <p align="center">
   <img src="docs/v5-notas.png" alt="The notes panel: area tabs, a checklist, a reminder and a Markdown note, with the navigation along the bottom" width="400">
 </p>
@@ -35,8 +46,8 @@
 
 | | |
 |---|---|
-| **Text** | Plain text, whose editor grows with the content: what you type is what you see. **Enter** finishes, **Shift+Enter** starts a new line. |
-| **Markdown** | Shown formatted on its card — headings, `**bold**`, `*italic*`, `` `code` ``, lists, quotes and `[links](…)`. Click it and it opens on its own page: the raw text with the syntax dimmed and line numbers, or the preview (**Ctrl+E**), with a formatting bar while you edit. Text notes you wrote in Markdown before 1.0 became Markdown notes on their own. |
+| **Text** | Plain text, whose editor grows with the content: what you type is what you see. **Enter** finishes, **Shift+Enter** starts a new line. A long one can be made taller by dragging the bottom edge of its text (or *Más alta* in its menu), and *Tamaño original* puts it back. |
+| **Markdown** | Shown formatted on its card — headings, `**bold**`, `*italic*`, `` `code` ``, lists, quotes and `[links](…)`. Every line is a line, and a plain line after a list or a quote leaves it; indent it to carry on the item. Click it and it opens on its own page: the raw text with the syntax dimmed and line numbers, or the preview (**Ctrl+E**), with a formatting bar while you edit. Text notes you wrote in Markdown before 1.0 became Markdown notes on their own. |
 | **Checklist** | Items you can tick off (done ones get struck through), rename in place and drag into a new order, a progress bar, and an add row that reads as a pending task rather than a form. |
 | **Reminder** | A real date, not just a label: when the time comes it rings until you stop it, or for a minute — after that it goes quiet but stays red until you acknowledge it. |
 | **Voice** | Records from your microphone and draws the waveform of what you said. |
@@ -74,16 +85,19 @@
   <img src="docs/v5-planner.png" alt="The planner in week view: the navigation as a rail, a mini month, today's tasks and the categories on the left, the week's events laid out by hour" width="720">
 </p>
 
-- *Planner* in the navigation (or **Ctrl+2**) opens it. The
+- *Planner* (*Planificador* in Spanish) in the navigation (or **Ctrl+2**) opens it. The
   panel **widens while it is open** — a week does not fit in 300 pixels — and
   returns to its size when you leave, unless you resized it in between.
 - **Day, week and month views.** Day and week lay things out by the hour, side
   by side when they overlap, with a red line at the current time; month writes
   each day's entries inside its cell, with `+N more` when they do not fit.
+  Titles too long for their space end in "…", or, with *Settings → Appearance
+  → Títulos del planificador* on *Varias líneas*, carry on to the next lines.
 - **Events and tasks** with a start and an end, a category (work, personal,
-  studies, other, or **your own**, with a name and a colour — created from the
-  side panel or the form, edited with the pencil next to it; deleting one moves
-  its events to *other*) and an optional repeat — every day, week, month or
+  studies, other, or **your own**, with a name and a colour — one of the
+  swatches or any other, typed as `#rrggbb` — created from the side panel or
+  the form, edited with the pencil next to it; deleting one moves its events to
+  *other*) and an optional repeat — every day, week, month or
   year — with no end or *until* a chosen day. A task has a box to tick, and a
   repeating task is ticked per day, not all at once.
 - They can **ring before they start** — at the start, or 5, 10, 15 or 30
@@ -165,6 +179,36 @@
   side by side. Like a timer it stores instants, not a count, so **it keeps
   adding up with the app closed**; sessions live in their own `tracking.json`,
   backed up and synced like everything else.
+
+### Collections (Colecciones)
+
+- *Colecciones* in the navigation (or **Ctrl+6**): lists of things that move
+  through states. The first template is a **library** — *Pendiente*,
+  *Leyendo*, *Leído* — and the header's name changes collection or makes a new
+  one.
+- **Leyendo**: a card per book with its cover, the progress bar and what is
+  left, **+10 p.** / **+25 p.** or the page typed, and **Terminado**, which
+  files it as read today. Under it, the next three in the queue.
+- **Pendiente** is the queue, by priority, reordered by hand with the grip;
+  **Leído** has this year's figures and the rating.
+- **Sort** by priority (or rating), year, author by surname, title or date —
+  each with its own direction, which a row turns round.
+- Each book has a card (double click, or right click → *Editar*): cover
+  colour, author and what it sorts by, year, pages, state, progress, priority,
+  rating, tags, a **synopsis**, a **cover picture** (chosen or dragged onto
+  the cover; the colour otherwise) and a **reading note**, a Markdown note
+  opened on its page.
+- **Filter** by tag or, in a library, by length — up to 250 pages, 251–500 or
+  over 500 — from the sidebar when wide or the filter button when narrow.
+- New collections come from a template — Libros, Películas, Series, Juegos,
+  Discos or En blanco — with states you can rename, reorder, add or remove,
+  fields you switch on, fields of your own and a yearly goal.
+- Wide (app mode), three columns — their edges can be dragged and the card
+  hidden with the *ⓘ* button, as in Spotify: collections, tags and the goal; a grid of
+  covers or a list with *Todos*; and the book's card, with its synopsis, the
+  page moved on right there (+10, +25 or typed; also from the right-click
+  menu), a reading block in the Planner and the clock in Seguimiento.
+- Kept in `collections.json`, backed up and synced like everything else.
 
 ### Birthdays
 
@@ -286,7 +330,9 @@
 - **The navigation stays put**: Notes, Planner, Timers, Birthdays and Seguimiento along the
   bottom, the open one marked, or as a rail on the left once the panel is wider
   than 480 px. A red dot on Notes says a reminder is ringing while you are
-  elsewhere.
+  elsewhere. Notes is always first; the other pages go in the order you set in
+  **Settings → General → Orden de las páginas** (their shortcuts stay with
+  them).
 - **One place for notices**: what rings, a missing data folder, a failed sync
   and a new version share a single card above the navigation, most urgent first,
   with *1 of N* for the rest. Nothing slides in pushing your notes down.
@@ -330,7 +376,8 @@
 </p>
 
 - From **⋯** in the header, or **Ctrl+,**, in five tabs: *General* (language,
-  window, data folder, backups, microphone, updates), *Appearance* (accent,
+  the parts of the app in use, window, data folder, backups, microphone,
+  updates), *Appearance* (accent,
   opacity, **typeface, text size, density** and the **alarm**), *Sync*,
   *Shortcuts* (every one of them in one list) and *About*.
 - **Typeface**: IBM Plex Sans, which comes with the app and is the default, the
@@ -468,7 +515,7 @@ always, and those two rows in settings are simply disabled.
 
 - **Ctrl+K** opens the **command palette**: type to go to any page, create any
   kind of note or switch area — accents don't matter, *cumple* finds Birthdays.
-- **Ctrl+1…5** open the pages, **Ctrl+,** the settings, **Alt+1…9** the areas,
+- **Ctrl+1…6** open the pages, **Ctrl+,** the settings, **Alt+1…9** the areas,
   **Ctrl+M** folds the panel; *Settings → Shortcuts* lists them all.
 - **Tab** goes through everything that can be clicked: the navigation, each
   note's title and body, checklist boxes, link rows, the date chip, the settings

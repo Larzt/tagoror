@@ -20,6 +20,8 @@ struct Theme {
     int textScale = 100;
     /// Settings → Density. Cards read it when built, so changing it rebuilds them.
     bool compact = false;
+    /// Settings → Planner titles: long ones break into lines instead of "…".
+    bool plannerWrap = false;
 
     /// A content size already scaled, for what is painted by hand.
     qreal fs(qreal px) const { return px * textScale / 100.0; }
@@ -160,6 +162,43 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
         p.drawLine(QPointF(c - 4.2, c + 5.0), QPointF(c - 4.2, c + 1.0));
         p.drawLine(QPointF(c, c + 5.0), QPointF(c, c - 2.4));
         p.drawLine(QPointF(c + 4.2, c + 5.0), QPointF(c + 4.2, c - 5.6));
+    } else if (kind == "books") {
+        // Colecciones (1.3.0): two spines standing and a third leaning on them,
+        // from the design's 16px SVG, scaled to the size asked for.
+        const qreal s = px / 16.0;
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(2 * s, 3 * s, 3 * s, 10 * s), 0.8 * s, 0.8 * s);
+        p.drawRoundedRect(QRectF(6 * s, 2 * s, 3 * s, 11 * s), 0.8 * s, 0.8 * s);
+        p.drawPolygon(QPolygonF({QPointF(10.4 * s, 3.7 * s), QPointF(12.9 * s, 3.0 * s),
+                                 QPointF(15.2 * s, 12.2 * s), QPointF(12.7 * s, 12.9 * s)}));
+    } else if (kind == "sort") {
+        // Lines getting shorter and an arrow down: "ordered by".
+        const qreal s = px / 16.0;
+        p.drawLine(QPointF(2.5 * s, 4 * s), QPointF(9.5 * s, 4 * s));
+        p.drawLine(QPointF(2.5 * s, 8 * s), QPointF(7.5 * s, 8 * s));
+        p.drawLine(QPointF(2.5 * s, 12 * s), QPointF(5.5 * s, 12 * s));
+        p.drawLine(QPointF(12 * s, 3 * s), QPointF(12 * s, 13 * s));
+        p.drawPolyline(QPolygonF({QPointF(10 * s, 11 * s), QPointF(12 * s, 13 * s),
+                                  QPointF(14 * s, 11 * s)}));
+    } else if (kind == "tag") {
+        // A label (1.3.2): pointed on the right, with its hole.
+        const qreal s = px / 16.0;
+        p.setBrush(Qt::NoBrush);
+        p.drawPolygon(QPolygonF({QPointF(2.5 * s, 4 * s), QPointF(10 * s, 4 * s), QPointF(14 * s, 8 * s),
+                                 QPointF(10 * s, 12 * s), QPointF(2.5 * s, 12 * s)}));
+        p.drawEllipse(QPointF(10 * s, 8 * s), 1.0 * s, 1.0 * s);
+    } else if (kind == "grid") {
+        const qreal s = px / 16.0;
+        p.setBrush(Qt::NoBrush);
+        for (qreal x : {2.5, 9.0})
+            for (qreal y : {2.5, 9.0})
+                p.drawRoundedRect(QRectF(x * s, y * s, 4.5 * s, 4.5 * s), 1.2 * s, 1.2 * s);
+    } else if (kind == "list") {
+        const qreal s = px / 16.0;
+        for (qreal y : {4.0, 8.0, 12.0}) {
+            p.drawLine(QPointF(6 * s, y * s), QPointF(13.5 * s, y * s));
+            p.drawPoint(QPointF(3 * s, y * s));
+        }
     } else if (kind == "markdown") {
         // The usual Markdown mark: an M and a down arrow in a box.
         p.drawRoundedRect(QRectF(c - 6.5, c - 4.5, 13, 9), 2, 2);
@@ -401,6 +440,8 @@ inline QIcon paintIcon(const QString &kind, const QColor &color, int px = 16) {
 inline QString Theme::sheet() const {
     const QString acc = accent.name();
 
+    // In pieces (`)" R"(`): MSVC rejects a single string literal over 16,380
+    // bytes (C2026), which GCC and Clang accept. Keep each well under that.
     QString out = QString(R"(
 QFrame#shell {
     background: %1;
@@ -416,8 +457,9 @@ QFrame#header { border: none; }
    along the bottom or a rail down the left. */
 QFrame#toolsRow { border: none; border-bottom: 1px solid %2; }
 /* 1.0 pages: section labels, the timers' hero card, rows and chips. */
+/* Section titles in the muted grey (1.3.0): #636872 barely read on #13161b. */
 QLabel#pageSection {
-    color: #636872; font-size: 10px; letter-spacing: 0.8px; padding: 8px 4px 0 4px;
+    color: %4; font-size: 10px; letter-spacing: 0.8px; padding: 8px 4px 0 4px;
     font-family: "IBM Plex Mono", monospace;
 }
 QFrame#timerHero { background: rgba(255,255,255,0.045); border: 1px solid %2; border-radius: 10px; }
@@ -483,6 +525,28 @@ QLabel#trackPeriod { color: %3; font-size: 11px; font-family: "IBM Plex Mono", m
 QLabel#trackTileValue { color: %3; font-size: 19px; font-weight: 500; font-family: "IBM Plex Mono", monospace; }
 QListView#trackList { background: transparent; border: none; outline: 0; }
 QLabel#overlayTitle { font-size: 13px; font-weight: 600; }
+/* Colecciones (1.3.0). Cards, chips, tabs and buttons are Seguimiento's and the
+   timers'; these are only what had no equivalent. */
+QWidget#collections { background: transparent; }
+QLabel#collTitle { color: %3; font-size: {fs:12}px; font-weight: 600; }
+QLabel#collSub { font-size: {fs:11}px; }
+QLabel#collTabName { color: %4; font-size: 12px; font-weight: 500; background: transparent; }
+QLabel#collTabName[chosen="true"] { color: %3; font-weight: 600; }
+QLabel#collTabCount {
+    color: %4; font-size: 10px; background: transparent; font-family: "IBM Plex Mono", monospace;
+}
+QLabel#collKicker {
+    color: %5; font-size: 10px; letter-spacing: 0.8px; font-family: "IBM Plex Mono", monospace;
+}
+QLabel#collKicker[tone="amber"] { color: #f2b757; }
+QLabel#collKicker[tone="muted"] { color: %4; }
+QToolButton#collSide { background: transparent; border: 1px solid transparent; border-radius: 8px; }
+QToolButton#collSide:hover { background: %7; }
+QToolButton#collSide[chosen="true"] {
+    background: rgba(255,255,255,0.075); border: 1px solid rgba(255,255,255,0.08);
+}
+QWidget#collPane { background: transparent; border: none; }
+QWidget#bdayRow[chosen="true"] { background: %8; }
 QToolButton#trackPicker {
     color: %3; background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px;
     padding: 5px 8px; font-size: 12px; text-align: left;
@@ -517,10 +581,17 @@ QLineEdit#setField {
     padding: 5px 8px; font-size: 11.5px; color: %3; font-family: "IBM Plex Mono", monospace;
 }
 QLineEdit#setField:focus { border: 1px solid %5; }
+/* Several lines in a form (1.3.3: a book's synopsis), in the body font. */
+QPlainTextEdit#setFieldArea {
+    background: rgba(0,0,0,0.24); border: 1px solid %2; border-radius: 7px;
+    padding: 3px 4px; font-size: 11.5px; color: %3; selection-background-color: %9;
+}
+QPlainTextEdit#setFieldArea:focus { border: 1px solid %5; }
 QLabel#syncStatus { font-size: 10.5px; font-family: "IBM Plex Mono", monospace; }
 /* Folding a card (1.0): the chevron and what stands in for the body. */
 QToolButton#foldBtn { background: transparent; border: none; border-radius: 5px; }
 QToolButton#foldBtn:hover { background: %7; }
+)" R"(
 /* A Markdown note's page: raw editor in mono, preview in the body font. */
 QPlainTextEdit#mdEditor, QTextBrowser#mdPreview {
     background: rgba(0,0,0,0.18); border: 1px solid %2; border-radius: 8px;
@@ -718,6 +789,7 @@ QSlider::handle:horizontal {
 QScrollArea { border: none; background: transparent; }
 QWidget#listHost { background: transparent; }
 QWidget#scrollViewport { background: transparent; }
+QWidget#welcomeList, QWidget#welcomeViewport { background: transparent; }
 QScrollBar:vertical {
     background: transparent; width: 6px; margin: 0;
 }

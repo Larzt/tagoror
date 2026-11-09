@@ -16,21 +16,41 @@ namespace md {
 /// reads "milk bread"). In a quick note every line is a line, as existing
 /// notes were written. Marks them as hard breaks (two trailing spaces) unless
 /// the next line starts a block of its own, and never inside a code fence.
+///
+/// A plain line right under a list item or a quote is, for CommonMark, more of
+/// that item ("lazy continuation"): with the hard breaks, everything written
+/// after a list stayed inside its last item. In a note that line is the text
+/// after the list, so a blank line is put in to close it. Only an indented line
+/// carries on the item, as in "- milk\n  the oat one".
 QString hardBreaks(const QString &source) {
     static const QRegularExpression blockStart(
         R"(^\s*([-*+]\s|\d+[.)]\s|#{1,6}\s|>|```|~~~))");
+    static const QRegularExpression listOrQuote(R"(^\s*([-*+]\s|\d+[.)]\s|>))");
+    static const QRegularExpression indented(R"(^( {2,}|\t))");
     const QStringList lines = source.split('\n');
     QStringList out;
     bool fenced = false;
+    bool inItem = false;   // in a list item or a quote, which a plain line would extend
     for (int i = 0; i < lines.size(); ++i) {
         const QString &line = lines.at(i);
         const QString trimmed = line.trimmed();
         if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) fenced = !fenced;
+        if (!fenced) {
+            if (trimmed.isEmpty()) inItem = false;
+            else if (listOrQuote.match(line).hasMatch()) inItem = true;
+            // An indented line under an item is part of it; any other leaves it.
+            else if (!indented.match(line).hasMatch()) inItem = false;
+        }
         const bool hasNext = i + 1 < lines.size();
-        const bool breakHere = !fenced && hasNext && !trimmed.isEmpty() &&
-                               !lines.at(i + 1).trimmed().isEmpty() &&
-                               !blockStart.match(lines.at(i + 1)).hasMatch();
-        out << (breakHere ? line + "  " : line);
+        const QString next = hasNext ? lines.at(i + 1) : QString();
+        const bool plainNext = hasNext && !trimmed.isEmpty() && !next.trimmed().isEmpty() &&
+                               !blockStart.match(next).hasMatch();
+        if (!fenced && plainNext && inItem && !indented.match(next).hasMatch()) {
+            out << line << QString();   // closes the list or the quote
+            inItem = false;
+            continue;
+        }
+        out << (!fenced && plainNext ? line + "  " : line);
     }
     return out.join('\n');
 }

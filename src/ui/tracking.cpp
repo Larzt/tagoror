@@ -450,7 +450,7 @@ private:
         QFont f = mono(opt.font, 10);
         f.setLetterSpacing(QFont::AbsoluteSpacing, 0.8);
         p->setFont(f);
-        p->setPen(kDim);
+        p->setPen(QColor(Theme::muted()));   // a section title (1.3.0)
         p->drawText(box, Qt::AlignLeft | Qt::AlignVCenter, dayHeading(r.day));
         p->setFont(mono(opt.font, 10.5));
         p->setPen(QColor(Theme::muted()));

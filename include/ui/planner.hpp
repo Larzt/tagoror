@@ -58,11 +58,17 @@ public:
     void setView(View v);
     View view() const { return m_view; }
     void setHidden(const QStringList &categories);
+    /// Reminders left out of the app (core/features.hpp): the form offers only
+    /// event and task.
+    void setRemindersEnabled(bool on);
     QStringList hidden() const { return QStringList(m_hidden.begin(), m_hidden.end()); }
 
     void refresh();
     void retranslate();
     void goTo(const QDate &day);
+    /// The form for a new event titled @p title, at the next full hour: a
+    /// reading block from Colecciones (1.3.0).
+    void planBlock(const QString &title);
     /// Closes the form if open.
     /// @return Whether it was: Escape closes the form first, and only a second
     ///         press leaves the page.
@@ -254,6 +260,7 @@ private:
     QToolButton *m_fDelete = nullptr;
     QToolButton *m_fDuplicate = nullptr;
     QList<QToolButton *> m_kindButtons;
+    bool m_remindersOn = true;
     QList<QToolButton *> m_repeatButtons;
     QList<QToolButton *> m_catButtons;
     QWidget *m_repeatBox = nullptr;

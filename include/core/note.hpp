@@ -45,6 +45,9 @@ struct Note {
     bool imagesHidden = false;
     /// Folded to its title row in the list (1.0). Per note, so it syncs.
     bool collapsed = false;
+    /// Height of a text or Markdown note's body on its card, set by dragging its
+    /// bottom edge (1.2.6). 0: it grows with its text, up to a limit, as always.
+    int bodyHeight = 0;
     /// Area the note belongs to (see area.hpp). Empty means Area::kDefaultId, so
     /// notes from before areas keep their bytes and sync does not see them as
     /// edited. Always assign through Store::setNoteArea().
@@ -198,6 +201,7 @@ struct Note {
         // Only when set: an untouched note keeps its bytes, and sync does not see
         // every note as edited the first time 1.0 saves.
         if (collapsed) o["folded"] = true;
+        if (bodyHeight > 0) o["bodyHeight"] = bodyHeight;
 
         QJsonArray imgArr;
         for (const QString &name : images) imgArr.append(name);
@@ -236,6 +240,7 @@ struct Note {
         n->updatedMs = qint64(o["updated"].toDouble());
         n->area = o["area"].toString();
         n->collapsed = o["folded"].toBool();
+        n->bodyHeight = qMax(0, o["bodyHeight"].toInt());
         for (const QJsonValue v : o["images"].toArray())
             n->images.append(v.toString());
         for (const QJsonValue v : o["peaks"].toArray())

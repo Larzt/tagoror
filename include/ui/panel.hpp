@@ -9,6 +9,7 @@
 #include <QSize>
 #include <QWidget>
 
+#include "core/features.hpp"
 #include "core/store.hpp"
 #include "ui/theme.hpp"
 
@@ -45,6 +46,10 @@ class PlannerView;
 class SettingsView;
 class TimerView;
 class TrackingView;
+class CollectionsView;
+class CollectionSwitch;
+struct Collection;
+struct CollectionItem;
 
 /// The single window: draws its own chrome and presents what the Store keeps.
 /// An outer stack swaps the expanded panel for the folded dock; inside it,
@@ -220,6 +225,16 @@ private:
     /// @{
     void openNewNoteMenu(QWidget *anchor);
     void openMoreMenu(QWidget *anchor);   ///< "⋯" in the header.
+    /// @name Colecciones
+    /// @{
+    void openCollectionMenu(QWidget *anchor);   ///< The header's switch.
+    /// Null: a new one. Opens over the panel (ui/collectiondialogs).
+    void openCollectionEditor(Collection *c);
+    void openItemEditor(CollectionItem *item);
+    /// The item's Markdown note, created first if there is none.
+    void openItemNote(CollectionItem *item);
+    void refreshCollections();
+    /// @}
     void openPalette();                   ///< Ctrl+K; again closes it.
     void openAbout(QWidget *anchor);
     void refreshSettings();
@@ -300,6 +315,23 @@ private:
     void setAppMode(bool on);
     void applyAppModeChrome();      ///< Margins, shadow, frame and the "–" button.
     bool appMode() const { return m_store.prefs().appMode; }
+
+    // Parts of the app in use (core/features.hpp, 1.3.0).
+    bool has(Features::Id f) const { return Features::enabled(m_store.prefs().featuresOff, f); }
+    bool hasNoteType(Note::Type t) const {
+        return Features::noteTypeEnabled(m_store.prefs().featuresOff, t);
+    }
+    /// The feature a page belongs to, or -1 for those always there.
+    int featureOf(const QWidget *page) const;
+    /// Turns one on or off, saves, and applies it.
+    void setFeature(const QString &key, bool on);
+    /// 1.3.5: the pages after Notas in @p keys' order, in the navigation.
+    void setPageOrder(const QStringList &keys);
+    void applyPageOrder();
+    /// Hides what is off and shows what is on: navigation, tray, planner.
+    void applyFeatures();
+    /// The first start's choice (WelcomeView), once the window is up.
+    void openWelcome();
     int shadowMargin() const;
     /// From the tray or a second instance: also when minimised.
     void showRestored();
@@ -341,6 +373,10 @@ private:
     TimerView *m_timerView = nullptr;
     BirthdayView *m_birthdays = nullptr;
     TrackingView *m_tracking = nullptr;
+    CollectionsView *m_collections = nullptr;
+    CollectionSwitch *m_collSwitch = nullptr;   ///< The header's title on Colecciones.
+    QToolButton *m_collAddBtn = nullptr;
+    QWidget *m_collSpacer = nullptr;   ///< Keeps the header buttons right while the title is hidden.
     SettingsView *m_settings = nullptr;
 
     QFrame *m_header = nullptr;
@@ -393,4 +429,5 @@ private:
     /// Brought to front from the tray: the widget is out of the desktop layer
     /// until sent back. Not saved, it does not survive a restart.
     bool m_lifted = false;
+    bool m_welcomeOpen = false;   ///< The first start's choice is on screen.
 };

@@ -257,6 +257,23 @@ void NavBar::retranslate() {
     for (NavItem *i : m_items) i->retranslate();
 }
 
+void NavBar::setItemVisible(QWidget *page, bool visible) {
+    for (NavItem *i : m_items)
+        if (i->item().page == page) i->setVisible(visible);
+}
+
+void NavBar::setOrder(const QList<QWidget *> &pages) {
+    QList<NavItem *> ordered;
+    for (NavItem *i : m_items)
+        if (!pages.contains(i->item().page)) ordered << i;
+    for (QWidget *page : pages)
+        for (NavItem *i : m_items)
+            if (i->item().page == page) ordered << i;
+    if (ordered == m_items) return;
+    m_items = ordered;
+    setLayoutMode(m_layout);   // lays them out again in the new order
+}
+
 QWidget *NavBar::buttonFor(QWidget *page) const {
     for (NavItem *i : m_items)
         if (i->item().page == page) return i;

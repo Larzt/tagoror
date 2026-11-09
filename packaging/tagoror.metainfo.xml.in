@@ -96,10 +96,99 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
-    <release version="1.2.3" date="2026-11-04">
+    <release version="1.3.10" date="2026-11-09">
       <description>
         <p>In the planner, a new event is created with a double click on an
            empty hour instead of a single click.</p>
+      </description>
+    </release>
+    <release version="1.3.9" date="2026-11-09">
+      <description>
+        <p>Collections: the item's card shows its cover large, sized to the
+           column.</p>
+      </description>
+    </release>
+    <release version="1.3.8" date="2026-11-09">
+      <description>
+        <p>Collections: the sidebar scrolls in short windows, and fields of your
+           own, such as a book's saga, show in its card.</p>
+      </description>
+    </release>
+    <release version="1.3.7" date="2026-11-08">
+      <description>
+        <p>Collections: in the wide mode the columns can be resized by dragging
+           their edges, and the item's card can be hidden.</p>
+      </description>
+    </release>
+    <release version="1.3.6" date="2026-11-08">
+      <description>
+        <p>Collections: the yearly goal can be changed where it shows, appears in
+           the narrow panel too, and the finish date of a book can be set, so
+           books read count towards it.</p>
+      </description>
+    </release>
+    <release version="1.3.5" date="2026-11-08">
+      <description>
+        <p>The pages after Notes can be put in any order from the settings, and
+           the Spanish interface calls the planner Planificador.</p>
+      </description>
+    </release>
+    <release version="1.3.4" date="2026-11-08">
+      <description>
+        <p>Collections: a picture can be the cover of a book, game, film,
+           series or record, chosen or dragged onto it, and synced with the
+           rest.</p>
+      </description>
+    </release>
+    <release version="1.3.3" date="2026-11-08">
+      <description>
+        <p>Collections: a synopsis for each book, a filter by number of pages,
+           and the page changed from the book's card or its menu, without
+           opening the editor.</p>
+      </description>
+    </release>
+    <release version="1.3.2" date="2026-11-08">
+      <description>
+        <p>Collections: the narrow panel shows the tag that filters and can
+           filter by tag too.</p>
+      </description>
+    </release>
+    <release version="1.3.1" date="2026-11-08">
+      <description>
+        <p>Collections: the grid no longer cuts information at some window sizes,
+           and the list shows the progress of what is being read.</p>
+      </description>
+    </release>
+    <release version="1.3.0" date="2026-11-08">
+      <description>
+        <p>Collections, a new page: a library of books to read, being read and
+           read, with progress, a queue by priority and this year's figures.</p>
+        <p>Choose which parts of Tagoror to use: the first start asks, and the
+           settings change it later. What is turned off is hidden, not deleted.</p>
+      </description>
+    </release>
+    <release version="1.2.6" date="2026-11-08">
+      <description>
+        <p>Text and Markdown notes can be made taller by dragging their bottom
+           edge, and put back to their original size from the right-click menu.</p>
+      </description>
+    </release>
+    <release version="1.2.5" date="2026-11-08">
+      <description>
+        <p>Markdown notes: the text written after a list or a quote no longer
+           stays inside its last item.</p>
+      </description>
+    </release>
+    <release version="1.2.4" date="2026-11-08">
+      <description>
+        <p>Planner categories can take any colour, not only the default
+           swatches: the category editor has a field for a hex colour.</p>
+      </description>
+    </release>
+    <release version="1.2.3" date="2026-11-08">
+      <description>
+        <p>Planner titles that do not fit can break into several lines instead
+           of being cut: a new choice in the appearance settings.</p>
       </description>
     </release>
     <release version="1.2.2" date="2026-11-03">

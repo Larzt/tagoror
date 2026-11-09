@@ -4,7 +4,7 @@ All notable changes to Tagoror are recorded here. Versions follow
 [semantic versioning](https://semver.org), and the format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [1.2.3] — 2026-11-04
+## [1.3.10] — 2026-11-09
 
 ### Changed
 
@@ -12,6 +12,240 @@ All notable changes to Tagoror are recorded here. Versions follow
   views. A single click there no longer opens the form, so clicking around the
   planner does not start an event by accident. Enter, **+** and the right-click
   menu work as before.
+
+## [1.3.9] — 2026-11-09
+
+### Changed
+
+- **Colecciones, wide mode: a large cover in the item's card.** It was 70 px
+  beside the title, too small to make a picture out; now it sits on top,
+  centred, as wide as the column allows up to 240 px at 2:3, and follows the
+  column as its edge is dragged. The kicker, title and author go under it. A
+  cover without a picture shows the title in letters that grow with it.
+
+## [1.3.8] — 2026-11-09
+
+### Fixed
+
+- **Colecciones, wide mode: the sidebar scrolls.** Collections, lengths,
+  eight tags and the goal need some 520 px; in a shorter window they were
+  squeezed into each other. The goal's heading is elided rather than pushed
+  out when the sidebar is at its narrowest.
+- **Colecciones: fields of your own show in the item's card.** A book's
+  *Saga* (or any field added to a collection) was only seen in *Editar*; the
+  wide mode's card lists the ones filled in, before the synopsis, and the
+  tiles' tooltip has them too.
+
+## [1.3.7] — 2026-11-08
+
+### Added
+
+- **Colecciones, wide mode: columns that can be resized and a detail that can
+  be hidden**, as in Spotify. The hairlines between the collections, the
+  centre and the item's card can be dragged (in the accent while hovered):
+  the sidebar from 160 to 360 px, the card from 240 to 520, the centre
+  taking what is left and the grid redoing its columns as it goes. An *ⓘ*
+  button next to the grid/list switch hides or shows the card. The widths
+  and whether the card is shown are remembered.
+
+## [1.3.6] — 2026-11-08
+
+### Fixed
+
+- **Colecciones: the yearly goal.** It counts what was finished this year,
+  so anything finished with no date counted nowhere, silently: three books
+  read showed "0 / 6". Now:
+  - The card of something finished has **Terminado el**, the day it was
+    finished — today when it is moved there in the card, editable, and
+    empty for "no date".
+  - The RETO card says how many finished have no date and so do not count.
+  - The goal is changed right on it (*Cambiar*), or set with *Ponerse un
+    reto* when there is none; before, only *Editar colección* had it, and
+    nothing said so (its menu entry now reads "Nombre, estados, campos y
+    reto").
+  - The narrow panel shows it too, in the finished tab under this year's
+    figures; before it was only in the wide mode's sidebar.
+  - Sorted by date, something finished with no date says "sin fecha de fin"
+    instead of a bare "terminado".
+
+## [1.3.5] — 2026-11-08
+
+### Added
+
+- **The pages' order in the navigation can be changed**: *Ajustes → General
+  → Orden de las páginas* moves each one up or down. *Notas* is the app
+  itself and stays first. Pages turned off keep their place for when they
+  come back, and the shortcuts stay with their page (Ctrl+2 is the planner
+  wherever it sits).
+
+### Changed
+
+- In Spanish the *Planner* is now the ***Planificador*** — in the
+  navigation, its page, the palette, the shortcuts, the features and
+  Colecciones' "Bloque de lectura en el Planificador". English keeps
+  *Planner*.
+
+## [1.3.4] — 2026-11-08
+
+### Added
+
+- **Colecciones: cover pictures.** A book, game, film, series or record can
+  have a picture as its cover instead of a colour. In its card, a click on the
+  cover offers *Elegir imagen…*, *Quitar imagen* (back to the colour) or
+  *Cambiar el color*; an image file dragged onto the cover does too. The
+  picture fills the cover wherever it shows — the rows, the reading card, the
+  grid (shaded so the year, title and author still read over it) and the
+  wide mode's card.
+  - It is copied into `images/`, next to the notes' pictures, scaled down to
+    720 px tall and saved as JPEG, and synced with them. Nothing is copied
+    until *Guardar*; replacing or removing a picture, or deleting the item,
+    deletes its file.
+
+## [1.3.3] — 2026-11-08
+
+### Added
+
+- **Colecciones: synopsis.** Books have a *Sinopsis* field — a few lines,
+  edited in a box that wraps — shown in the wide mode's card. It is on in the
+  Libros template and turns on by itself in existing libraries (it can be
+  switched off in the collection's fields like any other). A field of your
+  own called *Sinopsis* becomes the built-in one, text included.
+- **Colecciones: filter by length.** In a library, by pages: up to 250,
+  251–500 or over 500, each with its count. Wide, under the tags in the
+  sidebar; narrow, in the filter button's menu (the old tag button), which
+  has the tags too. It combines with the tag, and the narrow panel says what
+  filters on top — *Solo «Fantasía» · Hasta 250 p.*
+
+### Fixed
+
+- **Colecciones: changing the page no longer needs *Editar*.** The wide
+  mode's card has the reading card's progress — bar, "p. 212 / 496", what is
+  left, *+10 p.*, *+25 p.* and the page typed — and the right-click menu of a
+  book in progress has them too, from the grid or the list.
+
+## [1.3.2] — 2026-11-08
+
+### Fixed
+
+- **Colecciones, narrow panel**: a tag chosen in the wide mode stayed on when
+  the window was narrowed, where the tags are not shown, so only that tag's
+  items appeared with no way to tell why or to clear it. Now the narrow panel
+  says it on top — *Solo «Fantasía»* — with *Quitar el filtro*, and a tag
+  button next to the sort lists every tag with its count, to filter or go back
+  to all. The empty messages count the tag as a filter, and *A continuación*
+  is hidden while filtering.
+
+## [1.3.1] — 2026-11-08
+
+### Fixed
+
+- **Colecciones, wide mode**: the grid's tiles no longer lose information at
+  some window sizes. The columns follow the window as it is resized, each tile
+  keeps the height its width needs (the state and priority under the cover
+  were cut off), and a long title wraps into the lines the cover has room for
+  and ends in "…", instead of losing its beginning. The state under a tile is
+  elided before it reaches the priority stones ("por escuchar"), and the
+  tooltip has the whole title, author and progress.
+- **Colecciones, list mode**: what is in progress shows its progress — a bar
+  under the title and "p. 212 / 496 · 43%" on the right — in *Todos* and in
+  the in-progress tab. Tiles show the percentage next to the state too.
+- Every template is covered, not only Libros: tiles show the year and the
+  author only if the collection uses those fields, and the progress uses each
+  template's unit (episodes, etc.).
+
+## [1.3.0] — 2026-11-08
+
+### Added
+
+- **Colecciones, a new page (Ctrl+6)**: lists of things that move through
+  states, starting with a library — *Pendiente*, *Leyendo* and *Leído*.
+  - *Leyendo* shows a card per book with its cover, since when, the progress
+    bar ("p. 212 / 496", "43% · 284 p. to go"), quick *+10 p.* and *+25 p.*,
+    a field for the page and *Terminado*, which files it as read today. Under
+    the cards, the next three in the queue, one click from starting.
+  - *Pendiente* is the queue: by priority, with a grip to reorder it by hand
+    (dropping a book among another priority gives it that priority), and its
+    total of pages.
+  - *Leído* has this year's figures — books, pages, average per month — and
+    the rating as stones.
+  - Sort by priority (rating among the read), year, author by surname, title
+    or date added (finished among the read), each with its own direction and a
+    row that turns it round in words; the order is kept per collection.
+  - Each book has a card: cover colour, title, author and what it sorts by
+    (the last word unless told, for "Liu Cixin" or "García Márquez"), year,
+    pages, date added, state, progress, priority, rating, tags and a reading
+    note — a Markdown note created the first time and opened on its page.
+  - Collections are made from a template (Libros today; Películas, Series,
+    Juegos, Discos and En blanco share the shape) whose states can be
+    renamed, reordered, added or removed, and whose fields can be switched on
+    or off, plus fields of your own and a yearly goal.
+  - In the app mode's width it becomes three columns: the collections, tags
+    and the yearly goal; *Todos* and the states as a grid of covers or a list;
+    and the selected book's card, with a reading block in the Planner and the
+    clock in Seguimiento.
+  - Stored in `collections.json` next to the notes, with the same backups and
+    sync as the other files. It is one more part that can be turned off.
+- **Choose which parts of Tagoror to use.** The first start opens a welcome
+  with a switch for each optional part — the *Planner*, *Timers*,
+  *Cumpleaños* and *Seguimiento* pages, and *Checklists*, *Recordatorios*,
+  *Notas de voz* and *Notas Markdown* — all on; text notes are always there.
+  *Settings → General → Funciones* changes it later.
+- A part turned off disappears from the navigation, from its shortcuts, the
+  command palette, the tray menu and the new-note menu (and reminders from the
+  planner's form), and stops ringing: birthdays and planner events no longer
+  sound, and what was ringing goes quiet. **Nothing is deleted**: notes of a
+  type turned off stay on the list, and turning a part back on brings back
+  everything it had.
+- Existing installs keep everything on and never see the welcome.
+
+### Changed
+
+- Section titles (*A CONTINUACIÓN*, the days in Seguimiento, the command
+  palette's groups…) are in the muted grey (#8b909a) instead of #636872, which
+  barely read on the panel.
+
+## [1.2.6] — 2026-11-08
+
+### Added
+
+- **Taller text notes, to read them comfortably**: hovering a text or Markdown
+  note's body shows a grip on its bottom edge; drag it to give the note any
+  height, with a scrollbar for whatever still does not fit. The right-click
+  menu has *Más alta* (a step taller) and, once resized, *Tamaño original*,
+  which brings back the usual card that grows with its text — as does a double
+  click on the grip. Each note keeps its own height, and it syncs with it.
+
+## [1.2.5] — 2026-11-08
+
+### Fixed
+
+- **Markdown: a list or a quote no longer swallows the text after it.** A
+  plain line right under `- item` or `> quote` was taken, as CommonMark does,
+  as more of that item, so everything written after a list ended up inside its
+  last point. Now that line starts a paragraph of its own; to carry on an item
+  on the next line, indent it (`  more of the item`). This applies to the
+  Markdown note's preview and to its card.
+
+## [1.2.4] — 2026-11-08
+
+### Added
+
+- **Any colour for a planner category**: under the ten default swatches, the
+  category editor has a field for another colour — `#rrggbb` or a name such as
+  `teal` — with a sample that follows what is typed; Enter saves it. Custom
+  colours already used by other categories show up as extra swatches (up to
+  five), so a colour typed once is one click away the next time.
+
+## [1.2.3] — 2026-11-08
+
+### Added
+
+- **Long planner titles can wrap**: *Settings → Appearance → Títulos del
+  planificador* chooses between *Cortar* (one line ending in "…", as before and
+  still the default) and *Varias líneas*. Wrapped, a block in the day and week
+  views uses every line it has room for, keeping the time underneath, and a
+  month chip grows to up to three lines; `+N more` counts whatever no longer
+  fits in the cell.
 
 ## [1.2.2] — 2026-11-03
 

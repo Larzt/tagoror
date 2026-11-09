@@ -48,8 +48,117 @@
 
 namespace {
 
+/// What a body grows to on its own, and how far its grip can take it.
+constexpr int kBodyMin = 46;
+constexpr int kBodyAuto = 170;
+constexpr int kBodyMax = 1200;
+
+/// The height a body takes on its own: its text's, between the two limits.
+int autoHeight(QTextEdit *e) {
+    const qreal doc = e->document()->documentLayout()->documentSize().height();
+    return qBound(kBodyMin, int(doc) + 14, kBodyAuto);
+}
+
+/// @p height chosen by the user (Note::bodyHeight), with a scrollbar for what
+/// does not fit; 0 goes back to growing with the text.
+void applyBodyHeight(QTextEdit *e, int height) {
+    e->setProperty("userHeight", height);
+    if (height > 0) {
+        e->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        e->setFixedHeight(qBound(kBodyMin, height, kBodyMax));
+    } else {
+        e->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        e->setFixedHeight(autoHeight(e));
+    }
+}
+
+/// The pill on a text body's bottom edge, shown while the pointer is over the
+/// body. Dragged, it sets the body's height; a double click puts back the
+/// original. Over the editor rather than under it, so cards keep their size.
+class BodyGrip : public QWidget {
+public:
+    std::function<void(int)> resized;   ///< On release, with the new height.
+    std::function<void()> reset;
+
+    explicit BodyGrip(QTextEdit *body) : QWidget(body), m_body(body) {
+        setFixedSize(40, 10);
+        setCursor(Qt::SizeVerCursor);
+        setAttribute(Qt::WA_Hover, true);
+        setToolTip(L("Arrastra para cambiar el alto · doble clic: tamaño original"));
+        hide();
+        body->installEventFilter(this);
+    }
+
+protected:
+    bool eventFilter(QObject *o, QEvent *e) override {
+        if (o != m_body) return false;
+        switch (e->type()) {
+            case QEvent::Resize:
+                place();
+                break;
+            case QEvent::Enter:
+                place();
+                show();
+                raise();
+                break;
+            case QEvent::Leave:
+                if (!m_dragging) hide();
+                break;
+            default:
+                break;
+        }
+        return false;
+    }
+
+    void paintEvent(QPaintEvent *) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QColor c(Theme::muted());
+        c.setAlpha(underMouse() || m_dragging ? 255 : 150);
+        p.setPen(Qt::NoPen);
+        p.setBrush(c);
+        p.drawRoundedRect(QRectF((width() - 26) / 2.0, 4, 26, 3), 1.5, 1.5);
+    }
+
+    void mousePressEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton) return;
+        m_dragging = true;
+        m_moved = false;
+        m_pressY = e->globalPosition().y();
+        m_startH = m_body->height();
+        e->accept();
+    }
+    void mouseMoveEvent(QMouseEvent *e) override {
+        if (!m_dragging) return;
+        const int h = qBound(kBodyMin, m_startH + int(e->globalPosition().y() - m_pressY), kBodyMax);
+        if (h == m_body->height()) return;
+        m_moved = true;
+        applyBodyHeight(m_body, h);
+    }
+    void mouseReleaseEvent(QMouseEvent *e) override {
+        if (e->button() != Qt::LeftButton || !m_dragging) return;
+        m_dragging = false;
+        if (m_moved && resized) resized(m_body->height());
+        if (!m_body->underMouse()) hide();
+        update();
+    }
+    void mouseDoubleClickEvent(QMouseEvent *e) override {
+        if (e->button() == Qt::LeftButton && reset) reset();
+    }
+
+private:
+    void place() { move((m_body->width() - width()) / 2, m_body->height() - height()); }
+
+    QTextEdit *m_body;
+    bool m_dragging = false;
+    bool m_moved = false;
+    qreal m_pressY = 0;
+    int m_startH = 0;
+};
+
 /// A body editor that grows with its content: no scrollbars of its own, the
-/// height follows the document between a minimum and a maximum.
+/// height follows the document between a minimum and a maximum — unless the
+/// user gave it a height of its own (applyBodyHeight()).
 void autoGrow(QTextEdit *e, const QString &placeholder) {
     // No native cut/paste menu: right click is the note's menu. Shortcuts still
     // work.
@@ -70,7 +179,8 @@ void autoGrow(QTextEdit *e, const QString &placeholder) {
     QObject::connect(e->document()->documentLayout(),
                      &QAbstractTextDocumentLayout::documentSizeChanged, e,
                      [e](const QSizeF &s) {
-                         e->setFixedHeight(qBound(46, int(s.height()) + 14, 170));
+                         if (e->property("userHeight").toInt() > 0) return;
+                         e->setFixedHeight(qBound(kBodyMin, int(s.height()) + 14, kBodyAuto));
                      });
 }
 
@@ -587,6 +697,7 @@ void NoteCard::buildText(QVBoxLayout *l) {
     // Plain text since 1.0; formatting is the Markdown note's job.
     auto *body = new MarkdownEdit(m_note->body, m_theme.accent, MarkdownEdit::Plain);
     autoGrow(body, L("Escribe…"));
+    addBodyGrip(body);
     body->edited = [this](const QString &text) {
         m_note->body = text;
         emit dirty();
@@ -598,11 +709,29 @@ void NoteCard::buildText(QVBoxLayout *l) {
     l->addWidget(m_meta);
 }
 
+void NoteCard::addBodyGrip(QTextEdit *body) {
+    m_sizedBody = body;
+    applyBodyHeight(body, m_note->bodyHeight);
+    auto *grip = new BodyGrip(body);
+    grip->resized = [this](int h) { setBodyHeight(h); };
+    grip->reset = [this] { setBodyHeight(0); };
+}
+
+void NoteCard::setBodyHeight(int height) {
+    if (!m_sizedBody) return;
+    height = height > 0 ? qBound(kBodyMin, height, kBodyMax) : 0;
+    applyBodyHeight(m_sizedBody, height);
+    if (height == m_note->bodyHeight) return;
+    m_note->bodyHeight = height;
+    emit dirty();
+}
+
 /// The card shows the note rendered; writing happens on its own page, where
 /// there is room for the raw text, the preview and the formatting bar.
 void NoteCard::buildMarkdown(QVBoxLayout *l) {
     auto *body = new MarkdownEdit(m_note->body, m_theme.accent, MarkdownEdit::Preview);
     autoGrow(body, L("Vacía · pulsa para escribir"));
+    addBodyGrip(body);
     body->setToolTip(L("Abrir para editar"));
     body->activated = [this] { emit openRequested(m_note); };
     l->addWidget(body);
@@ -1704,6 +1833,19 @@ void NoteCard::contextMenuEvent(QContextMenuEvent *e) {
     if (m_note->type == Note::Voice) {
         menu->addItem("record", m_note->audio.isEmpty() ? L("Grabar") : L("Regrabar"),
                       L("Sustituye la toma actual"), [this] { toggleRecord(); });
+        menu->addSeparator();
+    }
+
+    // Taller to read more at once: by steps here, to any height with the grip on
+    // the bottom edge; and back to how it was.
+    if (m_sizedBody) {
+        const int height = m_note->bodyHeight;
+        if (height < kBodyMax)
+            menu->addItem("maximize", L("Más alta"), L("O arrastra su borde de abajo"),
+                          [this] { setBodyHeight(m_sizedBody->height() + 150); });
+        if (height > 0)
+            menu->addItem("restore", L("Tamaño original"), L("Vuelve a crecer con el texto"),
+                          [this] { setBodyHeight(0); });
         menu->addSeparator();
     }
 
