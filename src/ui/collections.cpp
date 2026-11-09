@@ -171,12 +171,16 @@ protected:
         p.fillRect(QRectF(0, 0, width() >= 40 ? 4 : 3, height()), QColor(0, 0, 0, 72));
         p.restore();
         if (m_text.isEmpty() || width() < 40) return;
+        // The title grows with the cover: the detail's is up to 240 px wide.
+        const bool big = width() >= 120;
         QFont f = font();
-        f.setPixelSize(width() >= 56 ? 9 : 8);
+        f.setPixelSize(big ? qRound(width() / 11.0) : width() >= 56 ? 9 : 8);
         f.setWeight(QFont::DemiBold);
         p.setFont(f);
         p.setPen(QColor(255, 255, 255, 214));
-        const QRectF box = r.adjusted(width() >= 56 ? 10 : 9, 6, -5, -6);
+        const qreal pad = big ? width() / 12.0 : 6;
+        const QRectF box = big ? r.adjusted(pad + 4, pad, -pad, -pad)
+                               : r.adjusted(width() >= 56 ? 10 : 9, 6, -5, -6);
         p.drawText(box, Qt::AlignLeft | Qt::AlignBottom | Qt::TextWordWrap, m_text);
     }
 
@@ -928,7 +932,18 @@ void CollectionsView::focusSearch() {
     m_searchField->selectAll();
 }
 
+/// The detail's cover: the column's width less its margins, up to 240 px,
+/// at 2:3.
+QSize CollectionsView::detailCoverSize() const {
+    const int w = qBound(80, m_detailScroll->viewport()->width() - 32, 240);
+    return QSize(w, w * 3 / 2);
+}
+
 bool CollectionsView::eventFilter(QObject *watched, QEvent *event) {
+    // The detail column resized (its edge dragged): the cover follows.
+    if (m_detailScroll && watched == m_detailScroll->viewport() && event->type() == QEvent::Resize &&
+        m_detailCover)
+        m_detailCover->setFixedSize(detailCoverSize());
     // Wider or narrower by a column: the tiles are rebuilt for the new count.
     // Their height follows their width, so leaving them to the layout would
     // stretch them past it and cut the state and stones under the cover.
@@ -1810,6 +1825,7 @@ QWidget *CollectionsView::buildDetail() {
     m_detailScroll->setWidget(m_detailHost);
     m_detailScroll->viewport()->setAutoFillBackground(false);
     m_detailScroll->viewport()->setObjectName("scrollViewport");
+    m_detailScroll->viewport()->installEventFilter(this);   // the cover follows its width
     m_detailScroll->hide();
     return m_detailScroll;
 }
@@ -2076,11 +2092,14 @@ void CollectionsView::refreshDetail() {
         return;
     }
 
-    auto *top = new QHBoxLayout;
-    top->setSpacing(12);
-    top->addWidget((new coll::Cover(CollectionItem::coverColor(item->color), QString(), QSize(70, 104)))
-                       ->withImage(item->coverPath()),
-                   0, Qt::AlignTop);
+    // The cover on top, as large as the column allows (1.3.9): 70 px beside the
+    // title was too small to see a picture. Its size follows the column's
+    // width (eventFilter), centred, at 2:3.
+    auto *cover = new coll::Cover(CollectionItem::coverColor(item->color), coverText(item->title),
+                                  detailCoverSize());
+    cover->withImage(item->coverPath());
+    m_detailCover = cover;
+    m_detail->addWidget(cover, 0, Qt::AlignHCenter);
     auto *texts = new QVBoxLayout;
     texts->setSpacing(4);
     const CollectionState *s = c->state(item->state);
@@ -2111,9 +2130,7 @@ void CollectionsView::refreshDetail() {
     texts->addWidget(title);
     if (c->has(Collection::kAuthor) && !item->author.isEmpty())
         texts->addWidget(elided(item->author, "collSub", QColor(Theme::muted())));
-    texts->addStretch();
-    top->addLayout(texts, 1);
-    m_detail->addLayout(top);
+    m_detail->addLayout(texts);
 
     // AÑO · PÁGINAS · AÑADIDO
     auto *tiles = new QGridLayout;
