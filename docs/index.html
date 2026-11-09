@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tagoror — notas en tu escritorio</title>
-<meta name="description" content="Tus notas, tu tiempo y tu agenda, en un solo widget para Linux y Windows. Sin cuenta, sin nube obligatoria. Open source, MIT.">
+<meta name="description" content="Tus notas, tu agenda y tus colecciones, en un solo widget para Linux y Windows. Sin cuenta, sin nube obligatoria. Open source, MIT.">
 <meta property="og:title" content="Tagoror">
-<meta property="og:description" content="Tus notas, tu tiempo y tu agenda, en un solo widget para Linux y Windows. Sin cuenta, sin nube obligatoria.">
+<meta property="og:description" content="Tus notas, tu agenda y tus colecciones, en un solo widget para Linux y Windows. Sin cuenta, sin nube obligatoria.">
 <meta property="og:image" content="https://larzt.github.io/tagoror/brand.png">
 <meta property="og:video" content="https://larzt.github.io/tagoror/trailer.mp4">
 <meta property="og:type" content="website">
@@ -239,7 +239,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
   <div class="wrap" style="position: relative; padding-top: clamp(56px,10vh,110px); padding-bottom: clamp(48px,8vw,96px); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 26px;">
     <a href="#descargar" class="badge rv"><span lang="es">Gratis · código abierto</span><span lang="en">Free · open source</span></a>
     <h1 class="brand rv" style="--d: 1;">Tagoror<span class="dot">.</span></h1>
-    <p class="rv" style="--d: 2; margin: 0; font-size: clamp(19px,2.4vw,30px); color: var(--muted); max-width: 26em; text-wrap: balance;"><span lang="es">Tus notas, tu tiempo y tu agenda, en un solo widget sobre tu escritorio de Linux o Windows.</span><span lang="en">Your notes, your time and your schedule, in one widget on your Linux or Windows desktop.</span></p>
+    <p class="rv" style="--d: 2; margin: 0; font-size: clamp(19px,2.4vw,30px); color: var(--muted); max-width: 26em; text-wrap: balance;"><span lang="es">Tus notas, tu agenda y tus colecciones, en un solo widget sobre tu escritorio de Linux o Windows.</span><span lang="en">Your notes, your schedule and your collections, in one widget on your Linux or Windows desktop.</span></p>
     <div class="rv" style="--d: 3; display: flex; flex-direction: column; align-items: center; gap: 14px;">
       <div id="heroButtons" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;">
         <a class="btn primary" data-btn="linux" href="https://github.com/Larzt/tagoror/releases/latest">
@@ -437,10 +437,12 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
     <p class="chap-s rv" style="--d: 2;"><span lang="es">Una barra abajo, una sola fila de herramientas y un menú ⋯. Nada empuja tus notas.</span><span lang="en">A bar along the bottom, a single row of tools and a ⋯ menu. Nothing pushes your notes around.</span></p>
     <div class="pills">
       <span class="pl rv" style="--d: 3;"><span lang="es">Notas</span><span lang="en">Notes</span></span>
-      <span class="pl rv" style="--d: 4;">Planner</span>
+      <span class="pl rv" style="--d: 4;"><span lang="es">Planificador</span><span lang="en">Planner</span></span>
       <span class="pl rv" style="--d: 5;">Timers</span>
       <span class="pl rv" style="--d: 6;"><span lang="es">Cumpleaños</span><span lang="en">Birthdays</span></span>
-      <span class="pl hi rv" style="--d: 7;">Ctrl+K</span>
+      <span class="pl rv" style="--d: 7;"><span lang="es">Seguimiento</span><span lang="en">Tracking</span></span>
+      <span class="pl rv" style="--d: 8;"><span lang="es">Colecciones</span><span lang="en">Collections</span></span>
+      <span class="pl hi rv" style="--d: 9;">Ctrl+K</span>
     </div>
   </div>
 </section>
@@ -458,8 +460,8 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
     <div class="step on" data-k="nav">
       <div class="eyebrow">01</div>
       <h3><span lang="es">Navegación que no se mueve.</span><span lang="en">Navigation that stays put.</span></h3>
-      <p><span lang="es">Notas, Planner, Timers y Cumpleaños en una barra abajo, con la página abierta marcada. Si ensanchas el panel, pasa a ser un raíl a la izquierda.</span><span lang="en">Notes, Planner, Timers and Birthdays in a bar along the bottom, with the open page marked. Widen the panel and it becomes a rail on the left.</span></p>
-      <div style="display: flex; gap: 4px;"><kbd>Ctrl</kbd><kbd>1…4</kbd></div>
+      <p><span lang="es">Notas, Planificador, Timers, Cumpleaños, Seguimiento y Colecciones en una barra abajo, con la página abierta marcada y en el orden que elijas. Si ensanchas el panel, pasa a ser un raíl a la izquierda.</span><span lang="en">Notes, Planner, Timers, Birthdays, Tracking and Collections in a bar along the bottom, with the open page marked and in the order you choose. Widen the panel and it becomes a rail on the left.</span></p>
+      <div style="display: flex; gap: 4px;"><kbd>Ctrl</kbd><kbd>1…6</kbd></div>
       <img class="step-img" src="v5-notas.png" alt="" loading="lazy">
     </div>
     <div class="step" data-k="palette">
@@ -661,12 +663,13 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         <span lang="es">Planificador</span><span lang="en">Planner</span>
       </div>
       <h2 class="h2 rv" style="--d: 1;"><span lang="es">Tu semana, en la misma rejilla.</span><span lang="en">Your week, on one grid.</span></h2>
-      <p class="lead rv" style="--d: 2;"><span lang="es">Eventos y tareas con categorías, que mueves arrastrándolos y copias con Ctrl+C y Ctrl+V. Los recordatorios, checklists con fecha y cumpleaños aparecen solos, y Google Calendar se sincroniza en los dos sentidos.</span><span lang="en">Events and tasks with categories, moved by dragging them and copied with Ctrl+C and Ctrl+V. Reminders, dated checklists and birthdays show up on their own, and Google Calendar syncs both ways.</span></p>
+      <p class="lead rv" style="--d: 2;"><span lang="es">Doble clic en una hora libre para crear un evento. Eventos y tareas con categorías del color que quieras, que mueves arrastrándolos y copias con Ctrl+C y Ctrl+V, y títulos largos en varias líneas si lo prefieres. Los recordatorios, checklists con fecha y cumpleaños aparecen solos, y Google Calendar se sincroniza en los dos sentidos.</span><span lang="en">Double-click a free hour to create an event. Events and tasks with categories in any colour you like, moved by dragging them and copied with Ctrl+C and Ctrl+V, and long titles over several lines if you prefer. Reminders, dated checklists and birthdays show up on their own, and Google Calendar syncs both ways.</span></p>
     </div>
     <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px;">
       <span class="pill rv" style="--d: 3;"><span lang="es">Día · Semana · Mes</span><span lang="en">Day · Week · Month</span></span>
       <span class="pill rv" style="--d: 4;"><span lang="es">Aviso de 5 min a 1 día antes</span><span lang="en">Heads-up 5 min to 1 day before</span></span>
-      <span class="pill rv" style="--d: 5;">Google Calendar ⇄</span>
+      <span class="pill rv" style="--d: 5;"><span lang="es">Doble clic para crear</span><span lang="en">Double-click to create</span></span>
+      <span class="pill rv" style="--d: 6;">Google Calendar ⇄</span>
     </div>
   </div>
   <div data-sc="enter">
@@ -696,6 +699,66 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
       </div>
       <div data-sc="enter" style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
         <img class="par1" src="v5-cumples.png" alt="Birthdays" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="chap" data-sc="enter" style="margin-top: clamp(64px,10vw,120px);">
+  <div class="wrap">
+    <div class="kick rv"><span lang="es">Colecciones</span><span lang="en">Collections</span></div>
+    <h2 class="chap-t rv" style="--d: 1;"><span lang="es">Lo que lees, ves y juegas.</span><span lang="en">What you read, watch and play.</span></h2>
+    <p class="chap-s rv" style="--d: 2;"><span lang="es">Lo pendiente, lo que llevas a medias y lo terminado, con su progreso, su cola y tu reto del año.</span><span lang="en">What is waiting, what you are halfway through and what you finished, with its progress, its queue and your goal for the year.</span></p>
+    <div class="pills">
+      <span class="pl hi rv" style="--d: 3;"><span lang="es">Libros</span><span lang="en">Books</span></span>
+      <span class="pl rv" style="--d: 4;"><span lang="es">Películas</span><span lang="en">Films</span></span>
+      <span class="pl rv" style="--d: 5;">Series</span>
+      <span class="pl rv" style="--d: 6;"><span lang="es">Juegos</span><span lang="en">Games</span></span>
+      <span class="pl rv" style="--d: 7;"><span lang="es">Discos</span><span lang="en">Records</span></span>
+    </div>
+  </div>
+</section>
+
+<section id="colecciones" class="wrap sec">
+  <div style="display: flex; flex-wrap: wrap; gap: 24px 48px; align-items: end; justify-content: space-between; margin-bottom: 36px;">
+    <div style="display: flex; flex-direction: column; gap: 14px; max-width: 560px;">
+      <div class="eyebrow rv"><span lang="es">Modo aplicación</span><span lang="en">App mode</span></div>
+      <h2 class="h2 rv" style="--d: 1;"><span lang="es">Tres columnas, a tu medida.</span><span lang="en">Three columns, sized your way.</span></h2>
+      <p class="lead rv" style="--d: 2;"><span lang="es">Tus colecciones, etiquetas y el reto a la izquierda; las portadas en el centro; y la ficha con la portada en grande, la sinopsis y tus propios campos. Arrastra los bordes para dar a cada columna su ancho, u oculta la ficha con ⓘ.</span><span lang="en">Your collections, tags and goal on the left; the covers in the middle; and the card with a large cover, the synopsis and fields of your own. Drag the edges to give each column its width, or hide the card with ⓘ.</span></p>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; font-size: 14px;">
+      <span class="pill rv" style="--d: 3;"><span lang="es">Portadas con imagen</span><span lang="en">Cover pictures</span></span>
+      <span class="pill rv" style="--d: 4;"><span lang="es">Filtro por etiqueta y páginas</span><span lang="en">Filter by tag and length</span></span>
+      <span class="pill rv" style="--d: 5;">Ctrl+6</span>
+    </div>
+  </div>
+  <div data-sc="enter">
+    <div class="stage" style="border-radius: 22px; padding: clamp(14px,3vw,40px); background-image: var(--noise), radial-gradient(80% 70% at 50% 110%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%), linear-gradient(170deg, #1b2029, #0a0c10); display: grid; place-items: center; overflow: hidden; transform: scale(calc(.86 + .14 * var(--p))); opacity: calc(.3 + var(--p));">
+      <img src="v13-colecciones-ancho.png" alt="Collections" loading="lazy" style="width: 100%; max-width: 988px; display: block;">
+    </div>
+  </div>
+</section>
+
+<section class="wrap sec">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 20px;">
+    <div class="card rv" style="border-radius: 22px; overflow: hidden; display: flex; flex-direction: column;">
+      <div style="padding: clamp(22px,3vw,32px); display: flex; flex-direction: column; gap: 10px;">
+        <div class="eyebrow"><span lang="es">Leyendo</span><span lang="en">Reading</span></div>
+        <h3 style="margin: 0; font-size: clamp(24px,2.6vw,30px); line-height: 1.15; letter-spacing: -.02em; font-weight: 600; text-wrap: balance;"><span lang="es">La página, sin abrir el editor.</span><span lang="en">The page, without opening the editor.</span></h3>
+        <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">Cada libro en curso con su barra, lo que falta y +10 p., +25 p. o la página escrita; Terminado lo archiva con la fecha de hoy. Debajo, lo siguiente de la cola, por prioridad.</span><span lang="en">Each book in progress with its bar, what is left and +10 p., +25 p. or the page typed; Finished files it with today's date. Underneath, what comes next in the queue, by priority.</span></p>
+      </div>
+      <div data-sc="enter" style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
+        <img class="par1" src="v13-colecciones.png" alt="Collections" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
+      </div>
+    </div>
+    <div class="card rv" style="--d: 2; border-radius: 22px; overflow: hidden; display: flex; flex-direction: column;">
+      <div style="padding: clamp(22px,3vw,32px); display: flex; flex-direction: column; gap: 10px;">
+        <div class="eyebrow"><span lang="es">Primer arranque</span><span lang="en">First start</span></div>
+        <h3 style="margin: 0; font-size: clamp(24px,2.6vw,30px); line-height: 1.15; letter-spacing: -.02em; font-weight: 600; text-wrap: balance;"><span lang="es">Solo lo que vas a usar.</span><span lang="en">Only what you will use.</span></h3>
+        <p style="margin: 0; color: var(--muted); text-wrap: pretty;"><span lang="es">Cada página y cada tipo de nota tiene su interruptor. Lo que apagas se esconde, no se borra, y Ajustes → General lo cambia después y reordena las páginas.</span><span lang="en">Every page and every kind of note has its own switch. What you turn off is hidden, not deleted, and Settings → General changes it later and reorders the pages.</span></p>
+      </div>
+      <div data-sc="enter" style="margin-top: auto; padding: 8px 20px 0; display: flex; justify-content: center; background-color: #101318; background-image: var(--noise), linear-gradient(170deg, #1b2029, #0a0c10); height: 380px; overflow: hidden;">
+        <img class="par1" src="v13-bienvenida.png" alt="Welcome" loading="lazy" style="width: 360px; max-width: 100%; align-self: flex-start; display: block;">
       </div>
     </div>
   </div>
@@ -848,7 +911,7 @@ pre.cmd{margin:0;padding:10px 12px;border-radius:8px;background:var(--bg);border
         </div>
         <div style="display: flex; padding: 5px 6px 7px; border-top: 1px solid rgba(255,255,255,.07); font-size: 11px; color: #8b909a; text-align: center;">
           <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #e6e8ec; font-weight: 600;"><span style="width: 42px; height: 22px; border-radius: 11px; background: color-mix(in srgb, var(--accent) 20%, transparent); display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"><rect x="2" y="2" width="12" height="12" rx="3"></rect><path d="M5 6h6M5 9.5h4"></path></svg></span><span lang="es">Notas</span><span lang="en">Notes</span></span>
-          <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;"><span style="height: 22px; display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.4" y="3.4" width="11.2" height="10.6" rx="2.4"></rect><path d="M2.4 6.4h11.2M5 1.8v2.6M11 1.8v2.6"></path></svg></span>Planner</span>
+          <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;"><span style="height: 22px; display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.4" y="3.4" width="11.2" height="10.6" rx="2.4"></rect><path d="M2.4 6.4h11.2M5 1.8v2.6M11 1.8v2.6"></path></svg></span><span lang="es">Planificador</span><span lang="en">Planner</span></span>
           <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--accent);" class="mono"><span style="height: 22px; display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="#8b909a" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="9" r="5"></circle><path d="M6.4 2.2h3.2M8 2.2V4M8 9l2.2-2.4"></path></svg></span>18:42</span>
           <span style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;"><span style="height: 22px; display: grid; place-items: center;"><svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><rect x="2.4" y="7.4" width="11.2" height="6.4" rx="1.8"></rect><path d="M2.4 10.4h11.2M8 4.6v2.8"></path></svg></span><span lang="es">Cumpleaños</span><span lang="en">Birthdays</span></span>
         </div>
