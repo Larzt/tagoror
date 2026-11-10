@@ -39,6 +39,10 @@
   turning it back on brings back everything it had.
 
 <p align="center">
+  <img src="docs/v13-bienvenida.png" alt="The welcome on the first start: a switch for each page and each kind of note, with Start at the bottom" width="400">
+</p>
+
+<p align="center">
   <img src="docs/v5-notas.png" alt="The notes panel: area tabs, a checklist, a reminder and a Markdown note, with the navigation along the bottom" width="400">
 </p>
 
@@ -107,7 +111,7 @@
 - Your reminders and birthdays appear on the same grid — reminders as a dashed
   block you can click to jump to the note, birthdays as an all-day tag — and the
   category list on the left hides any of them, reminders and birthdays included.
-- Click an empty hour to create something there, or use **+**. The form can
+- Double-click an empty hour to create something there, or use **+**. The form can
   also create a plain reminder note, which is what the old calendar did when you
   picked a day.
 - **Copy, paste and duplicate**: **Ctrl+C** copies the event, task or reminder
@@ -181,6 +185,14 @@
   backed up and synced like everything else.
 
 ### Collections (Colecciones)
+
+<p align="center">
+  <img src="docs/v13-colecciones-ancho.png" alt="Collections in app mode: the collections, tags, lengths and yearly goal on the left, a grid of book covers in the middle and the selected book's card with a large cover, its saga and synopsis on the right" width="720">
+</p>
+
+<p align="center">
+  <img src="docs/v13-colecciones.png" alt="Collections in the narrow panel: the book being read with its progress and +10 p. / +25 p., and the next three in the queue" width="400">
+</p>
 
 - *Colecciones* in the navigation (or **Ctrl+6**): lists of things that move
   through states. The first template is a **library** — *Pendiente*,
